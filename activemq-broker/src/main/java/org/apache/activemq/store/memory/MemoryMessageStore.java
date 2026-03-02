@@ -111,7 +111,7 @@ public class MemoryMessageStore extends AbstractMessageStore {
     }
 
     @Override
-    public void recoverNextMessages(int maxReturned, MessageRecoveryListener listener) throws Exception {
+    public void recoverNextMessages(final int maxReturned, final MessageRecoveryListener listener) throws Exception {
         synchronized (messageTable) {
             boolean pastLackBatch = lastBatchId == null;
             for (Map.Entry<MessageId, Message> entry : messageTable.entrySet()) {
@@ -137,7 +137,13 @@ public class MemoryMessageStore extends AbstractMessageStore {
 
     @Override
     public void setBatch(MessageId messageId) {
-        lastBatchId = messageId;
+        synchronized (messageTable) {
+            if (messageTable.containsKey(messageId)) {
+                lastBatchId = messageId;
+            } else {
+                resetBatching();
+            }
+        }
     }
 
     @Override
@@ -169,6 +175,11 @@ public class MemoryMessageStore extends AbstractMessageStore {
             getMessageStoreStatistics().getMessageCount().setCount(count);
             getMessageStoreStatistics().getMessageSize().setTotalSize(size);
         }
+    }
+
+    @Override
+    public StoreType getType() {
+        return StoreType.MEMORY;
     }
 
     protected static final void incMessageStoreStatistics(final MessageStoreStatistics stats, final Message message) {

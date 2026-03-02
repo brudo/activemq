@@ -18,7 +18,7 @@ package org.apache.activemq.filter;
 
 import java.math.BigDecimal;
 
-import javax.jms.JMSException;
+import jakarta.jms.JMSException;
 
 /**
  * Represents a constant expression
@@ -57,7 +57,7 @@ public class ConstantExpression implements Expression {
 
         Number value;
         try {
-            value = new Long(text);
+            value = Long.valueOf(text);
         } catch (NumberFormatException e) {
             // The number may be too big to fit in a long.
             value = new BigDecimal(text);
@@ -65,31 +65,31 @@ public class ConstantExpression implements Expression {
 
         long l = value.longValue();
         if (Integer.MIN_VALUE <= l && l <= Integer.MAX_VALUE) {
-            value = Integer.valueOf(value.intValue());
+            value = value.intValue();
         }
         return new ConstantExpression(value);
     }
 
     public static ConstantExpression createFromHex(String text) {
-        Number value = Long.valueOf(Long.parseLong(text.substring(2), 16));
+        Number value = Long.parseLong(text.substring(2), 16);
         long l = value.longValue();
         if (Integer.MIN_VALUE <= l && l <= Integer.MAX_VALUE) {
-            value = Integer.valueOf(value.intValue());
+            value = value.intValue();
         }
         return new ConstantExpression(value);
     }
 
     public static ConstantExpression createFromOctal(String text) {
-        Number value = Long.valueOf(Long.parseLong(text, 8));
+        Number value = Long.parseLong(text, 8);
         long l = value.longValue();
         if (Integer.MIN_VALUE <= l && l <= Integer.MAX_VALUE) {
-            value = Integer.valueOf(value.intValue());
+            value = value.intValue();
         }
         return new ConstantExpression(value);
     }
 
     public static ConstantExpression createFloat(String text) {
-        Number value = new Double(text);
+        Number value = Double.valueOf(text);
         return new ConstantExpression(value);
     }
 
@@ -109,7 +109,7 @@ public class ConstantExpression implements Expression {
             return "NULL";
         }
         if (value instanceof Boolean) {
-            return ((Boolean)value).booleanValue() ? "TRUE" : "FALSE";
+            return (Boolean) value ? "TRUE" : "FALSE";
         }
         if (value instanceof String) {
             return encodeString((String)value);
@@ -144,11 +144,11 @@ public class ConstantExpression implements Expression {
      * Encodes the value of string so that it looks like it would look like when
      * it was provided in a selector.
      * 
-     * @param string
+     * @param s
      * @return
      */
     public static String encodeString(String s) {
-        StringBuffer b = new StringBuffer();
+        StringBuilder b = new StringBuilder(s.length() * 2);
         b.append('\'');
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);

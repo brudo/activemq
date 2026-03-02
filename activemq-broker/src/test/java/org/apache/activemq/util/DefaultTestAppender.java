@@ -17,34 +17,15 @@
 
 package org.apache.activemq.util;
 
-import org.apache.log4j.Appender;
-import org.apache.log4j.Layout;
-import org.apache.log4j.spi.ErrorHandler;
-import org.apache.log4j.spi.Filter;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.ErrorHandler;
+import org.apache.logging.log4j.core.Layout;
+import org.apache.logging.log4j.core.LogEvent;
 
 public abstract class DefaultTestAppender implements Appender {
-    
+
+    private volatile boolean started = false;
     String name = this.getClass().getSimpleName();
-    
-    @Override
-    public void addFilter(Filter newFilter) {
-
-    }
-
-    @Override
-    public Filter getFilter() {
-        return null;
-    }
-
-    @Override
-    public void clearFilters() {
-
-    }
-
-    @Override
-    public void close() {
-
-    }
 
     @Override
     public String getName() {
@@ -52,17 +33,12 @@ public abstract class DefaultTestAppender implements Appender {
     }
 
     @Override
-    public void setErrorHandler(ErrorHandler errorHandler) {
-
-    }
-
-    @Override
-    public ErrorHandler getErrorHandler() {
+    public ErrorHandler getHandler() {
         return null;
     }
 
     @Override
-    public void setLayout(Layout layout) {
+    public void setHandler(ErrorHandler handler) {
 
     }
 
@@ -72,12 +48,42 @@ public abstract class DefaultTestAppender implements Appender {
     }
 
     @Override
-    public void setName(String name) {
-        this.name = name;
+    public void append(LogEvent event) {
+
     }
 
     @Override
-    public boolean requiresLayout() {
-        return false;
+    public boolean ignoreExceptions() {
+        return true;
+    }
+
+    @Override
+    public State getState() {
+        return null;
+    }
+
+    @Override
+    public void initialize() {
+
+    }
+
+    @Override
+    public void start() {
+        started = true;
+    }
+
+    @Override
+    public void stop() {
+        started = false;
+    }
+
+    @Override
+    public boolean isStarted() {
+        return started;
+    }
+
+    @Override
+    public boolean isStopped() {
+        return !started;
     }
 }

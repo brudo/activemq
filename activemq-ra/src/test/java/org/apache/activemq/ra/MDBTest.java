@@ -36,25 +36,28 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
-import javax.jms.Connection;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageListener;
-import javax.jms.MessageProducer;
-import javax.jms.Queue;
-import javax.jms.Session;
-import javax.resource.ResourceException;
-import javax.resource.spi.BootstrapContext;
-import javax.resource.spi.UnavailableException;
-import javax.resource.spi.XATerminator;
-import javax.resource.spi.endpoint.MessageEndpoint;
-import javax.resource.spi.endpoint.MessageEndpointFactory;
-import javax.resource.spi.work.ExecutionContext;
-import javax.resource.spi.work.Work;
-import javax.resource.spi.work.WorkException;
-import javax.resource.spi.work.WorkListener;
-import javax.resource.spi.work.WorkManager;
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageListener;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
+import jakarta.resource.ResourceException;
+import jakarta.resource.spi.BootstrapContext;
+import jakarta.resource.spi.UnavailableException;
+import jakarta.resource.spi.XATerminator;
+import jakarta.resource.spi.endpoint.MessageEndpoint;
+import jakarta.resource.spi.endpoint.MessageEndpointFactory;
+import jakarta.resource.spi.work.ExecutionContext;
+import jakarta.resource.spi.work.Work;
+import jakarta.resource.spi.work.WorkContext;
+import jakarta.resource.spi.work.WorkException;
+import jakarta.resource.spi.work.WorkListener;
+import jakarta.resource.spi.work.WorkManager;
+import jakarta.transaction.TransactionSynchronizationRegistry;
+
 import javax.transaction.xa.XAResource;
 import javax.transaction.xa.Xid;
 
@@ -67,13 +70,13 @@ import org.apache.activemq.command.ActiveMQMessage;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ConsumerInfo;
 import org.apache.activemq.util.Wait;
-import org.apache.log4j.Appender;
-import org.apache.log4j.Layout;
-import org.apache.log4j.Level;
-import org.apache.log4j.LogManager;
-import org.apache.log4j.spi.ErrorHandler;
-import org.apache.log4j.spi.Filter;
-import org.apache.log4j.spi.LoggingEvent;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.Property;
+import org.apache.logging.log4j.core.filter.AbstractFilter;
+import org.apache.logging.log4j.core.layout.MessageLayout;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -132,6 +135,18 @@ public class MDBTest {
         public Timer createTimer() throws UnavailableException {
             return null;
         }
+
+        @Override
+        public boolean isContextSupported(Class<? extends WorkContext> workContextClass) {
+            // TODO Auto-generated method stub
+            return false;
+        }
+
+        @Override
+        public TransactionSynchronizationRegistry getTransactionSynchronizationRegistry() {
+            // TODO Auto-generated method stub
+            return null;
+        }
     }
 
     public class StubMessageEndpoint implements MessageEndpoint, MessageListener {
@@ -186,7 +201,7 @@ public class MDBTest {
         MessageConsumer advisory = session.createConsumer(AdvisorySupport.getConsumerAdvisoryTopic(new ActiveMQQueue("TEST")));
 
         ActiveMQResourceAdapter adapter = new ActiveMQResourceAdapter();
-        adapter.setServerUrl("vm://localhost?broker.persistent=false");
+        adapter.setServerUrl("vm://localhost?broker.persistent=false&create=false");
         adapter.setQueuePrefetch(1);
         adapter.start(new StubBootstrapContext());
 
@@ -217,6 +232,24 @@ public class MDBTest {
             @Override
             public boolean isDeliveryTransacted(Method method) throws NoSuchMethodException {
                 return true;
+            }
+
+            @Override
+            public MessageEndpoint createEndpoint(XAResource xaResource, long timeout) throws UnavailableException {
+                // TODO Auto-generated method stub
+                return null;
+            }
+
+            @Override
+            public String getActivationName() {
+                // TODO Auto-generated method stub
+                return null;
+            }
+
+            @Override
+            public Class<?> getEndpointClass() {
+                // TODO Auto-generated method stub
+                return null;
             }
         };
 
@@ -255,7 +288,7 @@ public class MDBTest {
         MessageConsumer advisory = session.createConsumer(AdvisorySupport.getConsumerAdvisoryTopic(new ActiveMQQueue("TEST")));
 
         ActiveMQResourceAdapter adapter = new ActiveMQResourceAdapter();
-        adapter.setServerUrl("vm://localhost?broker.persistent=false");
+        adapter.setServerUrl("vm://localhost?broker.persistent=false&create=false");
         adapter.setQueuePrefetch(1);
         adapter.start(new StubBootstrapContext());
 
@@ -285,6 +318,24 @@ public class MDBTest {
             @Override
             public boolean isDeliveryTransacted(Method method) throws NoSuchMethodException {
                 return true;
+            }
+
+            @Override
+            public MessageEndpoint createEndpoint(XAResource xaResource, long timeout) throws UnavailableException {
+                // TODO Auto-generated method stub
+                return null;
+            }
+
+            @Override
+            public String getActivationName() {
+                // TODO Auto-generated method stub
+                return null;
+            }
+
+            @Override
+            public Class<?> getEndpointClass() {
+                // TODO Auto-generated method stub
+                return null;
             }
         };
 
@@ -320,7 +371,7 @@ public class MDBTest {
         connection.start();
         Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
         ActiveMQResourceAdapter adapter = new ActiveMQResourceAdapter();
-        adapter.setServerUrl("vm://localhost?broker.persistent=false");
+        adapter.setServerUrl("vm://localhost?broker.persistent=false&create=false");
         adapter.start(new StubBootstrapContext());
 
         final CountDownLatch messageDelivered = new CountDownLatch(10);
@@ -362,6 +413,24 @@ public class MDBTest {
 
             public boolean isDeliveryTransacted(Method method) throws NoSuchMethodException {
                 return false;
+            }
+
+            @Override
+            public MessageEndpoint createEndpoint(XAResource xaResource, long timeout) throws UnavailableException {
+                // TODO Auto-generated method stub
+                return null;
+            }
+
+            @Override
+            public String getActivationName() {
+                // TODO Auto-generated method stub
+                return null;
+            }
+
+            @Override
+            public Class<?> getEndpointClass() {
+                // TODO Auto-generated method stub
+                return null;
             }
         };
 
@@ -427,6 +496,25 @@ public class MDBTest {
                     public boolean isDeliveryTransacted(Method method) throws NoSuchMethodException {
                         return true;
                     }
+
+                    @Override
+                    public MessageEndpoint createEndpoint(XAResource xaResource, long timeout)
+                            throws UnavailableException {
+                        // TODO Auto-generated method stub
+                        return null;
+                    }
+
+                    @Override
+                    public String getActivationName() {
+                        // TODO Auto-generated method stub
+                        return null;
+                    }
+
+                    @Override
+                    public Class<?> getEndpointClass() {
+                        // TODO Auto-generated method stub
+                        return null;
+                    }
                 };
 
                 // Activate an Endpoint
@@ -467,147 +555,132 @@ public class MDBTest {
     public void testErrorOnNoMessageDeliveryBrokerZeroPrefetchConfig() throws Exception {
 
         final BrokerService brokerService = new BrokerService();
-        final String brokerUrl = "vm://zeroPrefetch?create=false";
-        brokerService.setBrokerName("zeroPrefetch");
-        brokerService.setPersistent(false);
-        PolicyMap policyMap = new PolicyMap();
-        PolicyEntry zeroPrefetchPolicy = new PolicyEntry();
-        zeroPrefetchPolicy.setQueuePrefetch(0);
-        policyMap.setDefaultEntry(zeroPrefetchPolicy);
-        brokerService.setDestinationPolicy(policyMap);
-        brokerService.start();
 
-        final AtomicReference<String> errorMessage = new AtomicReference<String>();
-        final Appender testAppender = new Appender() {
+        try {
+            final String brokerUrl = "vm://zeroPrefetch?create=false";
+            brokerService.setBrokerName("zeroPrefetch");
+            brokerService.setPersistent(false);
+            PolicyMap policyMap = new PolicyMap();
+            PolicyEntry zeroPrefetchPolicy = new PolicyEntry();
+            zeroPrefetchPolicy.setQueuePrefetch(0);
+            policyMap.setDefaultEntry(zeroPrefetchPolicy);
+            brokerService.setDestinationPolicy(policyMap);
+            brokerService.start();
 
-            @Override
-            public void addFilter(Filter filter) {
-            }
-
-            @Override
-            public Filter getFilter() {
-                return null;
-            }
-
-            @Override
-            public void clearFilters() {
-            }
-
-            @Override
-            public void close() {
-            }
-
-            @Override
-            public void doAppend(LoggingEvent event) {
-                if (event.getLevel().isGreaterOrEqual(Level.ERROR)) {
-                    System.err.println("Event :" + event.getRenderedMessage());
-                    errorMessage.set(event.getRenderedMessage());
+            final AtomicReference<String> errorMessage = new AtomicReference<String>();
+            final var appender = new AbstractAppender("test", new AbstractFilter() {
+            }, new MessageLayout(), false, new Property[0]) {
+                @Override
+                public void append(LogEvent event) {
+                    if (event.getLevel().isMoreSpecificThan(Level.ERROR)) {
+                        System.err.println("Event :" + event.getMessage().getFormattedMessage());
+                        errorMessage.set(event.getMessage().getFormattedMessage());
+                    }
                 }
-            }
-
-            @Override
-            public String getName() {
-                return null;
-            }
-
-            @Override
-            public void setErrorHandler(ErrorHandler errorHandler) {
-            }
-
-            @Override
-            public ErrorHandler getErrorHandler() {
-                return null;
-            }
-
-            @Override
-            public void setLayout(Layout layout) {
-            }
-
-            @Override
-            public Layout getLayout() {
-                return null;
-            }
-
-            @Override
-            public void setName(String s) {
-            }
-
-            @Override
-            public boolean requiresLayout() {
-                return false;
-            }
-        };
-
-        LogManager.getRootLogger().addAppender(testAppender);
-
-        ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory(brokerUrl);
-        Connection connection = factory.createConnection();
-        connection.start();
-        Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-
-        MessageConsumer advisory = session.createConsumer(AdvisorySupport.getConsumerAdvisoryTopic(new ActiveMQQueue("TEST")));
-
-        ActiveMQResourceAdapter adapter = new ActiveMQResourceAdapter();
-        adapter.setServerUrl(brokerUrl);
-        adapter.start(new StubBootstrapContext());
-
-        final CountDownLatch messageDelivered = new CountDownLatch(1);
-
-        final StubMessageEndpoint endpoint = new StubMessageEndpoint() {
-            @Override
-            public void onMessage(Message message) {
-                super.onMessage(message);
-                messageDelivered.countDown();
             };
-        };
+            appender.start();
 
-        ActiveMQActivationSpec activationSpec = new ActiveMQActivationSpec();
-        activationSpec.setDestinationType(Queue.class.getName());
-        activationSpec.setDestination("TEST");
-        activationSpec.setResourceAdapter(adapter);
-        activationSpec.validate();
+            final var logger = org.apache.logging.log4j.core.Logger.class.cast(
+                LogManager.getRootLogger());
+            logger.addAppender(appender);
+            logger.get().addAppender(appender, Level.INFO, new AbstractFilter() {
+            });
 
-        MessageEndpointFactory messageEndpointFactory = new MessageEndpointFactory() {
-            @Override
-            public MessageEndpoint createEndpoint(XAResource resource) throws UnavailableException {
-                endpoint.xaresource = resource;
-                return endpoint;
+            ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory(brokerUrl);
+            Connection connection = factory.createConnection();
+            connection.start();
+            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+
+            MessageConsumer advisory = session.createConsumer(
+                AdvisorySupport.getConsumerAdvisoryTopic(new ActiveMQQueue("TEST")));
+
+            ActiveMQResourceAdapter adapter = new ActiveMQResourceAdapter();
+            adapter.setServerUrl(brokerUrl);
+            adapter.start(new StubBootstrapContext());
+
+            final CountDownLatch messageDelivered = new CountDownLatch(1);
+
+            final StubMessageEndpoint endpoint = new StubMessageEndpoint() {
+                @Override
+                public void onMessage(Message message) {
+                    super.onMessage(message);
+                    messageDelivered.countDown();
+                }
+
+                ;
+            };
+
+            ActiveMQActivationSpec activationSpec = new ActiveMQActivationSpec();
+            activationSpec.setDestinationType(Queue.class.getName());
+            activationSpec.setDestination("TEST");
+            activationSpec.setResourceAdapter(adapter);
+            activationSpec.validate();
+
+            MessageEndpointFactory messageEndpointFactory = new MessageEndpointFactory() {
+                @Override
+                public MessageEndpoint createEndpoint(XAResource resource)
+                    throws UnavailableException {
+                    endpoint.xaresource = resource;
+                    return endpoint;
+                }
+
+                @Override
+                public boolean isDeliveryTransacted(Method method) throws NoSuchMethodException {
+                    return true;
+                }
+
+                @Override
+                public MessageEndpoint createEndpoint(XAResource xaResource, long timeout) throws UnavailableException {
+                    // TODO Auto-generated method stub
+                    return null;
+                }
+
+                @Override
+                public String getActivationName() {
+                    // TODO Auto-generated method stub
+                    return null;
+                }
+
+                @Override
+                public Class<?> getEndpointClass() {
+                    // TODO Auto-generated method stub
+                    return null;
+                }
+            };
+
+            // Activate an Endpoint
+            adapter.endpointActivation(messageEndpointFactory, activationSpec);
+
+            ActiveMQMessage msg = (ActiveMQMessage) advisory.receive(4000);
+            if (msg != null) {
+                assertEquals("Prefetch size hasn't been set", 0,
+                    ((ConsumerInfo) msg.getDataStructure()).getPrefetchSize());
+            } else {
+                fail("Consumer hasn't been created");
             }
 
-            @Override
-            public boolean isDeliveryTransacted(Method method) throws NoSuchMethodException {
-                return true;
-            }
-        };
+            // Send the broker a message to that endpoint
+            MessageProducer producer = session.createProducer(new ActiveMQQueue("TEST"));
+            producer.send(session.createTextMessage("Hello!"));
 
-        // Activate an Endpoint
-        adapter.endpointActivation(messageEndpointFactory, activationSpec);
+            connection.close();
 
-        ActiveMQMessage msg = (ActiveMQMessage)advisory.receive(4000);
-        if (msg != null) {
-            assertEquals("Prefetch size hasn't been set", 0, ((ConsumerInfo)msg.getDataStructure()).getPrefetchSize());
-        } else {
-            fail("Consumer hasn't been created");
+            // Wait for the message to be delivered.
+            assertFalse(messageDelivered.await(5000, TimeUnit.MILLISECONDS));
+
+            // Shut the Endpoint down.
+            adapter.endpointDeactivation(messageEndpointFactory, activationSpec);
+            adapter.stop();
+
+            assertNotNull("We got an error message", errorMessage.get());
+            assertTrue("correct message: " + errorMessage.get(),
+                errorMessage.get().contains("zero"));
+
+            logger.removeAppender(appender);
+            logger.get().removeAppender("test");
+        } finally {
+            brokerService.stop();
         }
-
-        // Send the broker a message to that endpoint
-        MessageProducer producer = session.createProducer(new ActiveMQQueue("TEST"));
-        producer.send(session.createTextMessage("Hello!"));
-
-        connection.close();
-
-        // Wait for the message to be delivered.
-        assertFalse(messageDelivered.await(5000, TimeUnit.MILLISECONDS));
-
-        // Shut the Endpoint down.
-        adapter.endpointDeactivation(messageEndpointFactory, activationSpec);
-        adapter.stop();
-
-        assertNotNull("We got an error message", errorMessage.get());
-        assertTrue("correct message: " +  errorMessage.get(), errorMessage.get().contains("zero"));
-
-        LogManager.getRootLogger().removeAppender(testAppender);
-        brokerService.stop();
     }
 
     @Test
@@ -618,7 +691,7 @@ public class MDBTest {
         Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
 
         ActiveMQResourceAdapter adapter = new ActiveMQResourceAdapter();
-        adapter.setServerUrl("vm://localhost?broker.persistent=false");
+        adapter.setServerUrl("vm://localhost?broker.persistent=false?create=false");
         adapter.start(new StubBootstrapContext());
 
         final CountDownLatch messageDelivered = new CountDownLatch(5);
@@ -686,6 +759,24 @@ public class MDBTest {
             public boolean isDeliveryTransacted(Method method) throws NoSuchMethodException {
                 return true;
             }
+
+            @Override
+            public MessageEndpoint createEndpoint(XAResource xaResource, long timeout) throws UnavailableException {
+                // TODO Auto-generated method stub
+                return null;
+            }
+
+            @Override
+            public String getActivationName() {
+                // TODO Auto-generated method stub
+                return null;
+            }
+
+            @Override
+            public Class<?> getEndpointClass() {
+                // TODO Auto-generated method stub
+                return null;
+            }
         };
 
         // Activate an Endpoint
@@ -720,7 +811,7 @@ public class MDBTest {
         Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
 
         ActiveMQResourceAdapter adapter = new ActiveMQResourceAdapter();
-        adapter.setServerUrl("vm://localhost?broker.persistent=false");
+        adapter.setServerUrl("vm://localhost?broker.persistent=false&create=false");
         adapter.start(new StubBootstrapContext());
         final String ORDER_PROP = "Order";
         final List<Integer> orderedReceipt = new ArrayList<Integer>();
@@ -778,6 +869,24 @@ public class MDBTest {
             public boolean isDeliveryTransacted(Method method) throws NoSuchMethodException {
                 return true;
             }
+
+            @Override
+            public MessageEndpoint createEndpoint(XAResource xaResource, long timeout) throws UnavailableException {
+                // TODO Auto-generated method stub
+                return null;
+            }
+
+            @Override
+            public String getActivationName() {
+                // TODO Auto-generated method stub
+                return null;
+            }
+
+            @Override
+            public Class<?> getEndpointClass() {
+                // TODO Auto-generated method stub
+                return null;
+            }
         };
 
         // Activate an Endpoint
@@ -823,7 +932,7 @@ public class MDBTest {
         Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
 
         ActiveMQResourceAdapter adapter = new ActiveMQResourceAdapter();
-        adapter.setServerUrl("vm://localhost?broker.persistent=false");
+        adapter.setServerUrl("vm://localhost?broker.persistent=false&create=false");
         adapter.start(new StubBootstrapContext());
 
         final CountDownLatch messageDelivered = new CountDownLatch(2);
@@ -882,6 +991,24 @@ public class MDBTest {
             public boolean isDeliveryTransacted(Method method) throws NoSuchMethodException {
                 return true;
             }
+
+            @Override
+            public MessageEndpoint createEndpoint(XAResource xaResource, long timeout) throws UnavailableException {
+                // TODO Auto-generated method stub
+                return null;
+            }
+
+            @Override
+            public String getActivationName() {
+                // TODO Auto-generated method stub
+                return null;
+            }
+
+            @Override
+            public Class<?> getEndpointClass() {
+                // TODO Auto-generated method stub
+                return null;
+            }
         };
 
         // Activate an Endpoint
@@ -915,7 +1042,7 @@ public class MDBTest {
         Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
 
         ActiveMQResourceAdapter adapter = new ActiveMQResourceAdapter();
-        adapter.setServerUrl("vm://localhost?broker.persistent=false");
+        adapter.setServerUrl("vm://localhost?broker.persistent=false&create=false");
         adapter.start(new StubBootstrapContext());
 
         final CountDownLatch messageDelivered = new CountDownLatch(1);
@@ -955,6 +1082,24 @@ public class MDBTest {
             @Override
             public boolean isDeliveryTransacted(Method method) throws NoSuchMethodException {
                 return true;
+            }
+
+            @Override
+            public MessageEndpoint createEndpoint(XAResource xaResource, long timeout) throws UnavailableException {
+                // TODO Auto-generated method stub
+                return null;
+            }
+
+            @Override
+            public String getActivationName() {
+                // TODO Auto-generated method stub
+                return null;
+            }
+
+            @Override
+            public Class<?> getEndpointClass() {
+                // TODO Auto-generated method stub
+                return null;
             }
         };
 

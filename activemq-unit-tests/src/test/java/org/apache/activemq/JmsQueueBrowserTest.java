@@ -19,13 +19,14 @@ package org.apache.activemq;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.QueueBrowser;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.QueueBrowser;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 import javax.management.ObjectName;
 import javax.management.openmbean.CompositeData;
 import javax.management.openmbean.TabularData;
@@ -35,12 +36,17 @@ import junit.framework.Test;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.jmx.QueueViewMBean;
 import org.apache.activemq.broker.region.BaseDestination;
+import org.apache.activemq.broker.region.Queue;
 import org.apache.activemq.broker.region.policy.PolicyEntry;
 import org.apache.activemq.broker.region.policy.PolicyMap;
 import org.apache.activemq.command.ActiveMQQueue;
+import org.apache.activemq.util.Wait;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class JmsQueueBrowserTest extends JmsTestSupport {
 
     private static final Logger LOG = LoggerFactory.getLogger(ActiveMQXAConnectionFactoryTest.class);
@@ -133,6 +139,16 @@ public class JmsQueueBrowserTest extends JmsTestSupport {
             producer.send(outbound[i]);
         }
 
+        // Wait for messages to be fully processed by the broker before browsing
+        final int expectedCount = outbound.length;
+        assertTrue("messages arrived in queue", Wait.waitFor(new Wait.Condition() {
+            @Override
+            public boolean isSatisified() throws Exception {
+                final Queue queueView = (Queue) broker.getDestination(destination);
+                return queueView != null && queueView.getDestinationStatistics().getMessages().getCount() == expectedCount;
+            }
+        }, TimeUnit.SECONDS.toMillis(5), TimeUnit.MILLISECONDS.toMillis(100)));
+
         QueueBrowser browser = session.createBrowser(destination);
         Enumeration<?> enumeration = browser.getEnumeration();
 
@@ -145,6 +161,16 @@ public class JmsQueueBrowserTest extends JmsTestSupport {
         for (int i=0;i<outbound.length; i++) {
             producer.send(outbound[i]);
         }
+
+        // Wait for second batch of messages to be fully processed by the broker before browsing
+        final int expectedCount2 = outbound.length * 2;
+        assertTrue("second batch arrived in queue", Wait.waitFor(new Wait.Condition() {
+            @Override
+            public boolean isSatisified() throws Exception {
+                final Queue queueView = (Queue) broker.getDestination(destination);
+                return queueView != null && queueView.getDestinationStatistics().getMessages().getCount() == expectedCount2;
+            }
+        }, TimeUnit.SECONDS.toMillis(5), TimeUnit.MILLISECONDS.toMillis(100)));
 
         // verify second batch is visible to browse
         browser = session.createBrowser(destination);

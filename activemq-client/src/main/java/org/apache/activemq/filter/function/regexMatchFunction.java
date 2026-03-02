@@ -68,12 +68,12 @@ public class regexMatchFunction implements FilterFunction {
      * an indication of whether the second argument matches the regular expression in the first argument.
      *
      * @param    expr - the expression consisting of a call to this function.
-     * @param    message_ctx - the context in which the call is being evaluated.
+     * @param    message - the context in which the call is being evaluated.
      * @return true - if the value matches the regular expression; false - otherwise.
      */
 
     public Object evaluate(FunctionCallExpression expr, MessageEvaluationContext message)
-            throws javax.jms.JMSException {
+            throws jakarta.jms.JMSException {
         Object reg;
         Object cand;
         String reg_str;
@@ -121,7 +121,7 @@ public class regexMatchFunction implements FilterFunction {
                 //  point in the candidate (see Matcher#find()).
                 //
 
-                return Boolean.valueOf(match_eng.find());
+                return match_eng.find();
             }
         }
 

@@ -16,17 +16,19 @@
  */
 package org.apache.activemq.jms.pool;
 
+import java.util.NoSuchElementException;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.JMSException;
-import javax.jms.QueueConnection;
-import javax.jms.QueueConnectionFactory;
-import javax.jms.TopicConnection;
-import javax.jms.TopicConnectionFactory;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.JMSContext;
+import jakarta.jms.JMSException;
+import jakarta.jms.QueueConnection;
+import jakarta.jms.QueueConnectionFactory;
+import jakarta.jms.TopicConnection;
+import jakarta.jms.TopicConnectionFactory;
 
 import org.apache.commons.pool2.KeyedPooledObjectFactory;
 import org.apache.commons.pool2.PooledObject;
@@ -74,6 +76,7 @@ public class PooledConnectionFactory implements ConnectionFactory, QueueConnecti
 
     private int maximumActiveSessionPerConnection = 500;
     private int idleTimeout = 30 * 1000;
+    private int connectionTimeout = 30 * 1000;
     private boolean blockIfSessionPoolIsFull = true;
     private long blockIfSessionPoolIsFullTimeout = -1L;
     private long expiryTimeout = 0l;
@@ -144,6 +147,9 @@ public class PooledConnectionFactory implements ConnectionFactory, QueueConnecti
 
                 }, poolConfig);
 
+            // Set max wait time to control borrow from pool.
+            this.connectionsPool.setMaxWaitMillis(getConnectionTimeout());
+
             // Set max idle (not max active) since our connections always idle in the pool.
             this.connectionsPool.setMaxIdlePerKey(1);
             this.connectionsPool.setLifo(false);
@@ -175,7 +181,7 @@ public class PooledConnectionFactory implements ConnectionFactory, QueueConnecti
         if (toUse instanceof ConnectionFactory) {
             this.connectionFactory = toUse;
         } else {
-            throw new IllegalArgumentException("connectionFactory should implement javax.jms.ConnectionFactory");
+            throw new IllegalArgumentException("connectionFactory should implement jakarta.jms.ConnectionFactory");
         }
     }
 
@@ -232,16 +238,24 @@ public class PooledConnectionFactory implements ConnectionFactory, QueueConnecti
                 // under lock to prevent another thread from triggering an expiration check and
                 // pulling the rug out from under us.
                 while (connection == null) {
-                    connection = connectionsPool.borrowObject(key);
-                    synchronized (connection) {
-                        if (connection.getConnection() != null) {
-                            connection.incrementReferenceCount();
-                            break;
+                    try {
+                        connection = connectionsPool.borrowObject(key);
+                    } catch (NoSuchElementException ex) {
+                        if (!"Timeout waiting for idle object".equals(ex.getMessage())) {
+                            throw ex;
                         }
+                    }
+                    if (connection != null) {
+                        synchronized (connection) {
+                            if (connection.getConnection() != null) {
+                                connection.incrementReferenceCount();
+                                break;
+                            }
 
-                        // Return the bad one to the pool and let if get destroyed as normal.
-                        connectionsPool.returnObject(key, connection);
-                        connection = null;
+                            // Return the bad one to the pool and let if get destroyed as normal.
+                            connectionsPool.returnObject(key, connection);
+                            connection = null;
+                        }
                     }
                 }
             } catch (Exception e) {
@@ -256,6 +270,38 @@ public class PooledConnectionFactory implements ConnectionFactory, QueueConnecti
         }
 
         return newPooledConnection(connection);
+    }
+
+    /**
+     * @return Returns the JMSContext.
+     */
+    @Override
+    public JMSContext createContext() {
+        throw new UnsupportedOperationException("createContext() is not supported");
+    }
+
+    /**
+     * @return Returns the JMSContext.
+     */
+    @Override
+    public JMSContext createContext(String userName, String password) {
+        throw new UnsupportedOperationException("createContext(userName, password) is not supported");
+    }
+
+    /**
+     * @return Returns the JMSContext.
+     */
+    @Override
+    public JMSContext createContext(String userName, String password, int sessionMode) {
+        throw new UnsupportedOperationException("createContext(userName, password, sessionMode) is not supported");
+    }
+
+    /**
+     * @return Returns the JMSContext.
+     */
+    @Override
+    public JMSContext createContext(int sessionMode) {
+        throw new UnsupportedOperationException("createContext(sessionMode) is not supported");
     }
 
     protected Connection newPooledConnection(ConnectionPool connection) {
@@ -277,7 +323,7 @@ public class PooledConnectionFactory implements ConnectionFactory, QueueConnecti
                 return ((ConnectionFactory) connectionFactory).createConnection(key.getUserName(), key.getPassword());
             }
         } else {
-            throw new IllegalStateException("connectionFactory should implement javax.jms.ConnectionFactory");
+            throw new IllegalStateException("connectionFactory should implement jakarta.jms.ConnectionFactory");
         }
     }
 
@@ -418,6 +464,27 @@ public class PooledConnectionFactory implements ConnectionFactory, QueueConnecti
      */
     public void setIdleTimeout(int idleTimeout) {
         this.idleTimeout = idleTimeout;
+    }
+
+    /**
+     * Gets the connection timeout value. The maximum time waited to get a Connection from the pool.
+     * The default value is 30 seconds.
+     *
+     * @return connection timeout value (milliseconds)
+     */
+    public int getConnectionTimeout() {
+        return connectionTimeout;
+    }
+
+    /**
+     * Sets the connection timeout value for getting Connections from this pool in Milliseconds,
+     * defaults to 30 seconds.
+     *
+     * @param connectionTimeout
+     *      The maximum time to wait for getting a pooled Connection.
+     */
+    public void setConnectionTimeout(int connectionTimeout) {
+        this.connectionTimeout = connectionTimeout;
     }
 
     /**

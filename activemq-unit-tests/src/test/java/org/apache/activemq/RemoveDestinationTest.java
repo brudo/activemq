@@ -22,25 +22,30 @@ import static org.junit.Assert.fail;
 
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.Connection;
-import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
-import javax.jms.Topic;
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
+import jakarta.jms.Topic;
 import javax.management.ObjectName;
 
 import org.apache.activemq.advisory.DestinationSource;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.jmx.DestinationViewMBean;
 import org.apache.activemq.command.ActiveMQDestination;
+import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTopic;
 import org.apache.activemq.util.Wait;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class RemoveDestinationTest {
 
     private static final String VM_BROKER_URL = "vm://localhost?create=false";
@@ -72,6 +77,45 @@ public class RemoveDestinationTest {
             conn.start();
         }
         return conn;
+    }
+
+    @Test(timeout = 60000)
+    public void testRemoveQueue() throws Exception {
+
+        ActiveMQConnection amqConnection = (ActiveMQConnection) createConnection(true);
+
+        final DestinationSource destinationSource = amqConnection.getDestinationSource();
+        Session session = amqConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+        Queue queue = session.createQueue("TEST.FOO");
+        MessageProducer producer = session.createProducer(queue);
+        MessageConsumer consumer = session.createConsumer(queue);
+
+        TextMessage msg = session.createTextMessage("Hellow World");
+        producer.send(msg);
+        assertNotNull(consumer.receive(5000));
+        final ActiveMQQueue amqQueue = (ActiveMQQueue) queue;
+
+        consumer.close();
+        producer.close();
+        session.close();
+
+        assertTrue("Destination discovered", Wait.waitFor(new Wait.Condition() {
+
+            @Override
+            public boolean isSatisified() throws Exception {
+                return destinationSource.getQueues().contains(amqQueue);
+            }
+        }, TimeUnit.SECONDS.toMillis(30), TimeUnit.MILLISECONDS.toMillis(100)));
+
+        amqConnection.destroyDestination((ActiveMQDestination) queue);
+
+        assertTrue("Destination is removed", Wait.waitFor(new Wait.Condition() {
+
+            @Override
+            public boolean isSatisified() throws Exception {
+                return !destinationSource.getQueues().contains(amqQueue);
+            }
+        }, TimeUnit.SECONDS.toMillis(30), TimeUnit.MILLISECONDS.toMillis(100)));
     }
 
     @Test(timeout = 60000)

@@ -18,8 +18,8 @@ package org.apache.activemq.bugs;
 
 import static org.junit.Assert.fail;
 
-import javax.jms.JMSException;
-import javax.jms.Session;
+import jakarta.jms.JMSException;
+import jakarta.jms.Session;
 
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.ActiveMQConnectionFactory;
@@ -32,7 +32,10 @@ import org.apache.activemq.command.ProducerInfo;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class AMQ4213Test {
 
     private static BrokerService brokerService;
@@ -52,7 +55,7 @@ public class AMQ4213Test {
 
                 @Override
                 public void addProducer(ConnectionContext context, ProducerInfo info) throws Exception {
-                    throw new javax.jms.JMSSecurityException(brokerService.getVmConnectorURI().toString());
+                    throw new jakarta.jms.JMSSecurityException(brokerService.getVmConnectorURI().toString());
                 }
             }
         });

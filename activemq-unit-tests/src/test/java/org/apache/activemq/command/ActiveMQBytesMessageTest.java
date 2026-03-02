@@ -16,16 +16,19 @@
  */
 package org.apache.activemq.command;
 
-import javax.jms.JMSException;
-import javax.jms.MessageFormatException;
-import javax.jms.MessageNotReadableException;
-import javax.jms.MessageNotWriteableException;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageFormatException;
+import jakarta.jms.MessageNotReadableException;
+import jakarta.jms.MessageNotWriteableException;
 
 import junit.framework.TestCase;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  * 
  */
+@Category(ParallelTest.class)
 public class ActiveMQBytesMessageTest extends TestCase {
 
     public ActiveMQBytesMessageTest(String name) {
@@ -235,13 +238,13 @@ public class ActiveMQBytesMessageTest extends TestCase {
         try {
             msg.writeObject("fred");
             msg.writeObject(Boolean.TRUE);
-            msg.writeObject(Character.valueOf('q'));
-            msg.writeObject(Byte.valueOf((byte) 1));
-            msg.writeObject(Short.valueOf((short) 3));
-            msg.writeObject(Integer.valueOf(3));
-            msg.writeObject(Long.valueOf(300L));
-            msg.writeObject(new Float(3.3f));
-            msg.writeObject(new Double(3.3));
+            msg.writeObject('q');
+            msg.writeObject((byte) 1);
+            msg.writeObject((short) 3);
+            msg.writeObject(3);
+            msg.writeObject(300L);
+            msg.writeObject(3.3f);
+            msg.writeObject(3.3);
             msg.writeObject(new byte[3]);
         } catch (MessageFormatException mfe) {
             fail("objectified primitives should be allowed");
@@ -267,6 +270,30 @@ public class ActiveMQBytesMessageTest extends TestCase {
         } catch (MessageNotWriteableException mnwe) {
             assertTrue(false);
         }
+    }
+
+    public void testClearProperties() throws Exception {
+        ActiveMQBytesMessage bytesMessage = new ActiveMQBytesMessage();
+        bytesMessage.setIntProperty("one", 1);
+        // simulate send
+        bytesMessage.onSend();
+
+        assertEquals(1, bytesMessage.getIntProperty("one"));
+        assertTrue(bytesMessage.isReadOnlyProperties());
+
+        try {
+            bytesMessage.setIntProperty("two", 2);
+            fail("should have thrown b/c readonly");
+        } catch (MessageNotWriteableException expected) {
+        }
+
+        // allow writing new properties
+        bytesMessage.clearProperties();
+        assertFalse(bytesMessage.propertyExists("one"));
+        assertFalse(bytesMessage.isReadOnlyProperties());
+
+        bytesMessage.setIntProperty("two", 2);
+        assertEquals(2, bytesMessage.getIntProperty("two"));
     }
 
     public void testReset() throws JMSException {

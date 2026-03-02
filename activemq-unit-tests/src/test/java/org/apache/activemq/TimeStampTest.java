@@ -16,13 +16,13 @@
  */
 package org.apache.activemq;
 
-import javax.jms.Connection;
-import javax.jms.DeliveryMode;
-import javax.jms.Destination;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Destination;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 
 import junit.framework.TestCase;
 import org.apache.activemq.broker.BrokerPlugin;
@@ -30,7 +30,10 @@ import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.TransportConnector;
 import org.apache.activemq.broker.util.UDPTraceBrokerPlugin;
 import org.apache.activemq.broker.view.ConnectionDotFilePlugin;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class TimeStampTest extends TestCase {
     public void test() throws Exception {
         BrokerService broker = new BrokerService();

@@ -25,11 +25,11 @@ import java.io.IOException;
 import java.security.ProtectionDomain;
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.Connection;
-import javax.jms.MessageProducer;
-import javax.jms.Queue;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.ScheduledMessage;
@@ -164,7 +164,7 @@ public class KahaDBSchedulerIndexRebuildTest {
         long time = 360 * 1000;
         message.setLongProperty(ScheduledMessage.AMQ_SCHEDULED_DELAY, time);
         message.setLongProperty(ScheduledMessage.AMQ_SCHEDULED_PERIOD, 500);
-        message.setIntProperty(ScheduledMessage.AMQ_SCHEDULED_REPEAT, -1);
+        message.setIntProperty(ScheduledMessage.AMQ_SCHEDULED_REPEAT, 0);
         producer.send(message);
         producer.close();
     }

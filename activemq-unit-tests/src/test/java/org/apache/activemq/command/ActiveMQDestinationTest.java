@@ -24,14 +24,17 @@ import java.util.Map;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
-import javax.jms.JMSException;
-import javax.jms.Queue;
-import javax.jms.TemporaryQueue;
-import javax.jms.TemporaryTopic;
-import javax.jms.Topic;
+import jakarta.jms.JMSException;
+import jakarta.jms.Queue;
+import jakarta.jms.TemporaryQueue;
+import jakarta.jms.TemporaryTopic;
+import jakarta.jms.Topic;
 
 import junit.framework.Test;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class ActiveMQDestinationTest extends DataStructureTestSupport {
 
     public ActiveMQDestination destination;
@@ -61,7 +64,7 @@ public class ActiveMQDestinationTest extends DataStructureTestSupport {
     }
 
     public void testDestinationOptions() throws IOException {
-        Map options = destination.getOptions();
+        Map<String,String> options = destination.getOptions();
         assertNotNull(options);
         assertEquals("v1", options.get("k1"));
         assertEquals("v2", options.get("k2"));

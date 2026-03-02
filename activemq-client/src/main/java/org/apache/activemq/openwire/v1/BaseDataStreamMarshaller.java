@@ -25,11 +25,13 @@ import org.apache.activemq.command.DataStructure;
 import org.apache.activemq.openwire.BooleanStream;
 import org.apache.activemq.openwire.DataStreamMarshaller;
 import org.apache.activemq.openwire.OpenWireFormat;
+import org.apache.activemq.openwire.OpenWireUtil;
 import org.apache.activemq.util.ByteSequence;
 
 public abstract class BaseDataStreamMarshaller implements DataStreamMarshaller {
 
     public static final Constructor STACK_TRACE_ELEMENT_CONSTRUCTOR;
+    private static final int MAX_EXCEPTION_MESSAGE_SIZE = 1024;
 
     static {
         Constructor constructor = null;
@@ -175,10 +177,10 @@ public abstract class BaseDataStreamMarshaller implements DataStreamMarshaller {
         if (wireFormat.isCacheEnabled()) {
             Short index = wireFormat.getMarshallCacheIndex(o);
             if (bs.readBoolean()) {
-                dataOut.writeShort(index.shortValue());
+                dataOut.writeShort(index);
                 wireFormat.tightMarshalNestedObject2(o, dataOut, bs);
             } else {
-                dataOut.writeShort(index.shortValue());
+                dataOut.writeShort(index);
             }
         } else {
             wireFormat.tightMarshalNestedObject2(o, dataOut, bs);
@@ -200,7 +202,7 @@ public abstract class BaseDataStreamMarshaller implements DataStreamMarshaller {
                                 .newInstance(new Object[] {tightUnmarshalString(dataIn, bs),
                                                            tightUnmarshalString(dataIn, bs),
                                                            tightUnmarshalString(dataIn, bs),
-                                                           new Integer(dataIn.readInt())});
+                                                           dataIn.readInt()});
                         } catch (IOException e) {
                             throw e;
                         } catch (Throwable e) {
@@ -228,8 +230,11 @@ public abstract class BaseDataStreamMarshaller implements DataStreamMarshaller {
     private Throwable createThrowable(String className, String message) {
         try {
             Class clazz = Class.forName(className, false, BaseDataStreamMarshaller.class.getClassLoader());
+            OpenWireUtil.validateIsThrowable(clazz);
             Constructor constructor = clazz.getConstructor(new Class[] {String.class});
             return (Throwable)constructor.newInstance(new Object[] {message});
+        } catch (IllegalArgumentException e) {
+            return e;
         } catch (Throwable e) {
             return new Throwable(className + ": " + message);
         }
@@ -244,7 +249,7 @@ public abstract class BaseDataStreamMarshaller implements DataStreamMarshaller {
             int rc = 0;
             bs.writeBoolean(true);
             rc += tightMarshalString1(o.getClass().getName(), bs);
-            rc += tightMarshalString1(o.getMessage(), bs);
+            rc += tightMarshalString1(cutMessageIfNeeded(o.getMessage()), bs);
             if (wireFormat.isStackTraceEnabled()) {
                 rc += 2;
                 StackTraceElement[] stackTrace = o.getStackTrace();
@@ -265,7 +270,7 @@ public abstract class BaseDataStreamMarshaller implements DataStreamMarshaller {
                                           BooleanStream bs) throws IOException {
         if (bs.readBoolean()) {
             tightMarshalString2(o.getClass().getName(), dataOut, bs);
-            tightMarshalString2(o.getMessage(), dataOut, bs);
+            tightMarshalString2(cutMessageIfNeeded(o.getMessage()), dataOut, bs);
             if (wireFormat.isStackTraceEnabled()) {
                 StackTraceElement[] stackTrace = o.getStackTrace();
                 dataOut.writeShort(stackTrace.length);
@@ -406,10 +411,11 @@ public abstract class BaseDataStreamMarshaller implements DataStreamMarshaller {
         }
     }
 
-    protected byte[] tightUnmarshalByteArray(DataInput dataIn, BooleanStream bs) throws IOException {
+    protected byte[] tightUnmarshalByteArray(OpenWireFormat wireFormat, DataInput dataIn, BooleanStream bs) throws IOException {
         byte rc[] = null;
         if (bs.readBoolean()) {
             int size = dataIn.readInt();
+            OpenWireUtil.validateBufferSize(wireFormat, size);
             rc = new byte[size];
             dataIn.readFully(rc);
         }
@@ -433,10 +439,11 @@ public abstract class BaseDataStreamMarshaller implements DataStreamMarshaller {
         }
     }
 
-    protected ByteSequence tightUnmarshalByteSequence(DataInput dataIn, BooleanStream bs) throws IOException {
+    protected ByteSequence tightUnmarshalByteSequence(OpenWireFormat wireFormat, DataInput dataIn, BooleanStream bs) throws IOException {
         ByteSequence rc = null;
         if (bs.readBoolean()) {
             int size = dataIn.readInt();
+            OpenWireUtil.validateBufferSize(wireFormat, size);
             byte[] t = new byte[size];
             dataIn.readFully(t);
             return new ByteSequence(t, 0, size);
@@ -496,10 +503,10 @@ public abstract class BaseDataStreamMarshaller implements DataStreamMarshaller {
             dataOut.writeBoolean(index == null);
             if (index == null) {
                 index = wireFormat.addToMarshallCache(o);
-                dataOut.writeShort(index.shortValue());
+                dataOut.writeShort(index);
                 wireFormat.looseMarshalNestedObject(o, dataOut);
             } else {
-                dataOut.writeShort(index.shortValue());
+                dataOut.writeShort(index);
             }
         } else {
             wireFormat.looseMarshalNestedObject(o, dataOut);
@@ -521,7 +528,7 @@ public abstract class BaseDataStreamMarshaller implements DataStreamMarshaller {
                                 .newInstance(new Object[] {looseUnmarshalString(dataIn),
                                                            looseUnmarshalString(dataIn),
                                                            looseUnmarshalString(dataIn),
-                                                           new Integer(dataIn.readInt())});
+                                                           dataIn.readInt()});
                         } catch (IOException e) {
                             throw e;
                         } catch (Throwable e) {
@@ -551,7 +558,7 @@ public abstract class BaseDataStreamMarshaller implements DataStreamMarshaller {
         dataOut.writeBoolean(o != null);
         if (o != null) {
             looseMarshalString(o.getClass().getName(), dataOut);
-            looseMarshalString(o.getMessage(), dataOut);
+            looseMarshalString(cutMessageIfNeeded(o.getMessage()), dataOut);
             if (wireFormat.isStackTraceEnabled()) {
                 StackTraceElement[] stackTrace = o.getStackTrace();
                 dataOut.writeShort(stackTrace.length);
@@ -613,10 +620,11 @@ public abstract class BaseDataStreamMarshaller implements DataStreamMarshaller {
         }
     }
 
-    protected byte[] looseUnmarshalByteArray(DataInput dataIn) throws IOException {
+    protected byte[] looseUnmarshalByteArray(OpenWireFormat wireFormat, DataInput dataIn) throws IOException {
         byte rc[] = null;
         if (dataIn.readBoolean()) {
             int size = dataIn.readInt();
+            OpenWireUtil.validateBufferSize(wireFormat, size);
             rc = new byte[size];
             dataIn.readFully(rc);
         }
@@ -632,14 +640,21 @@ public abstract class BaseDataStreamMarshaller implements DataStreamMarshaller {
         }
     }
 
-    protected ByteSequence looseUnmarshalByteSequence(DataInput dataIn) throws IOException {
+    protected ByteSequence looseUnmarshalByteSequence(OpenWireFormat wireFormat, DataInput dataIn) throws IOException {
         ByteSequence rc = null;
         if (dataIn.readBoolean()) {
             int size = dataIn.readInt();
+            OpenWireUtil.validateBufferSize(wireFormat, size);
             byte[] t = new byte[size];
             dataIn.readFully(t);
             rc = new ByteSequence(t, 0, size);
         }
         return rc;
+    }
+
+    protected String cutMessageIfNeeded(final String message) {
+        return (message.length() > MAX_EXCEPTION_MESSAGE_SIZE)?
+            message.substring(0, MAX_EXCEPTION_MESSAGE_SIZE - 3) + "..." : message;
+
     }
 }

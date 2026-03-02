@@ -20,14 +20,19 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
+import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
-import javax.jms.TextMessage;
+import jakarta.jms.TextMessage;
 import javax.management.ObjectName;
 
-import org.apache.commons.lang.RandomStringUtils;
 import org.eclipse.jetty.client.HttpClient;
 import org.eclipse.jetty.client.api.Result;
 import org.eclipse.jetty.client.util.BufferingResponseListener;
@@ -52,11 +57,63 @@ public class RestTest extends JettyTestSupport {
         httpClient.start();
 
         final StringBuffer buf = new StringBuffer();
-        final CountDownLatch latch =
+        final Future<Result> result =
                 asyncRequest(httpClient, "http://localhost:" + port + "/message/test?readTimeout=1000&type=queue", buf);
 
-        latch.await();
+        assertEquals(HttpStatus.OK_200, result.get().getResponse().getStatus());
         assertEquals("test", buf.toString());
+    }
+
+    @Test(timeout = 60 * 1000)
+    public void testConsumeAsync() throws Exception {
+        int port = getPort();
+        HttpClient httpClient = new HttpClient();
+        httpClient.start();
+
+        final StringBuffer buf = new StringBuffer();
+        final Future<Result> result =
+            asyncRequest(httpClient, "http://localhost:" + port + "/message/test?readTimeout=5000&type=queue", buf);
+
+        //Sleep 2 seconds before sending, should still get the response as timeout is 5 seconds
+        Thread.sleep(2000);
+        producer.send(session.createTextMessage("test"));
+        LOG.info("message sent");
+
+        assertEquals(HttpStatus.OK_200, result.get().getResponse().getStatus());
+        assertEquals("test", buf.toString());
+    }
+
+    @Test(timeout = 60 * 1000)
+    public void testConsumeAsyncTimeout() throws Exception {
+        int port = getPort();
+        HttpClient httpClient = new HttpClient();
+        httpClient.start();
+
+        // AMQ-9330 - test no 500 error on timeout and instead 204 error
+        Set<Integer> results =
+            Stream.of(asyncRequest(httpClient, "http://localhost:" + port + "/message/test?readTimeout=1000&type=queue&clientId=test", new StringBuffer()),
+            // try a second request while the first is running, this should get a 500 error since the first is still running and
+            // concurrent access to the same consumer is not allowed
+            asyncRequest(httpClient, "http://localhost:" + port + "/message/test?readTimeout=10000&type=queue&clientId=test", new StringBuffer()))
+            .map(RestTest::getStatus).collect(Collectors.toSet());
+
+        // Order of arrival is nondeterministic; one must fail (500) while the other times out (204).
+        assertEquals("Expected one 204 and one 500 but got " + results,
+            Set.of(HttpStatus.NO_CONTENT_204,  HttpStatus.INTERNAL_SERVER_ERROR_500), results);
+
+        // AMQ-9481 - test to make sure we can re-use the consumer after timeout by trying again and ensuring
+        // no 500 error. Before the fix in AMQ-9418 this would fail even after the previous request timed out
+        Future<Result> result =
+            asyncRequest(httpClient, "http://localhost:" + port + "/message/test?readTimeout=1000&type=queue&clientId=test", new StringBuffer());
+        assertEquals(HttpStatus.NO_CONTENT_204, getStatus(result));
+    }
+
+    private static int getStatus(Future<Result> result) {
+        try {
+            return result.get().getResponse().getStatus();
+        } catch (InterruptedException | ExecutionException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Test(timeout = 60 * 1000)
@@ -67,13 +124,13 @@ public class RestTest extends JettyTestSupport {
         httpClient.start();
 
         final StringBuffer buf = new StringBuffer();
-        final CountDownLatch latch =
+        final Future<Result> result =
                 asyncRequest(httpClient, "http://localhost:" + port + "/message/test?readTimeout=5000&type=queue", buf);
 
         producer.send(session.createTextMessage("test"));
         LOG.info("message sent");
 
-        latch.await();
+        assertEquals(HttpStatus.OK_200, result.get().getResponse().getStatus());
         assertEquals("test", buf.toString());
 
     }
@@ -119,7 +176,9 @@ public class RestTest extends JettyTestSupport {
         httpClient.start();
 
         for (int i = 0; i < 200; i++) {
-            String correlId = "RESTY" + RandomStringUtils.randomNumeric(10);
+            String correlId = "RESTY" + new Random().ints(10l, 0, 10)
+                                            .mapToObj(String::valueOf)
+                                            .collect(Collectors.joining());
 
             TextMessage message = session.createTextMessage(correlId);
             message.setStringProperty("correlationId", correlId);
@@ -129,12 +188,11 @@ public class RestTest extends JettyTestSupport {
             producer.send(message);
 
             final StringBuffer buf = new StringBuffer();
-            final CountDownLatch latch =
+            final Future<Result> result =
                     asyncRequest(httpClient, "http://localhost:" + port + "/message/test?readTimeout=1000&type=queue&clientId=test", buf);
 
-            latch.await();
-            LOG.info("Received: " +  buf.toString());
-           // assertEquals(200, contentExchange.getResponseStatus());
+            assertEquals(HttpStatus.OK_200, result.get().getResponse().getStatus());
+            LOG.info("Received: " +  buf);
             assertEquals(correlId,  buf.toString());
         }
         httpClient.stop();
@@ -149,11 +207,11 @@ public class RestTest extends JettyTestSupport {
         httpClient.start();
 
         final StringBuffer buf = new StringBuffer();
-        final CountDownLatch latch =
+        final Future<Result> result =
                 asyncRequest(httpClient, "http://localhost:" + port + "/message/test?readTimeout=1000&type=queue&clientId=test", buf);
 
-        latch.await();
-        LOG.info("Received: " + buf.toString());
+        assertEquals(HttpStatus.OK_200, result.get().getResponse().getStatus());
+        LOG.info("Received: " + buf);
 
         final StringBuffer buf2 = new StringBuffer();
         final CountDownLatch latch2 = new CountDownLatch(1);
@@ -234,7 +292,8 @@ public class RestTest extends JettyTestSupport {
         final CountDownLatch latch2 = new CountDownLatch(1);
         final StringBuffer buf2 = new StringBuffer();
         final AtomicInteger status2 = new AtomicInteger();
-        final HttpFields responseFields = new HttpFields();
+
+        final HttpFields.Mutable responseFields = HttpFields.build();
         httpClient.newRequest("http://localhost:" + port + "/message/testPost?readTimeout=1000&type=Queue")
            .method(HttpMethod.GET).send(new BufferingResponseListener() {
             @Override
@@ -251,7 +310,7 @@ public class RestTest extends JettyTestSupport {
 
         HttpFields fields = responseFields;
         assertNotNull("Headers Exist", fields);
-        assertEquals("header value", "value", fields.getStringField("property"));
+        assertEquals("header value", "value", fields.getField("property").getValue());
     }
 
 
@@ -281,16 +340,16 @@ public class RestTest extends JettyTestSupport {
         assertTrue("success status", HttpStatus.isSuccess(status.get()));
     }
 
-    protected CountDownLatch asyncRequest(final HttpClient httpClient, final String url, final StringBuffer buffer) {
-        final CountDownLatch latch = new CountDownLatch(1);
+    protected Future<Result> asyncRequest(final HttpClient httpClient, final String url, final StringBuffer buffer) {
+        final CompletableFuture<Result> futureResult = new CompletableFuture<>();
         httpClient.newRequest(url).send(new BufferingResponseListener() {
             @Override
             public void onComplete(Result result) {
                 buffer.append(getContentAsString());
-                latch.countDown();
+                futureResult.complete(result);
             }
         });
-        return latch;
+        return futureResult;
     }
 
     protected CountDownLatch asyncRequest(final HttpClient httpClient, final String url, final StringBuffer buffer,

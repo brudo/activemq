@@ -37,7 +37,6 @@ import org.apache.activemq.broker.jmx.NetworkBridgeViewMBean;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ConsumerId;
 import org.apache.activemq.transport.Transport;
-import org.apache.activemq.transport.TransportFactory;
 import org.apache.activemq.util.ServiceStopper;
 import org.apache.activemq.util.ServiceSupport;
 import org.slf4j.Logger;
@@ -101,18 +100,18 @@ public abstract class NetworkConnector extends NetworkBridgeConfiguration implem
     }
 
 
-    public void addExcludedDestination(ActiveMQDestination destiantion) {
-        this.excludedDestinations.add(destiantion);
+    public void addExcludedDestination(ActiveMQDestination destination) {
+        this.excludedDestinations.add(destination);
     }
 
 
-    public void addStaticallyIncludedDestination(ActiveMQDestination destiantion) {
-        this.staticallyIncludedDestinations.add(destiantion);
+    public void addStaticallyIncludedDestination(ActiveMQDestination destination) {
+        this.staticallyIncludedDestinations.add(destination);
     }
 
 
-    public void addDynamicallyIncludedDestination(ActiveMQDestination destiantion) {
-        this.dynamicallyIncludedDestinations.add(destiantion);
+    public void addDynamicallyIncludedDestination(ActiveMQDestination destination) {
+        this.dynamicallyIncludedDestinations.add(destination);
     }
 
     public ConnectionFilter getConnectionFilter() {

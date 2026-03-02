@@ -16,18 +16,17 @@
  */
 package org.apache.activemq.bugs;
 
-import java.io.File;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import javax.jms.Connection;
-import javax.jms.DeliveryMode;
-import javax.jms.Destination;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.ResourceAllocationException;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Destination;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.ResourceAllocationException;
+import jakarta.jms.Session;
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.ActiveMQPrefetchPolicy;
@@ -38,13 +37,16 @@ import org.apache.activemq.broker.region.policy.PolicyMap;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTopic;
 import org.apache.activemq.store.kahadb.plist.PListStoreImpl;
+import org.apache.activemq.test.annotations.ParallelTest;
 import org.apache.activemq.usage.MemoryUsage;
 import org.apache.activemq.usage.StoreUsage;
 import org.apache.activemq.usage.SystemUsage;
 import org.apache.activemq.usage.TempUsage;
+import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+@Category(ParallelTest.class)
 public class TempStorageBlockedBrokerTest extends TestSupport {
 
     public int deliveryMode = DeliveryMode.PERSISTENT;
@@ -220,7 +222,6 @@ public class TempStorageBlockedBrokerTest extends TestSupport {
     public void setUp() throws Exception {
 
         broker = new BrokerService();
-        broker.setDataDirectory("target" + File.separator + "activemq-data");
         broker.setPersistent(true);
         broker.setUseJmx(true);
         broker.setAdvisorySupport(false);

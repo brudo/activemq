@@ -16,14 +16,6 @@
  */
 package org.apache.activemq.broker.region;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
-
-import javax.jms.JMSException;
-
 import org.apache.activemq.ActiveMQMessageAudit;
 import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.ConnectionContext;
@@ -32,21 +24,22 @@ import org.apache.activemq.broker.region.cursors.PendingMessageCursor;
 import org.apache.activemq.broker.region.cursors.VMPendingMessageCursor;
 import org.apache.activemq.broker.region.policy.MessageEvictionStrategy;
 import org.apache.activemq.broker.region.policy.OldestMessageEvictionStrategy;
-import org.apache.activemq.command.ConsumerControl;
-import org.apache.activemq.command.ConsumerInfo;
-import org.apache.activemq.command.Message;
-import org.apache.activemq.command.MessageAck;
-import org.apache.activemq.command.MessageDispatch;
-import org.apache.activemq.command.MessageDispatchNotification;
-import org.apache.activemq.command.MessageId;
-import org.apache.activemq.command.MessagePull;
-import org.apache.activemq.command.Response;
+import org.apache.activemq.command.*;
+import org.apache.activemq.management.MessageFlowStats;
 import org.apache.activemq.thread.Scheduler;
 import org.apache.activemq.transaction.Synchronization;
 import org.apache.activemq.transport.TransmitCallback;
 import org.apache.activemq.usage.SystemUsage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import jakarta.jms.JMSException;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class TopicSubscription extends AbstractSubscription {
 
@@ -61,7 +54,7 @@ public class TopicSubscription extends AbstractSubscription {
 
     private int maximumPendingMessages = -1;
     private MessageEvictionStrategy messageEvictionStrategy = new OldestMessageEvictionStrategy();
-    private int discarded;
+    private final AtomicInteger discarded = new AtomicInteger();
     private final Object matchedListMutex = new Object();
     private int memoryUsageHighWaterMark = 95;
     // allow duplicate suppression in a ring network of brokers
@@ -71,10 +64,17 @@ public class TopicSubscription extends AbstractSubscription {
     protected ActiveMQMessageAudit audit;
     protected boolean active = false;
     protected boolean discarding = false;
+    private boolean useTopicSubscriptionInflightStats = true;
 
     //Used for inflight message size calculations
     protected final Object dispatchLock = new Object();
-    protected final List<MessageReference> dispatched = new ArrayList<MessageReference>();
+    protected final List<DispatchedNode> dispatched = new ArrayList<>();
+
+    //Keep track of current dispatched count. This is necessary because the dispatched list is optional
+    //and only used if in flights stats are turned on to save memory. The previous way of calculating current dispatched
+    //of using total dispatched - dequeues doesn't work well because dequeues won't be incremented on destination removal and
+    //no acks recevied. This counter could be removed in the future if we ever decide to require always using the dispatched list.
+    protected final AtomicInteger currentDispatchedCount = new AtomicInteger();
 
     public TopicSubscription(Broker broker,ConnectionContext context, ConsumerInfo info, SystemUsage usageManager) throws Exception {
         super(broker, context, info);
@@ -123,7 +123,11 @@ public class TopicSubscription extends AbstractSubscription {
                 if (info.getPrefetchSize() > 1 && matched.size() > info.getPrefetchSize()) {
                     // Slow consumers should log and set their state as such.
                     if (!isSlowConsumer()) {
-                        LOG.warn("{}: has twice its prefetch limit pending, without an ack; it appears to be slow", toString());
+                        String remoteAddr = null;
+                        if (context != null && context.getConnection() != null) {
+                            remoteAddr = context.getConnection().getRemoteAddress();
+                        }
+                        LOG.warn("{}: has twice its prefetch limit pending, without an ack; it appears to be slow{}", toString(), (remoteAddr != null) ? ": " + remoteAddr : "");
                         setSlowConsumer(true);
                         for (Destination dest: destinations) {
                             dest.slowConsumer(getContext(), this);
@@ -140,13 +144,11 @@ public class TopicSubscription extends AbstractSubscription {
                                 return;
                             }
                             if (!warnedAboutWait) {
-                                LOG.info("{}: Pending message cursor [{}] is full, temp usag ({}%) or memory usage ({}%) limit reached, blocking message add() pending the release of resources.",
-                                        new Object[]{
-                                                toString(),
-                                                matched,
-                                                matched.getSystemUsage().getTempUsage().getPercentUsage(),
-                                                matched.getSystemUsage().getMemoryUsage().getPercentUsage()
-                                        });
+                                LOG.info("{}: Pending message cursor [{}] is full, temp usage ({}%) or memory usage ({}%) limit reached, blocking message add() pending the release of resources.",
+                                        toString(),
+                                        matched,
+                                        matched.getSystemUsage().getTempUsage().getPercentUsage(),
+                                        matched.getSystemUsage().getMemoryUsage().getPercentUsage());
                                 warnedAboutWait = true;
                             }
                             matchedListMutex.wait(20);
@@ -186,15 +188,18 @@ public class TopicSubscription extends AbstractSubscription {
                                 messagesToEvict = oldMessages.length;
                                 for (int i = 0; i < messagesToEvict; i++) {
                                     MessageReference oldMessage = oldMessages[i];
-                                    discard(oldMessage);
+                                    // AMQ-9721 - discard no longer removes from matched so remove here
+                                    oldMessage.decrementReferenceCount();
+                                    matched.remove(oldMessage);
+                                    //Expired here is false as we are discarding due to the messageEvictingStrategy
+                                    discard(oldMessage, false);
                                 }
                             }
                             // lets avoid an infinite loop if we are given a bad eviction strategy
                             // for a bad strategy lets just not evict
                             if (messagesToEvict == 0) {
-                                LOG.warn("No messages to evict returned for {} from eviction strategy: {} out of {} candidates", new Object[]{
-                                        destination, messageEvictionStrategy, list.size()
-                                });
+                                LOG.warn("No messages to evict returned for {} from eviction strategy: {} out of {} candidates",
+                                        destination, messageEvictionStrategy, list.size());
                                 break;
                             }
                         }
@@ -222,7 +227,6 @@ public class TopicSubscription extends AbstractSubscription {
      * Discard any expired messages from the matched list. Called from a
      * synchronized block.
      *
-     * @throws IOException
      */
     protected void removeExpiredMessages() throws IOException {
         try {
@@ -234,8 +238,7 @@ public class TopicSubscription extends AbstractSubscription {
                     matched.remove();
                     node.decrementReferenceCount();
                     if (broker.isExpired(node)) {
-                        ((Destination) node.getRegionDestination()).getDestinationStatistics().getExpired().increment();
-                        broker.messageExpired(getContext(), node, this);
+                        ((Destination) node.getRegionDestination()).messageExpired(getContext(), this, node);
                     }
                     break;
                 }
@@ -257,8 +260,11 @@ public class TopicSubscription extends AbstractSubscription {
                         synchronized(dispatchLock) {
                             matched.remove();
                             getSubscriptionStatistics().getDispatched().increment();
-                            dispatched.add(node);
-                            getSubscriptionStatistics().getInflightMessageSize().addSize(node.getSize());
+                            currentDispatchedCount.incrementAndGet();
+                            if (isUseTopicSubscriptionInflightStats()) {
+                                dispatched.add(new DispatchedNode(node));
+                                getSubscriptionStatistics().getInflightMessageSize().addSize(node.getSize());
+                            }
                             node.decrementReferenceCount();
                         }
                         break;
@@ -281,24 +287,18 @@ public class TopicSubscription extends AbstractSubscription {
                 throw new JMSException("Poison ack cannot be transacted: " + ack);
             }
             updateStatsOnAck(context, ack);
-            if (getPrefetchSize() != 0) {
-                decrementPrefetchExtension(ack.getMessageCount());
-            }
+            contractPrefetchExtension(ack.getMessageCount());
         } else if (ack.isIndividualAck()) {
             updateStatsOnAck(context, ack);
-            if (getPrefetchSize() != 0 && ack.isInTransaction()) {
-                incrementPrefetchExtension(ack.getMessageCount());
+            if (ack.isInTransaction()) {
+                expandPrefetchExtension(1);
             }
         } else if (ack.isExpiredAck()) {
             updateStatsOnAck(ack);
-            if (getPrefetchSize() != 0) {
-                incrementPrefetchExtension(ack.getMessageCount());
-            }
+            contractPrefetchExtension(ack.getMessageCount());
         } else if (ack.isDeliveredAck()) {
             // Message was delivered but not acknowledged: update pre-fetch counters.
-            if (getPrefetchSize() != 0) {
-                incrementPrefetchExtension(ack.getMessageCount());
-            }
+           expandPrefetchExtension(ack.getMessageCount());
         } else if (ack.isRedeliveredAck()) {
             // No processing for redelivered needed
             return;
@@ -314,14 +314,13 @@ public class TopicSubscription extends AbstractSubscription {
             context.getTransaction().addSynchronization(new Synchronization() {
 
                 @Override
-                public void beforeEnd() {
-                    if (getPrefetchSize() != 0) {
-                        decrementPrefetchExtension(ack.getMessageCount());
-                    }
+                public void afterRollback() {
+                    contractPrefetchExtension(ack.getMessageCount());
                 }
 
                 @Override
                 public void afterCommit() throws Exception {
+                    contractPrefetchExtension(ack.getMessageCount());
                     updateStatsOnAck(ack);
                     dispatchMatched();
                 }
@@ -365,6 +364,25 @@ public class TopicSubscription extends AbstractSubscription {
         return null;
     }
 
+    @Override
+    public List<MessageReference> remove(ConnectionContext context, Destination destination) throws Exception {
+        if (isUseTopicSubscriptionInflightStats()) {
+            synchronized(dispatchLock) {
+                dispatched.removeIf(node -> {
+                    if (node.getDestination() == destination) {
+                        //On removal from dispatched need to decrement counters
+                        currentDispatchedCount.decrementAndGet();
+                        getSubscriptionStatistics().getInflightMessageSize().addSize(-node.getSize());
+                        destination.getDestinationStatistics().getInflight().decrement();
+                        return true;
+                    }
+                    return false;
+                });
+            }
+        }
+        return super.remove(context, destination);
+    }
+
     /**
      * Occurs when a pull times out. If nothing has been dispatched since the
      * timeout was setup, then send the NULL message.
@@ -388,59 +406,64 @@ public class TopicSubscription extends AbstractSubscription {
      * @param ack
      */
     private void updateStatsOnAck(final MessageAck ack) {
-        synchronized(dispatchLock) {
-            boolean inAckRange = false;
-            List<MessageReference> removeList = new ArrayList<MessageReference>();
-            for (final MessageReference node : dispatched) {
-                MessageId messageId = node.getMessageId();
-                if (ack.getFirstMessageId() == null
-                        || ack.getFirstMessageId().equals(messageId)) {
-                    inAckRange = true;
+        //Allow disabling inflight stats to save memory usage
+        if (isUseTopicSubscriptionInflightStats()) {
+            synchronized(dispatchLock) {
+                boolean inAckRange = false;
+                List<DispatchedNode> removeList = new ArrayList<>();
+                for (final DispatchedNode node : dispatched) {
+                    MessageId messageId = node.getMessageId();
+                    if (ack.getFirstMessageId() == null
+                            || ack.getFirstMessageId().equals(messageId)) {
+                        inAckRange = true;
+                    }
+                    if (inAckRange) {
+                        removeList.add(node);
+                        if (ack.getLastMessageId().equals(messageId)) {
+                            break;
+                        }
+                    }
                 }
-                if (inAckRange) {
-                    removeList.add(node);
-                    if (ack.getLastMessageId().equals(messageId)) {
-                        break;
+
+                for (final DispatchedNode node : removeList) {
+                    dispatched.remove(node);
+                    getSubscriptionStatistics().getInflightMessageSize().addSize(-node.getSize());
+
+                    final Destination destination = node.getDestination();
+                    incrementStatsOnAck(destination, ack, 1);
+                    if (!ack.isInTransaction()) {
+                        contractPrefetchExtension(1);
                     }
                 }
             }
-
-            for (final MessageReference node : removeList) {
-                dispatched.remove(node);
-                getSubscriptionStatistics().getInflightMessageSize().addSize(-node.getSize());
-                getSubscriptionStatistics().getDequeues().increment();
-                ((Destination)node.getRegionDestination()).getDestinationStatistics().getDequeues().increment();
-                ((Destination)node.getRegionDestination()).getDestinationStatistics().getInflight().decrement();
-                if (info.isNetworkSubscription()) {
-                    ((Destination)node.getRegionDestination()).getDestinationStatistics().getForwards().add(ack.getMessageCount());
-                }
-                if (ack.isExpiredAck()) {
-                    destination.getDestinationStatistics().getExpired().add(ack.getMessageCount());
-                }
+        } else {
+            if (singleDestination && destination != null) {
+                incrementStatsOnAck(destination, ack, ack.getMessageCount());
+            }
+            if (!ack.isInTransaction()) {
+                contractPrefetchExtension(ack.getMessageCount());
             }
         }
     }
 
-    private void incrementPrefetchExtension(int amount) {
-        if (!isUsePrefetchExtension()) {
-            return;
-        }
-        while (true) {
-            int currentExtension = prefetchExtension.get();
-            int newExtension = Math.max(0, currentExtension + amount);
-            if (prefetchExtension.compareAndSet(currentExtension, newExtension)) {
-                break;
+    private void incrementStatsOnAck(final Destination destination, final MessageAck ack, final int count) {
+        currentDispatchedCount.addAndGet(-count);
+        getSubscriptionStatistics().getDequeues().add(count);
+        destination.getDestinationStatistics().getDequeues().add(count);
+        destination.getDestinationStatistics().getInflight().subtract(count);
+        if (info.isNetworkSubscription()) {
+            destination.getDestinationStatistics().getForwards().add(count);
+            if(destination.isAdvancedNetworkStatisticsEnabled() && getContext() != null && getContext().isNetworkConnection()) {
+                destination.getDestinationStatistics().getNetworkDequeues().add(count);
             }
         }
-    }
 
-    private void decrementPrefetchExtension(int amount) {
-        while (true) {
-            int currentExtension = prefetchExtension.get();
-            int newExtension = Math.max(0, currentExtension - amount);
-            if (prefetchExtension.compareAndSet(currentExtension, newExtension)) {
-                break;
-            }
+        final var tmpMessageFlowStats = destination.getDestinationStatistics().getMessageFlowStats();
+        if(tmpMessageFlowStats != null) {
+            tmpMessageFlowStats.dequeueStats(context.getClientId(), ack.getLastMessageId().toString());
+        }
+        if (ack.isExpiredAck()) {
+            destination.getDestinationStatistics().getExpired().add(count);
         }
     }
 
@@ -456,15 +479,12 @@ public class TopicSubscription extends AbstractSubscription {
 
     @Override
     public long getPendingMessageSize() {
-        synchronized (matchedListMutex) {
-            return matched.messageSize();
-        }
+        return matched.messageSize();
     }
 
     @Override
     public int getDispatchedQueueSize() {
-        return (int)(getSubscriptionStatistics().getDispatched().getCount() -
-                     getSubscriptionStatistics().getDequeues().getCount());
+        return currentDispatchedCount.get();
     }
 
     public int getMaximumPendingMessages() {
@@ -490,9 +510,7 @@ public class TopicSubscription extends AbstractSubscription {
      * @return the number of messages discarded due to being a slow consumer
      */
     public int discarded() {
-        synchronized (matchedListMutex) {
-            return discarded;
-        }
+        return discarded.get();
     }
 
     /**
@@ -501,9 +519,7 @@ public class TopicSubscription extends AbstractSubscription {
      *         prefetch buffer being full).
      */
     public int matched() {
-        synchronized (matchedListMutex) {
-            return matched.size();
-        }
+        return matched.size();
     }
 
     /**
@@ -526,7 +542,7 @@ public class TopicSubscription extends AbstractSubscription {
         this.messageEvictionStrategy = messageEvictionStrategy;
     }
 
-    public int getMaxProducersToAudit() {
+    public synchronized int getMaxProducersToAudit() {
         return maxProducersToAudit;
     }
 
@@ -537,7 +553,7 @@ public class TopicSubscription extends AbstractSubscription {
         }
     }
 
-    public int getMaxAuditDepth() {
+    public synchronized int getMaxAuditDepth() {
         return maxAuditDepth;
     }
 
@@ -650,7 +666,7 @@ public class TopicSubscription extends AbstractSubscription {
                         // Message may have been sitting in the matched list a while
                         // waiting for the consumer to ak the message.
                         if (message.isExpired()) {
-                            discard(message);
+                            discard(message, true);
                             continue; // just drop it.
                         }
                         dispatch(message);
@@ -675,8 +691,11 @@ public class TopicSubscription extends AbstractSubscription {
             md.setDestination(((Destination)node.getRegionDestination()).getActiveMQDestination());
             synchronized(dispatchLock) {
                 getSubscriptionStatistics().getDispatched().increment();
-                dispatched.add(node);
-                getSubscriptionStatistics().getInflightMessageSize().addSize(node.getSize());
+                currentDispatchedCount.incrementAndGet();
+                if (isUseTopicSubscriptionInflightStats()) {
+                    dispatched.add(new DispatchedNode(node));
+                    getSubscriptionStatistics().getInflightMessageSize().addSize(node.getSize());
+                }
             }
 
             // Keep track if this subscription is receiving messages from a single destination.
@@ -704,6 +723,7 @@ public class TopicSubscription extends AbstractSubscription {
                         Destination regionDestination = (Destination) node.getRegionDestination();
                         regionDestination.getDestinationStatistics().getDispatched().increment();
                         regionDestination.getDestinationStatistics().getInflight().increment();
+                        regionDestination.messageDispatched(context, TopicSubscription.this, node);
                         node.decrementReferenceCount();
                     }
 
@@ -711,6 +731,8 @@ public class TopicSubscription extends AbstractSubscription {
                     public void onFailure() {
                         Destination regionDestination = (Destination) node.getRegionDestination();
                         regionDestination.getDestinationStatistics().getDispatched().increment();
+                        //We still increment here as metrics get cleaned up on destroy()
+                        //as the failure causes the subscription to close
                         regionDestination.getDestinationStatistics().getInflight().increment();
                         node.decrementReferenceCount();
                     }
@@ -723,24 +745,32 @@ public class TopicSubscription extends AbstractSubscription {
                 Destination regionDestination = (Destination) node.getRegionDestination();
                 regionDestination.getDestinationStatistics().getDispatched().increment();
                 regionDestination.getDestinationStatistics().getInflight().increment();
+                regionDestination.messageDispatched(context, this, node);
                 node.decrementReferenceCount();
             }
         }
     }
 
-    private void discard(MessageReference message) {
+    private void discard(MessageReference message, boolean expired) {
         discarding = true;
         try {
-            message.decrementReferenceCount();
-            matched.remove(message);
-            discarded++;
             if (destination != null) {
                 destination.getDestinationStatistics().getDequeues().increment();
+                if(destination.isAdvancedNetworkStatisticsEnabled() && getContext() != null && getContext().isNetworkConnection()) {
+                    destination.getDestinationStatistics().getNetworkDequeues().increment();
+                }
             }
-            LOG.debug("{}, discarding message {}", this, message);
             Destination dest = (Destination) message.getRegionDestination();
             if (dest != null) {
-                dest.messageDiscarded(getContext(), this, message);
+                //If discard is due to expiration then use the messageExpired() callback
+                if (expired) {
+                    LOG.debug("{}, expiring message {}", this, message);
+                    dest.messageExpired(getContext(), this, message);
+                } else {
+                    LOG.debug("{}, discarding message {}", this, message);
+                    discarded.incrementAndGet();
+                    dest.messageDiscarded(getContext(), this, message);
+                }
             }
             broker.getRoot().sendToDeadLetterQueue(getContext(), message, this, new Throwable("TopicSubDiscard. ID:" + info.getConsumerId()));
         } finally {
@@ -768,6 +798,10 @@ public class TopicSubscription extends AbstractSubscription {
         setSlowConsumer(false);
         synchronized(dispatchLock) {
             dispatched.clear();
+            //Clear any unacked messages from destination inflight stats
+            if (destination != null) {
+                destination.getDestinationStatistics().getInflight().subtract(currentDispatchedCount.get());
+            }
         }
     }
 
@@ -783,6 +817,40 @@ public class TopicSubscription extends AbstractSubscription {
             dispatchMatched();
         } catch(Exception e) {
             LOG.trace("Caught exception on dispatch after prefetch size change.");
+        }
+    }
+
+    public boolean isUseTopicSubscriptionInflightStats() {
+        return useTopicSubscriptionInflightStats;
+    }
+
+    public void setUseTopicSubscriptionInflightStats(boolean useTopicSubscriptionInflightStats) {
+        this.useTopicSubscriptionInflightStats = useTopicSubscriptionInflightStats;
+    }
+
+    private static class DispatchedNode {
+        private final int size;
+        private final MessageId messageId;
+        private final Destination destination;
+
+        public DispatchedNode(final MessageReference node) {
+            super();
+            this.size = node.getSize();
+            this.messageId = node.getMessageId();
+            this.destination = node.getRegionDestination() instanceof Destination ?
+                    ((Destination)node.getRegionDestination()) : null;
+        }
+
+        public long getSize() {
+            return size;
+        }
+
+        public MessageId getMessageId() {
+            return messageId;
+        }
+
+        public Destination getDestination() {
+            return destination;
         }
     }
 

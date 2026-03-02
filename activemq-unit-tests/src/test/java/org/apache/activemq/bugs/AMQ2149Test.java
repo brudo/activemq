@@ -30,9 +30,11 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import javax.jms.*;
+import jakarta.jms.*;
 
 import org.apache.activemq.AutoFailTestSupport;
+import org.apache.activemq.command.ActiveMQQueue;
+import org.apache.activemq.util.IOHelper;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -49,6 +51,8 @@ import org.junit.rules.TestName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.apache.activemq.broker.region.BaseDestination.DUPLICATE_FROM_STORE_MSG_PREFIX;
+import static org.apache.activemq.command.ActiveMQMessage.DLQ_DELIVERY_FAILURE_CAUSE_PROPERTY;
 import static org.junit.Assert.*;
 
 interface Configurer {
@@ -91,6 +95,7 @@ public class AMQ2149Test {
     
     public void createBroker(Configurer configurer) throws Exception {
         broker = new BrokerService();
+        broker.setAdvisorySupport(false);
         configurePersistenceAdapter(broker);
         
         broker.getSystemUsage().getMemoryUsage().setLimit(MESSAGE_LENGTH_BYTES * 200 * NUM_SENDERS_AND_RECEIVERS);
@@ -110,7 +115,7 @@ public class AMQ2149Test {
     @Before
     public void setUp() throws Exception {
         LOG.debug("Starting test {}", testName.getMethodName());
-        dataDirFile = new File("target/"+ testName.getMethodName());
+        dataDirFile = new File(IOHelper.getDefaultDataDirectory() + testName.getMethodName());
         numtoSend = DEFAULT_NUM_TO_SEND;
         brokerStopPeriod = DEFAULT_BROKER_STOP_PERIOD;
         sleepBetweenSend = SLEEP_BETWEEN_SEND_MS;
@@ -147,7 +152,7 @@ public class AMQ2149Test {
     HashSet<Connection> connections = new HashSet<Connection>();
     private class Receiver implements MessageListener {
 
-        private final javax.jms.Destination dest;
+        private final jakarta.jms.Destination dest;
 
         private final Connection connection;
 
@@ -161,11 +166,12 @@ public class AMQ2149Test {
 
         private String lastId = null;
 
-        public Receiver(javax.jms.Destination dest, boolean transactional) throws JMSException {
+        public Receiver(jakarta.jms.Destination dest, boolean transactional) throws JMSException {
             this.dest = dest;
             this.transactional = transactional;
-            connection = new ActiveMQConnectionFactory(brokerURL)
-                    .createConnection();
+            ActiveMQConnectionFactory connectionFactory = new ActiveMQConnectionFactory(brokerURL);
+            connectionFactory.setWatchTopicAdvisories(false);
+            connection = connectionFactory.createConnection();
             connection.setClientID(dest.toString());
             session = connection.createSession(transactional, transactional ? Session.SESSION_TRANSACTED : Session.AUTO_ACKNOWLEDGE);
             if (ActiveMQDestination.transform(dest).isTopic()) {
@@ -224,7 +230,7 @@ public class AMQ2149Test {
                 lastId = message.getJMSMessageID();
             } catch (TransactionRolledBackException expectedSometimesOnFailoverRecovery) {
                 ++nextExpectedSeqNum;
-                LOG.info("got rollback: " + expectedSometimesOnFailoverRecovery);
+                LOG.info("got rollback: " + expectedSometimesOnFailoverRecovery, expectedSometimesOnFailoverRecovery);
                 if (expectedSometimesOnFailoverRecovery.getMessage().contains("completion in doubt")) {
                     // in doubt - either commit command or reply missing
                     // don't know if we will get a replay
@@ -235,7 +241,17 @@ public class AMQ2149Test {
                     // batch will be replayed
                     nextExpectedSeqNum -= TRANSACITON_BATCH;
                 }
-
+            } catch (JMSException expectedSometimesOnFailoverRecoveryWithNestedTransactionRolledBackException) {
+                ++nextExpectedSeqNum;
+                LOG.info("got rollback: " + expectedSometimesOnFailoverRecoveryWithNestedTransactionRolledBackException, expectedSometimesOnFailoverRecoveryWithNestedTransactionRolledBackException);
+                if (expectedSometimesOnFailoverRecoveryWithNestedTransactionRolledBackException.getMessage().contains("xaErrorCode:100")) {
+                    resumeOnNextOrPreviousIsOk = false;
+                    // batch will be replayed
+                    nextExpectedSeqNum -= TRANSACITON_BATCH;
+                } else {
+                    LOG.error(dest + " onMessage error:" + expectedSometimesOnFailoverRecoveryWithNestedTransactionRolledBackException);
+                    exceptions.add(expectedSometimesOnFailoverRecoveryWithNestedTransactionRolledBackException);
+                }
             } catch (Throwable e) {
                 LOG.error(dest + " onMessage error:" + e);
                 exceptions.add(e);
@@ -246,7 +262,7 @@ public class AMQ2149Test {
 
     private class Sender implements Runnable {
 
-        private final javax.jms.Destination dest;
+        private final jakarta.jms.Destination dest;
 
         private final Connection connection;
 
@@ -256,10 +272,11 @@ public class AMQ2149Test {
 
         private volatile long nextSequenceNumber = 0;
 
-        public Sender(javax.jms.Destination dest) throws JMSException {
+        public Sender(jakarta.jms.Destination dest) throws JMSException {
             this.dest = dest;
-            connection = new ActiveMQConnectionFactory(brokerURL)
-                    .createConnection();
+            ActiveMQConnectionFactory activeMQConnectionFactory = new ActiveMQConnectionFactory(brokerURL);
+            activeMQConnectionFactory.setWatchTopicAdvisories(false);
+            connection = activeMQConnectionFactory.createConnection();
             session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
             messageProducer = session.createProducer(dest);
             messageProducer.setDeliveryMode(DeliveryMode.PERSISTENT);
@@ -281,7 +298,7 @@ public class AMQ2149Test {
                         LOG.info(dest + " sent " + nextSequenceNumber);
                     }
 
-                } catch (javax.jms.IllegalStateException e) {
+                } catch (jakarta.jms.IllegalStateException e) {
                     LOG.error(dest + " bailing on send error", e);
                     exceptions.add(e);
                     break;
@@ -304,7 +321,6 @@ public class AMQ2149Test {
         }
     }
 
-    // attempt to simply replicate leveldb failure. no joy yet
     public void x_testRestartReReceive() throws Exception {
         createBroker(new Configurer() {
             public void configure(BrokerService broker) throws Exception {
@@ -312,7 +328,7 @@ public class AMQ2149Test {
             }
         });
 
-        final javax.jms.Destination destination =
+        final jakarta.jms.Destination destination =
                 ActiveMQDestination.createDestination("test.dest.X", ActiveMQDestination.QUEUE_TYPE);
         Thread thread = new Thread(new Sender(destination));
         thread.start();
@@ -360,7 +376,7 @@ public class AMQ2149Test {
         });
         
         verifyOrderedMessageReceipt();
-        verifyStats(false);
+        verifyStats(false, false);
     }
 
     @Test(timeout = 10 * 60 * 1000)
@@ -383,7 +399,7 @@ public class AMQ2149Test {
             timer.cancel();
         }
         
-        verifyStats(true);
+        verifyStats(true, false);
     }
 
     @Test(timeout = 10 * 60 * 1000)
@@ -403,7 +419,7 @@ public class AMQ2149Test {
             timer.cancel();
         }
         
-        verifyStats(true);
+        verifyStats(true, false);
     }
 
     @Test(timeout = 10 * 60 * 1000)
@@ -436,10 +452,10 @@ public class AMQ2149Test {
             timer.cancel();
         }
         
-        verifyStats(true);
+        verifyStats(true, true);
     }
 
-    private void verifyStats(boolean brokerRestarts) throws Exception {
+    private void verifyStats(boolean brokerRestarts, boolean transactional) throws Exception {
         RegionBroker regionBroker = (RegionBroker) broker.getRegionBroker();
         
         for (Destination dest : regionBroker.getQueueRegion().getDestinationMap().values()) {
@@ -454,6 +470,27 @@ public class AMQ2149Test {
                 assertEquals("qneue/dequeue match for: " + dest.getName(),
                         stats.getEnqueues().getCount(), stats.getDequeues().getCount());   
             }
+        }
+        Destination activeMQDlq = regionBroker.getQueueRegion().getDestinationMap().get(new ActiveMQQueue("ActiveMQ.DLQ"));
+        if (activeMQDlq != null) {
+
+            // excuse duplicates from the store
+            int countToExcuse = 0;
+            org.apache.activemq.command.Message[] messages = activeMQDlq.browse();
+            for (org.apache.activemq.command.Message candidate: messages) {
+                final Object cause = candidate.getProperty(DLQ_DELIVERY_FAILURE_CAUSE_PROPERTY);
+                if (cause!= null &&
+                        ((((String)cause).contains(DUPLICATE_FROM_STORE_MSG_PREFIX)) ||
+                        !transactional && ((String)cause).contains("Suppressing duplicate delivery on connection"))) {
+                    // expected some duplicate sends for durable subs
+                    countToExcuse++;
+                } else {
+                    LOG.error("Unexpected dlq: " + cause + ", " + candidate);
+                }
+            }
+
+            assertEquals("no unexpcted dlq messages", countToExcuse ,
+                    activeMQDlq.getDestinationStatistics().getMessages().getCount());
         }
     }
 
@@ -510,7 +547,7 @@ public class AMQ2149Test {
         Vector<Receiver> receivers = new Vector<Receiver>();
         
         for (int i = 0; i < concurrentPairs; ++i) {
-            final javax.jms.Destination destination =
+            final jakarta.jms.Destination destination =
                     ActiveMQDestination.createDestination("test.dest." + i, destinationType);
             receivers.add(new Receiver(destination, transactional));
             Thread thread = new Thread(new Sender(destination));

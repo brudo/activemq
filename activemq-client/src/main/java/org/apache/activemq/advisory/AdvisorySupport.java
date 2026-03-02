@@ -18,8 +18,8 @@ package org.apache.activemq.advisory;
 
 import java.util.ArrayList;
 
-import javax.jms.Destination;
-import javax.jms.JMSException;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
 
 import org.apache.activemq.ActiveMQMessageTransformation;
 import org.apache.activemq.command.ActiveMQDestination;
@@ -36,6 +36,7 @@ public final class AdvisorySupport {
     public static final String PRODUCER_ADVISORY_TOPIC_PREFIX = ADVISORY_TOPIC_PREFIX + "Producer.";
     public static final String QUEUE_PRODUCER_ADVISORY_TOPIC_PREFIX = PRODUCER_ADVISORY_TOPIC_PREFIX + "Queue.";
     public static final String TOPIC_PRODUCER_ADVISORY_TOPIC_PREFIX = PRODUCER_ADVISORY_TOPIC_PREFIX + "Topic.";
+    public static final String ANONYMOUS_PRODUCER_ADVISORY_TOPIC_PREFIX = PRODUCER_ADVISORY_TOPIC_PREFIX + "Anonymous";
     public static final String CONSUMER_ADVISORY_TOPIC_PREFIX = ADVISORY_TOPIC_PREFIX + "Consumer.";
     public static final String VIRTUAL_DESTINATION_CONSUMER_ADVISORY_TOPIC_PREFIX = ADVISORY_TOPIC_PREFIX + "VirtualDestination.Consumer.";
     public static final String QUEUE_CONSUMER_ADVISORY_TOPIC_PREFIX = CONSUMER_ADVISORY_TOPIC_PREFIX + "Queue.";
@@ -52,6 +53,7 @@ public final class AdvisorySupport {
     public static final String FULL_TOPIC_PREFIX = ADVISORY_TOPIC_PREFIX + "FULL.";
     public static final String MESSAGE_DELIVERED_TOPIC_PREFIX = ADVISORY_TOPIC_PREFIX + "MessageDelivered.";
     public static final String MESSAGE_CONSUMED_TOPIC_PREFIX = ADVISORY_TOPIC_PREFIX + "MessageConsumed.";
+    public static final String MESSAGE_DISPATCHED_TOPIC_PREFIX = ADVISORY_TOPIC_PREFIX + "MessageDispatched.";
     public static final String MESSAGE_DLQ_TOPIC_PREFIX = ADVISORY_TOPIC_PREFIX + "MessageDLQd.";
     public static final String MASTER_BROKER_TOPIC_PREFIX = ADVISORY_TOPIC_PREFIX + "MasterBroker";
     public static final String NETWORK_BRIDGE_TOPIC_PREFIX = ADVISORY_TOPIC_PREFIX + "NetworkBridge";
@@ -92,6 +94,12 @@ public final class AdvisorySupport {
     public static ActiveMQTopic[] getAllDestinationAdvisoryTopics(ActiveMQDestination destination) throws JMSException {
         ArrayList<ActiveMQTopic> result = new ArrayList<ActiveMQTopic>();
 
+        //Note - Sicne this method is primarily used for removing destinations and clean up
+        //don't add VirtualDestinationConsumerAdvisoryTopic here as we want to keep listening
+        //for demand on composite destinations that may be forwarded for Virtual topics even after dest removal.
+        //This is because virtual destinations or composite destinations can trigger demand so we need to still listen
+        //Cleanup will happen automatically if there are no consumers on the advisory (due to the bridge
+        //no longer including the destination) when the inactive GC task runs
         result.add(getConsumerAdvisoryTopic(destination));
         result.add(getProducerAdvisoryTopic(destination));
         result.add(getExpiredMessageTopic(destination));
@@ -101,6 +109,7 @@ public final class AdvisorySupport {
         result.add(getMessageDiscardedAdvisoryTopic(destination));
         result.add(getMessageDeliveredAdvisoryTopic(destination));
         result.add(getMessageConsumedAdvisoryTopic(destination));
+        result.add(getMessageDispatchedAdvisoryTopic(destination));
         result.add(getMessageDLQdAdvisoryTopic(destination));
         result.add(getFullAdvisoryTopic(destination));
 
@@ -137,7 +146,9 @@ public final class AdvisorySupport {
 
     public static ActiveMQTopic getProducerAdvisoryTopic(ActiveMQDestination destination) {
         String prefix;
-        if (destination.isQueue()) {
+        if (destination == null) {
+            prefix = ANONYMOUS_PRODUCER_ADVISORY_TOPIC_PREFIX;
+        } else if (destination.isQueue()) {
             prefix = QUEUE_PRODUCER_ADVISORY_TOPIC_PREFIX;
         } else {
             prefix = TOPIC_PRODUCER_ADVISORY_TOPIC_PREFIX;
@@ -146,7 +157,8 @@ public final class AdvisorySupport {
     }
 
     private static ActiveMQTopic getAdvisoryTopic(ActiveMQDestination destination, String prefix, boolean consumerTopics) {
-        return new ActiveMQTopic(prefix + destination.getPhysicalName().replaceAll(",", "&sbquo;"));
+        return destination != null ? new ActiveMQTopic(prefix + destination.getPhysicalName().replaceAll(",", "&sbquo;")):
+            new ActiveMQTopic(prefix);
     }
 
     public static ActiveMQTopic getExpiredMessageTopic(Destination destination) throws JMSException {
@@ -240,6 +252,12 @@ public final class AdvisorySupport {
     public static ActiveMQTopic getMessageDeliveredAdvisoryTopic(ActiveMQDestination destination) {
         String name = MESSAGE_DELIVERED_TOPIC_PREFIX + destination.getDestinationTypeAsString() + "."
                 + destination.getPhysicalName();
+        return new ActiveMQTopic(name);
+    }
+
+    public static ActiveMQTopic getMessageDispatchedAdvisoryTopic(ActiveMQDestination destination) {
+        String name = MESSAGE_DISPATCHED_TOPIC_PREFIX + destination.getDestinationTypeAsString() + "."
+            + destination.getPhysicalName();
         return new ActiveMQTopic(name);
     }
 
@@ -563,6 +581,24 @@ public final class AdvisorySupport {
             return false;
         } else {
             return destination.isTopic() && destination.getPhysicalName().startsWith(NETWORK_BRIDGE_TOPIC_PREFIX);
+        }
+    }
+
+    public static boolean isMessageDispatchedAdvisoryTopic(Destination destination) throws JMSException {
+        return isMessageDispatchedAdvisoryTopic(ActiveMQMessageTransformation.transformDestination(destination));
+    }
+
+    public static boolean isMessageDispatchedAdvisoryTopic(ActiveMQDestination destination) {
+        if (destination.isComposite()) {
+            ActiveMQDestination[] compositeDestinations = destination.getCompositeDestinations();
+            for (int i = 0; i < compositeDestinations.length; i++) {
+                if (isMessageDispatchedAdvisoryTopic(compositeDestinations[i])) {
+                    return true;
+                }
+            }
+            return false;
+        } else {
+            return destination.isTopic() && destination.getPhysicalName().startsWith(MESSAGE_DISPATCHED_TOPIC_PREFIX);
         }
     }
 

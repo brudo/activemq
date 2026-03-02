@@ -22,16 +22,19 @@ import org.apache.activemq.broker.region.policy.PolicyEntry;
 import org.apache.activemq.broker.region.policy.PolicyMap;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.store.kahadb.disk.journal.DataFile;
+import org.apache.activemq.store.kahadb.disk.journal.DataFileFactory;
+import org.apache.activemq.store.kahadb.disk.journal.DefaultDataFileFactory;
+import org.apache.activemq.store.kahadb.disk.journal.ErrorDataFileFactory;
 import org.junit.After;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.Message;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.Message;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 import java.io.File;
 import java.io.IOException;
 import java.security.Permission;
@@ -54,6 +57,7 @@ public class JournalArchiveTest {
     private BrokerService broker = null;
     private final Destination destination = new ActiveMQQueue("Test");
     private KahaDBPersistenceAdapter adapter;
+    private DataFileFactory dataFileFactory;
 
     protected void startBroker() throws Exception {
         doStartBroker(true);
@@ -104,6 +108,7 @@ public class JournalArchiveTest {
         adapter.setCheckForCorruptJournalFiles(true);
 
         adapter.setArchiveDataLogs(true);
+        adapter.setDataFileFactory(dataFileFactory);
     }
 
     @After
@@ -119,16 +124,8 @@ public class JournalArchiveTest {
     public void testRecoveryOnArchiveFailure() throws Exception {
         final AtomicInteger atomicInteger = new AtomicInteger();
 
-        System.setSecurityManager(new SecurityManager() {
-            public void checkPermission(Permission perm) {}
-            public void checkPermission(Permission perm, Object context) {}
+        this.dataFileFactory = new ErrorDataFileFactory();
 
-            public void checkWrite(String file) {
-                if (file.contains(DEFAULT_ARCHIVE_DIRECTORY) && atomicInteger.incrementAndGet() > 4) {
-                    throw new SecurityException("No Perms to write to archive times:" + atomicInteger.get());
-                }
-            }
-        });
         startBroker();
 
         int sent = produceMessagesToConsumeMultipleDataFiles(50);
@@ -151,7 +148,7 @@ public class JournalArchiveTest {
         assertTrue("broker got shutdown on page in error", gotShutdown.await(10, TimeUnit.SECONDS));
 
         // no restrictions
-        System.setSecurityManager(null);
+        this.dataFileFactory = new DefaultDataFileFactory();
 
         int numFilesAfterRestart = 0;
         try {

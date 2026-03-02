@@ -23,12 +23,12 @@ import org.junit.runners.Parameterized;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.jms.Connection;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -52,10 +52,6 @@ public class DurableSubscriptionOffline3Test extends DurableSubscriptionOfflineT
         List<PersistenceAdapterChoice[]> choices = new ArrayList<PersistenceAdapterChoice[]>();
         choices.add(kahaDb);
         choices.add(jdbc);
-        if (!osName.equalsIgnoreCase("AIX") && !osName.equalsIgnoreCase("SunOS")) {
-            PersistenceAdapterChoice[] levelDb = {PersistenceAdapterChoice.LevelDB};
-            choices.add(levelDb);
-        }
 
         return choices;
     }
@@ -246,12 +242,6 @@ public class DurableSubscriptionOffline3Test extends DurableSubscriptionOfflineT
 
     @Test(timeout = 60 * 1000)
     public void testOfflineSubscriptionWithSelectorAfterRestart() throws Exception {
-
-        if (PersistenceAdapterChoice.LevelDB == defaultPersistenceAdapter) {
-            // https://issues.apache.org/jira/browse/AMQ-4296
-            return;
-        }
-
         // create offline subs 1
         Connection con = createConnection("offCli1");
         Session session = con.createSession(false, Session.AUTO_ACKNOWLEDGE);

@@ -18,31 +18,44 @@ package org.apache.activemq.broker;
 
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 
+import junit.framework.Test;
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.RedeliveryPolicy;
+import org.apache.activemq.broker.region.policy.PolicyEntry;
+import org.apache.activemq.broker.region.policy.PolicyMap;
 import org.apache.activemq.broker.region.policy.RedeliveryPolicyMap;
 import org.apache.activemq.broker.region.policy.SharedDeadLetterStrategy;
 import org.apache.activemq.broker.util.RedeliveryPlugin;
 import org.apache.activemq.command.ActiveMQQueue;
+import org.apache.activemq.util.Wait;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class BrokerRedeliveryTest extends org.apache.activemq.TestSupport {
 
     static final Logger LOG = LoggerFactory.getLogger(BrokerRedeliveryTest.class);
     BrokerService broker = null;
+    TransportConnector tcpConnector = null;
 
     final ActiveMQQueue destination = new ActiveMQQueue("Redelivery");
     final String data = "hi";
     final long redeliveryDelayMillis = 2000;
     long initialRedeliveryDelayMillis = 4000;
     int maxBrokerRedeliveries = 2;
+    public Boolean checkForDuplicates = Boolean.TRUE;
+
+    public void initCombosForTestScheduledRedelivery() {
+        addCombinationValues("checkForDuplicates", new Object[] {Boolean.TRUE, Boolean.FALSE});
+    }
 
     public void testScheduledRedelivery() throws Exception {
         doTestScheduledRedelivery(maxBrokerRedeliveries, true);
@@ -127,6 +140,59 @@ public class BrokerRedeliveryTest extends org.apache.activemq.TestSupport {
         Message dlqMessage = dlqConsumer.receive(2000);
         assertNotNull("Got message from dql", dlqMessage);
         assertEquals("message matches", message.getStringProperty("data"), dlqMessage.getStringProperty("data"));
+
+        consumerConnection.close();
+    }
+
+    public void testNoScheduledRedeliveryOfDuplicates() throws Exception {
+        broker = createBroker(true);
+
+        PolicyEntry policyEntry = new PolicyEntry();
+        policyEntry.setUseCache(false); // disable the cache such that duplicates are not suppressed on send
+        policyEntry.setSendDuplicateFromStoreToDLQ(true);
+
+        PolicyMap policyMap = new PolicyMap();
+        policyMap.setDefaultEntry(policyEntry);
+        broker.setDestinationPolicy(policyMap);
+        broker.setDeleteAllMessagesOnStartup(true);
+        broker.start();
+
+        ActiveMQConnection consumerConnection = (ActiveMQConnection) createConnection();
+        consumerConnection.start();
+        Session consumerSession = consumerConnection.createSession(false, Session.CLIENT_ACKNOWLEDGE);
+        MessageConsumer consumer = consumerSession.createConsumer(destination);
+
+        ActiveMQConnection producerConnection = (ActiveMQConnection) createConnection();
+        producerConnection.start();
+        Session producerSession = producerConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+        MessageProducer producer = producerSession.createProducer(destination);
+        Message message = producerSession.createMessage();
+        message.setStringProperty("data", data);
+        producer.send(message);
+
+        message = consumer.receive(1000);
+        assertNotNull("got message", message);
+        message.acknowledge();
+
+        Wait.waitFor(new Wait.Condition() {
+            @Override
+            public boolean isSatisified() throws Exception {
+                // wait for ack to be processes
+                LOG.info("Total message count: " + broker.getAdminView().getTotalMessageCount());
+                return broker.getAdminView().getTotalMessageCount() == 0;
+            }
+        });
+        // send it again
+        // should go to dlq as a duplicate from the store
+        producerConnection.getTransport().request(message);
+
+        // validate DLQ
+        MessageConsumer dlqConsumer = consumerSession.createConsumer(new ActiveMQQueue(SharedDeadLetterStrategy.DEFAULT_DEAD_LETTER_QUEUE_NAME));
+        Message dlqMessage = dlqConsumer.receive(4000);
+        assertNotNull("Got message from dql", dlqMessage);
+        assertEquals("message matches", message.getStringProperty("data"), dlqMessage.getStringProperty("data"));
+
+        consumerConnection.close();
     }
 
     private void sendMessage(int timeToLive) throws Exception {
@@ -144,9 +210,18 @@ public class BrokerRedeliveryTest extends org.apache.activemq.TestSupport {
     }
 
     private void startBroker(boolean deleteMessages) throws Exception {
+        broker = createBroker(false);
+        if (deleteMessages) {
+            broker.setDeleteAllMessagesOnStartup(true);
+        }
+        broker.start();
+    }
+
+    private BrokerService createBroker(boolean persistent) throws Exception {
         broker = new BrokerService();
-        broker.setPersistent(false);
+        broker.setPersistent(persistent);
         broker.setSchedulerSupport(true);
+        tcpConnector = broker.addConnector("tcp://localhost:0");
 
         RedeliveryPlugin redeliveryPlugin = new RedeliveryPlugin();
 
@@ -160,11 +235,7 @@ public class BrokerRedeliveryTest extends org.apache.activemq.TestSupport {
         redeliveryPlugin.setRedeliveryPolicyMap(redeliveryPolicyMap);
 
         broker.setPlugins(new BrokerPlugin[]{redeliveryPlugin});
-
-        if (deleteMessages) {
-            broker.setDeleteAllMessagesOnStartup(true);
-        }
-        broker.start();
+        return broker;
     }
 
     private void stopBroker() throws Exception {
@@ -176,12 +247,16 @@ public class BrokerRedeliveryTest extends org.apache.activemq.TestSupport {
 
     @Override
     protected ActiveMQConnectionFactory createConnectionFactory() throws Exception {
-        return new ActiveMQConnectionFactory("vm://localhost");
+        return new ActiveMQConnectionFactory("failover:(" + tcpConnector.getPublishableConnectString() + ")?jms.checkForDuplicates=" + checkForDuplicates.toString());
     }
 
     @Override
     protected void tearDown() throws Exception {
         stopBroker();
         super.tearDown();
+    }
+
+    public static Test suite() {
+        return suite(BrokerRedeliveryTest.class);
     }
 }

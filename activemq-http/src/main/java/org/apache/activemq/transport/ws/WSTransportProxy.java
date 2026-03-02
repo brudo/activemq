@@ -19,6 +19,7 @@ package org.apache.activemq.transport.ws;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.security.cert.X509Certificate;
+import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -149,9 +150,9 @@ public final class WSTransportProxy extends TransportSupport implements Transpor
 
     @Override
     protected void doStart() throws Exception {
+        transport.setTransportListener(getTransportListener());
         socketTransportStarted.countDown();
 
-        transport.setTransportListener(getTransportListener());
         transport.start();
     }
 
@@ -218,6 +219,7 @@ public final class WSTransportProxy extends TransportSupport implements Transpor
     @Override
     public void onWebSocketConnect(Session session) {
         this.session = session;
+        this.session.setIdleTimeout(Duration.ZERO);
 
         if (wsTransport.getMaxFrameSize() > 0) {
             this.session.getPolicy().setMaxBinaryMessageSize(wsTransport.getMaxFrameSize());
@@ -243,7 +245,8 @@ public final class WSTransportProxy extends TransportSupport implements Transpor
 
         LOG.trace("WS Proxy sending string of size {} out", data.length());
         try {
-            session.getRemote().sendStringByFuture(data).get(getDefaultSendTimeOut(), TimeUnit.SECONDS);
+            // FIXME: Convert to async API w/ tiemeout getDefaultSendTimeOut(), TimeUnit.SECONDS);
+            session.getRemote().sendBytes(ByteBuffer.wrap(data.getBytes()));
         } catch (Exception e) {
             throw IOExceptionSupport.create(e);
         }
@@ -263,7 +266,8 @@ public final class WSTransportProxy extends TransportSupport implements Transpor
         LOG.trace("WS Proxy sending {} bytes out", data.remaining());
         int limit = data.limit();
         try {
-            session.getRemote().sendBytesByFuture(data).get(getDefaultSendTimeOut(), TimeUnit.SECONDS);
+            // FIXME: Convert to async API w/ tiemeout getDefaultSendTimeOut(), TimeUnit.SECONDS);
+            session.getRemote().sendBytes(data);
         } catch (Exception e) {
             throw IOExceptionSupport.create(e);
         }

@@ -27,7 +27,7 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 
-import javax.jms.JMSException;
+import jakarta.jms.JMSException;
 
 import org.apache.activemq.advisory.AdvisorySupport;
 import org.apache.activemq.broker.BrokerContext;
@@ -39,6 +39,7 @@ import org.apache.activemq.command.DataStructure;
 import org.apache.activemq.transport.stomp.Stomp.Headers;
 import org.apache.activemq.transport.stomp.Stomp.Responses;
 import org.apache.activemq.transport.stomp.Stomp.Transformations;
+import org.apache.activemq.util.XStreamSupport;
 import org.codehaus.jettison.mapped.Configuration;
 import org.fusesource.hawtbuf.UTF8Buffer;
 
@@ -59,6 +60,7 @@ import com.thoughtworks.xstream.io.xml.xppdom.XppFactory;
 public class JmsFrameTranslator extends LegacyFrameTranslator implements BrokerContextAware {
 
     XStream xStream = null;
+	XStream xStreamAdvisory = null;
     BrokerContext brokerContext;
 
     @Override
@@ -218,11 +220,18 @@ public class JmsFrameTranslator extends LegacyFrameTranslator implements BrokerC
             out = new PrettyPrintWriter(buffer);
         }
 
-        XStream xstream = getXStream();
+        XStream xstream = getXStreamAdvisory();
         xstream.setMode(XStream.NO_REFERENCES);
         xstream.aliasPackage("", "org.apache.activemq.command");
         xstream.marshal(ds, out);
         return buffer.toString();
+    }
+	private XStream getXStreamAdvisory()
+    {
+    	  if (xStreamAdvisory == null) {
+    		  xStreamAdvisory = createXStream();
+          }
+          return xStreamAdvisory;
     }
 
     // Properties

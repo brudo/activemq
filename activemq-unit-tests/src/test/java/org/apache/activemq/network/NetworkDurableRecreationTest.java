@@ -16,27 +16,30 @@
  */
 package org.apache.activemq.network;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
+import java.lang.reflect.Field;
 import java.net.URI;
+import java.util.ArrayList;
 
-import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.ConnectionContext;
+import org.apache.activemq.broker.TransportConnection;
 import org.apache.activemq.broker.region.DestinationStatistics;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQTopic;
 import org.apache.activemq.command.RemoveSubscriptionInfo;
+import org.apache.activemq.util.Wait;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-
-import com.google.common.collect.Lists;
 
 /**
  * This test is to show that if a durable subscription over a network bridge is deleted and
@@ -106,7 +109,7 @@ public class NetworkDurableRecreationTest extends DynamicNetworkTestSupport {
         });
     }
 
-    public void testReceive(BrokerService receiveBroker, Session receiveSession,
+    protected void testReceive(BrokerService receiveBroker, Session receiveSession,
             BrokerService publishBroker, Session publishSession, ConsumerCreator secondConsumerCreator) throws Exception {
 
         final DestinationStatistics destinationStatistics =
@@ -118,6 +121,17 @@ public class NetworkDurableRecreationTest extends DynamicNetworkTestSupport {
 
         waitForConsumerCount(destinationStatistics, 1);
 
+        final NetworkBridge bridge;
+        if (publishBroker.getNetworkConnectors().size() > 0) {
+            Wait.waitFor(() -> publishBroker.getNetworkConnectors().get(0).activeBridges().size() == 1, 10000, 500);
+            bridge = publishBroker.getNetworkConnectors().get(0).activeBridges().iterator().next();
+        } else {
+            bridge = findDuplexBridge(publishBroker.getTransportConnectorByScheme("tcp"));
+        }
+
+        //Should be 2 - one for the durable destination and one for the advisory destinations
+        assertSubscriptionMapCounts(bridge, 2);
+
         //remove the durable
         final ConnectionContext context = new ConnectionContext();
         RemoveSubscriptionInfo info = getRemoveSubscriptionInfo(context, receiveBroker);
@@ -125,6 +139,9 @@ public class NetworkDurableRecreationTest extends DynamicNetworkTestSupport {
         Thread.sleep(1000);
         receiveBroker.getBroker().removeSubscription(context, info);
         waitForConsumerCount(destinationStatistics, 0);
+
+        //Should be 1 - 0 for the durable destination and one for the advisory destinations
+        assertSubscriptionMapCounts(bridge, 1);
 
         //re-create consumer
         MessageConsumer bridgeConsumer2 = secondConsumerCreator.createConsumer();
@@ -200,10 +217,12 @@ public class NetworkDurableRecreationTest extends DynamicNetworkTestSupport {
         connector.setDecreaseNetworkConsumerPriority(false);
         connector.setConduitSubscriptions(true);
         connector.setDuplex(true);
-        connector.setDynamicallyIncludedDestinations(Lists.<ActiveMQDestination>newArrayList(
-                new ActiveMQTopic(testTopicName)));
-        connector.setExcludedDestinations(Lists.<ActiveMQDestination>newArrayList(
-                new ActiveMQTopic(excludeTopicName)));
+        ArrayList<ActiveMQDestination> includedDestinations = new ArrayList<>();
+        includedDestinations.add(new ActiveMQTopic(testTopicName));
+        ArrayList<ActiveMQDestination> excludedDestinations = new ArrayList<>();
+        excludedDestinations.add(new ActiveMQTopic(excludeTopicName));
+        connector.setDynamicallyIncludedDestinations(includedDestinations);
+        connector.setExcludedDestinations(excludedDestinations);
 
         brokerService.addNetworkConnector(connector);
         brokerService.addConnector("tcp://localhost:61616");

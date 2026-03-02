@@ -16,17 +16,20 @@
  */
 package org.apache.activemq;
 
-import javax.jms.Connection;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Queue;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  * 
  */
+@Category(ParallelTest.class)
 public class JmsAutoAckTest extends TestSupport {
 
     private Connection connection;
@@ -50,7 +53,7 @@ public class JmsAutoAckTest extends TestSupport {
     /**
      * Tests if acknowleged messages are being consumed.
      * 
-     * @throws javax.jms.JMSException
+     * @throws jakarta.jms.JMSException
      */
     public void testAckedMessageAreConsumed() throws JMSException {
         connection.start();

@@ -22,14 +22,14 @@ import java.net.URI;
 import java.util.Enumeration;
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.Connection;
-import javax.jms.DeliveryMode;
-import javax.jms.JMSException;
-import javax.jms.MessageProducer;
-import javax.jms.Queue;
-import javax.jms.QueueBrowser;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.QueueBrowser;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.TransportConnector;
@@ -39,6 +39,8 @@ import org.junit.Before;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  * This test shows that when all messages are expired the QueueBrowser will
@@ -53,6 +55,7 @@ import org.slf4j.LoggerFactory;
  * <p>
  * This test is based on a test case submitted by Henno Vermeulen for AMQ-5340
  */
+@Category(ParallelTest.class)
 public class JmsQueueBrowserExpirationTest {
 
     private static final int MESSAGES_TO_SEND = 50;

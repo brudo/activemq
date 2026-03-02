@@ -21,19 +21,17 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.net.URI;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentMap;
 
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.advisory.AdvisoryBroker;
@@ -64,8 +62,6 @@ import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.google.common.collect.Lists;
 
 /**
  * This test is to show that dynamicallyIncludedDestinations will work properly
@@ -118,31 +114,49 @@ public class VirtualConsumerDemandTest extends DynamicNetworkTestSupport {
      * @throws Exception
      */
     @Test(timeout = 60 * 1000)
-    public void testVirtualTopic() throws Exception {
+    public void testVirtualTopics() throws Exception {
         Assume.assumeTrue(isUseVirtualDestSubsOnCreation);
         doSetUp(true, null);
 
         MessageConsumer advisoryConsumer = getVirtualDestinationAdvisoryConsumer("VirtualTopic.>");
 
         MessageProducer includedProducer = localSession.createProducer(new ActiveMQTopic("VirtualTopic.include.test.bar"));
+        MessageProducer includedProducer2 = localSession.createProducer(new ActiveMQTopic("VirtualTopic.include.test.bar2"));
+        MessageProducer includedProducer3 = localSession.createProducer(new ActiveMQTopic("VirtualTopic.include.test.bar3"));
         Thread.sleep(2000);
         Message test = localSession.createTextMessage("test");
 
         final DestinationStatistics destinationStatistics = localBroker.getDestination(new ActiveMQTopic("VirtualTopic.include.test.bar")).getDestinationStatistics();
+        final DestinationStatistics destinationStatistics2 = localBroker.getDestination(new ActiveMQTopic("VirtualTopic.include.test.bar2")).getDestinationStatistics();
+
+        //No queue destination on the remote side so should not forward
+        final DestinationStatistics destinationStatistics3 = localBroker.getDestination(new ActiveMQTopic("VirtualTopic.include.test.bar3")).getDestinationStatistics();
 
         //this will create the destination so messages accumulate
         final DestinationStatistics remoteStats = remoteBroker.getDestination(new ActiveMQQueue("Consumer.cons1.VirtualTopic.include.test.bar")).getDestinationStatistics();
+        final DestinationStatistics remoteStats2 = remoteBroker.getDestination(new ActiveMQQueue("Consumer.cons1.VirtualTopic.include.test.bar2")).getDestinationStatistics();
+
         waitForConsumerCount(destinationStatistics, 1);
+        waitForConsumerCount(destinationStatistics2, 1);
 
         includedProducer.send(test);
+        includedProducer2.send(localSession.createTextMessage("test2"));
+        includedProducer3.send(localSession.createTextMessage("test3"));
 
         //assert statistics
         waitForDispatchFromLocalBroker(destinationStatistics, 1);
+        waitForDispatchFromLocalBroker(destinationStatistics2, 1);
         assertLocalBrokerStatistics(destinationStatistics, 1);
+        assertLocalBrokerStatistics(destinationStatistics2, 1);
         assertEquals("remote dest messages", 1, remoteStats.getMessages().getCount());
+        assertEquals("remote dest messages", 1, remoteStats2.getMessages().getCount());
 
-        assertRemoteAdvisoryCount(advisoryConsumer, 1);
-        assertAdvisoryBrokerCounts(1,1,1);
+        assertRemoteAdvisoryCount(advisoryConsumer, 2);
+        assertAdvisoryBrokerCounts(1,2,2);
+
+        //should not have forwarded for 3rd topic
+        Thread.sleep(1000);
+        assertEquals("local broker dest stat dispatched", 0, destinationStatistics3.getDispatched().getCount());
     }
 
 
@@ -282,6 +296,30 @@ public class VirtualConsumerDemandTest extends DynamicNetworkTestSupport {
 
         assertRemoteAdvisoryCount(advisoryConsumer, 1);
         assertAdvisoryBrokerCounts(1,1,1);
+    }
+
+    // AMQ-8349 -Verify that replayed advisory messages for virtual consumers are only sent to
+    // new advisory consumers and not to existing by mistake
+    @Test(timeout = 30 * 1000)
+    public void testAdvisoryReplayMultipleAdvisoryConsumers() throws Exception {
+        Assume.assumeTrue(isUseVirtualDestSubsOnCreation);
+        ActiveMQQueue activemq = new ActiveMQQueue("include.test.bar.bridge");
+
+        //configure a virtual destination that forwards messages from topic testQueueName
+        //to queue "include.test.bar.bridge"
+        CompositeTopic compositeTopic = createCompositeTopic(testTopicName, activemq);
+        doSetUp(true, new VirtualDestination[] {compositeTopic}, true, true);
+        runtimeBroker.addNewDestination(activemq);
+
+        MessageConsumer advisoryConsumer1 = getVirtualDestinationAdvisoryConsumer(testTopicName);
+        //We should get 1 advisory replayed due to the virtual consumer demand for the composite queue
+        assertRemoteAdvisoryCount(advisoryConsumer1, 1);
+
+        MessageConsumer advisoryConsumer2 = getVirtualDestinationAdvisoryConsumer(testTopicName);
+        //We should get 1 advisory replayed on the new consumer but the existing consumer should not
+        //receive any messages as the advisory was already received before
+        assertRemoteAdvisoryCount(advisoryConsumer1, 0);
+        assertRemoteAdvisoryCount(advisoryConsumer2, 1);
     }
 
     /**
@@ -516,7 +554,6 @@ public class VirtualConsumerDemandTest extends DynamicNetworkTestSupport {
 
         MessageProducer includedProducer = localSession.createProducer(included);
         Message test = localSession.createTextMessage("test");
-        Thread.sleep(1000);
 
         final DestinationStatistics destinationStatistics = localBroker.getDestination(included).getDestinationStatistics();
         final DestinationStatistics remoteDestStatistics = remoteBroker.getDestination(
@@ -629,7 +666,6 @@ public class VirtualConsumerDemandTest extends DynamicNetworkTestSupport {
 
         MessageProducer includedProducer = localSession.createProducer(included);
         Message test = localSession.createTextMessage("test");
-        Thread.sleep(1000);
 
         final DestinationStatistics destinationStatistics = localBroker.getDestination(included).getDestinationStatistics();
         final DestinationStatistics remoteDestStatistics = remoteBroker.getDestination(
@@ -648,10 +684,26 @@ public class VirtualConsumerDemandTest extends DynamicNetworkTestSupport {
         assertEquals("remote2 dest messages", 1, remoteDestStatistics2.getMessages().getCount());
 
         runtimeBroker.setVirtualDestinations(new VirtualDestination[] {}, true);
-        Thread.sleep(2000);
+        assertTrue("virtual destinations not cleared",
+                Wait.waitFor(() -> {
+                    try {
+                        assertAdvisoryBrokerCounts(0, 0, 0);
+                        return true;
+                    } catch (AssertionError | Exception e) {
+                        return false;
+                    }
+                }, 10000, 200));
+        waitForConsumerCount(destinationStatistics, 0);
         includedProducer.send(test);
 
-        Thread.sleep(2000);
+        long dispatched = destinationStatistics.getDispatched().getCount();
+        long dequeues = destinationStatistics.getDequeues().getCount();
+        long forwards = destinationStatistics.getForwards().getCount();
+        assertTrue("unexpected dispatch detected",
+                !Wait.waitFor(() -> destinationStatistics.getDispatched().getCount() > dispatched
+                        || destinationStatistics.getDequeues().getCount() > dequeues
+                        || destinationStatistics.getForwards().getCount() > forwards,
+                        2000, 100));
         assertLocalBrokerStatistics(destinationStatistics, 1);
 
         assertEquals("remote dest messages", 1, remoteDestStatistics.getMessages().getCount());
@@ -983,26 +1035,43 @@ public class VirtualConsumerDemandTest extends DynamicNetworkTestSupport {
 
         MessageConsumer advisoryConsumer = getVirtualDestinationAdvisoryConsumer(testTopicName);
 
-        //sleep to allow the route to be set up
-        Thread.sleep(2000);
+        assertBridgeStarted();
 
         remoteBroker.getBroker().addDestination(remoteBroker.getAdminConnectionContext(),
                 new ActiveMQQueue("include.test.bar.bridge"), false);
 
-        Thread.sleep(2000);
+        assertTrue("remote destination not ready",
+                Wait.waitFor(() -> remoteBroker.getDestination(new ActiveMQQueue("include.test.bar.bridge")) != null,
+                        10000, 200));
 
         //remove the virtual destinations after startup
         runtimeBroker.setVirtualDestinations(new VirtualDestination[] {}, true);
+        assertTrue("virtual destinations not cleared",
+                Wait.waitFor(() -> {
+                    try {
+                        assertAdvisoryBrokerCounts(0, 0, 0);
+                        return true;
+                    } catch (AssertionError | Exception e) {
+                        return false;
+                    }
+                }, 10000, 200));
 
         MessageProducer includedProducer = localSession.createProducer(included);
-        Thread.sleep(2000);
         Message test = localSession.createTextMessage("test");
 
         //assert that no message was received
         //by the time we get here, there is no more virtual destinations so this won't
         //trigger demand
         MessageConsumer bridgeConsumer = remoteSession.createConsumer(new ActiveMQQueue("include.test.bar.bridge"));
-        Thread.sleep(2000);
+        assertTrue("virtual destinations not cleared",
+                Wait.waitFor(() -> {
+                    try {
+                        assertAdvisoryBrokerCounts(0, 0, 0);
+                        return true;
+                    } catch (AssertionError | Exception e) {
+                        return false;
+                    }
+                }, 10000, 200));
         includedProducer.send(test);
         assertNull(bridgeConsumer.receive(5000));
 
@@ -1021,12 +1090,15 @@ public class VirtualConsumerDemandTest extends DynamicNetworkTestSupport {
 
         MessageConsumer advisoryConsumer = getVirtualDestinationAdvisoryConsumer(testTopicName);
 
-        Thread.sleep(2000);
+        assertTrue("brokers not started",
+                Wait.waitFor(() -> remoteBroker.isStarted() && localBroker.isStarted(), 10000, 200));
 
         remoteBroker.getBroker().addDestination(remoteBroker.getAdminConnectionContext(),
                 new ActiveMQQueue("include.test.bar.bridge"), false);
 
-        Thread.sleep(2000);
+        assertTrue("remote destination not ready",
+                Wait.waitFor(() -> remoteBroker.getDestination(new ActiveMQQueue("include.test.bar.bridge")) != null,
+                        10000, 200));
 
         //start the local broker after establishing the virtual topic to test replay
         localBroker.addNetworkConnector(connector);
@@ -1034,8 +1106,8 @@ public class VirtualConsumerDemandTest extends DynamicNetworkTestSupport {
 
         Thread.sleep(2000);
 
-        //there should be an extra advisory because of replay
-        assertRemoteAdvisoryCount(advisoryConsumer, 2);
+        //there should still only be 1 advisory
+        assertRemoteAdvisoryCount(advisoryConsumer, 1);
         assertAdvisoryBrokerCounts(1,1,1);
     }
 
@@ -1049,29 +1121,38 @@ public class VirtualConsumerDemandTest extends DynamicNetworkTestSupport {
 
         MessageConsumer advisoryConsumer = getVirtualDestinationAdvisoryConsumer(testTopicName);
 
-        Thread.sleep(2000);
+        assertTrue("brokers not started",
+                Wait.waitFor(() -> remoteBroker.isStarted() && localBroker.isStarted(), 10000, 200));
 
         remoteBroker.getBroker().addDestination(remoteBroker.getAdminConnectionContext(),
                 new ActiveMQQueue("include.test.bar.bridge"), false);
 
-        Thread.sleep(2000);
+        assertTrue("remote destination not ready",
+                Wait.waitFor(() -> remoteBroker.getDestination(new ActiveMQQueue("include.test.bar.bridge")) != null,
+                        10000, 200));
 
         MessageProducer includedProducer = localSession.createProducer(included);
         Message test = localSession.createTextMessage("test");
         MessageConsumer bridgeConsumer = remoteSession.createConsumer(new ActiveMQQueue("include.test.bar.bridge"));
-        Thread.sleep(2000);
+        assertTrue("remote consumer not registered",
+                Wait.waitFor(() -> remoteBroker.getDestination(new ActiveMQQueue("include.test.bar.bridge"))
+                        .getConsumers().size() == 1, 10000, 200));
 
         //start the local broker after establishing the virtual topic to test replay
         localBroker.addNetworkConnector(connector);
         connector.start();
 
-        Thread.sleep(2000);
+        assertTrue("network bridge not ready",
+                Wait.waitFor(() -> localBroker.getNetworkConnectors().get(0).activeBridges().size() == 1,
+                        10000, 200));
+        DestinationStatistics localDestinationStats = localBroker.getDestination(included).getDestinationStatistics();
+        waitForConsumerCount(localDestinationStats, 1);
         includedProducer.send(test);
         assertNotNull(bridgeConsumer.receive(5000));
 
-        //with isUseVirtualDestSubsOnCreation is true, there should be 4 advisories (2 replay)
-        //with !isUseVirtualDestSubsOnCreation, there should be 2 advisories (1 replay)
-        assertRemoteAdvisoryCount(advisoryConsumer, 4, 2);
+        //with isUseVirtualDestSubsOnCreation is true, there should be 2 advisories
+        //with !isUseVirtualDestSubsOnCreation, there should be 1 advisory
+        assertRemoteAdvisoryCount(advisoryConsumer, 2, 1);
         if (isUseVirtualDestSubsOnCreation) {
             assertAdvisoryBrokerCounts(1,2,1);
         } else {
@@ -1351,10 +1432,15 @@ public class VirtualConsumerDemandTest extends DynamicNetworkTestSupport {
         connector.setConduitSubscriptions(true);
         connector.setDuplex(isDuplex);
         connector.setUseVirtualDestSubs(true);
-        connector.setDynamicallyIncludedDestinations(Lists.newArrayList(new ActiveMQQueue(testQueueName),
-                new ActiveMQTopic(testTopicName + (forceDurable ? "?forceDurable=true" : "")), new ActiveMQTopic("VirtualTopic.>")));
-        connector.setExcludedDestinations(Lists.newArrayList(new ActiveMQQueue("exclude.test.foo"),
-                new ActiveMQTopic("exclude.test.bar")));
+        ArrayList<ActiveMQDestination> includedDestinations = new ArrayList<>();
+        includedDestinations.add(new ActiveMQQueue(testQueueName));
+        includedDestinations.add(new ActiveMQTopic(testTopicName + (forceDurable ? "?forceDurable=true" : "")));
+        includedDestinations.add(new ActiveMQTopic("VirtualTopic.>"));
+        connector.setDynamicallyIncludedDestinations(includedDestinations);
+        ArrayList<ActiveMQDestination> excludedDestinations = new ArrayList<>();
+        excludedDestinations.add(new ActiveMQQueue("exclude.test.foo"));
+        excludedDestinations.add(new ActiveMQTopic("exclude.test.bar"));
+        connector.setExcludedDestinations(excludedDestinations);
 
         if (startNetworkConnector) {
             brokerService.addNetworkConnector(connector);
@@ -1397,7 +1483,11 @@ public class VirtualConsumerDemandTest extends DynamicNetworkTestSupport {
         CompositeTopic compositeTopic = new CompositeTopic();
         compositeTopic.setName(name);
         compositeTopic.setForwardOnly(true);
-        compositeTopic.setForwardTo( Lists.newArrayList(forwardTo));
+        ArrayList<ActiveMQDestination> forwardToDestinations = new ArrayList<>();
+        for (ActiveMQDestination ft : forwardTo) {
+            forwardToDestinations.add(ft);
+        }
+        compositeTopic.setForwardTo(forwardToDestinations);
 
         return compositeTopic;
     }
@@ -1406,7 +1496,11 @@ public class VirtualConsumerDemandTest extends DynamicNetworkTestSupport {
         CompositeQueue compositeQueue = new CompositeQueue();
         compositeQueue.setName(name);
         compositeQueue.setForwardOnly(true);
-        compositeQueue.setForwardTo( Lists.newArrayList(forwardTo));
+        ArrayList<ActiveMQDestination> forwardToDestinations = new ArrayList<>();
+        for (ActiveMQDestination ft : forwardTo) {
+            forwardToDestinations.add(ft);
+        }
+        compositeQueue.setForwardTo(forwardToDestinations);
 
         return compositeQueue;
     }

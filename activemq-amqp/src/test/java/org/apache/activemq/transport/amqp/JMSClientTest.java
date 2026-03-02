@@ -31,25 +31,26 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
-import javax.jms.Connection;
-import javax.jms.DeliveryMode;
-import javax.jms.Destination;
-import javax.jms.ExceptionListener;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageListener;
-import javax.jms.MessageProducer;
-import javax.jms.Queue;
-import javax.jms.QueueBrowser;
-import javax.jms.Session;
-import javax.jms.TemporaryQueue;
-import javax.jms.TemporaryTopic;
-import javax.jms.TextMessage;
-import javax.jms.Topic;
-import javax.jms.TopicConnection;
-import javax.jms.TopicSession;
-import javax.jms.TopicSubscriber;
+import jakarta.jms.Connection;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Destination;
+import jakarta.jms.ExceptionListener;
+import jakarta.jms.JMSException;
+import jakarta.jms.MapMessage;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageListener;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.QueueBrowser;
+import jakarta.jms.Session;
+import jakarta.jms.TemporaryQueue;
+import jakarta.jms.TemporaryTopic;
+import jakarta.jms.TextMessage;
+import jakarta.jms.Topic;
+import jakarta.jms.TopicConnection;
+import jakarta.jms.TopicSession;
+import jakarta.jms.TopicSubscriber;
 
 import org.apache.activemq.broker.jmx.BrokerView;
 import org.apache.activemq.broker.jmx.BrokerViewMBean;
@@ -60,10 +61,12 @@ import org.apache.activemq.transport.amqp.joram.ActiveMQAdmin;
 import org.apache.activemq.util.Wait;
 import org.apache.qpid.jms.JmsConnectionFactory;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 import org.objectweb.jtests.jms.framework.TestConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+@Category(ParallelTest.class)
 public class JMSClientTest extends JMSClientTestSupport {
 
     protected static final Logger LOG = LoggerFactory.getLogger(JMSClientTest.class);
@@ -96,6 +99,33 @@ public class JMSClientTest extends JMSClientTestSupport {
             Message msg = consumer.receive(TestConfig.TIMEOUT);
             assertNotNull(msg);
             assertTrue(msg instanceof TextMessage);
+        }
+    }
+
+    @Test(timeout = 60000)
+    public void testSendJMSMapMessage() throws Exception {
+        ActiveMQAdmin.enableJMSFrameTracing();
+
+        connection = createConnection();
+        {
+            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            assertNotNull(session);
+            Queue queue = session.createQueue(name.getMethodName());
+            MessageProducer producer = session.createProducer(queue);
+            MapMessage message = session.createMapMessage();
+            message.setBoolean("Boolean", false);
+            message.setString("STRING", "TEST");
+            producer.send(message);
+            QueueViewMBean proxy = getProxyToQueue(name.getMethodName());
+            assertEquals(1, proxy.getQueueSize());
+
+            MessageConsumer consumer = session.createConsumer(queue);
+            Message received = consumer.receive(5000);
+            assertNotNull(received);
+            assertTrue(received instanceof MapMessage);
+            MapMessage map = (MapMessage) received;
+            assertEquals("TEST", map.getString("STRING"));
+            assertEquals(false, map.getBooleanProperty("Boolean"));
         }
     }
 
@@ -603,7 +633,7 @@ public class JMSClientTest extends JMSClientTestSupport {
     @Test(timeout=30 * 1000)
     public void testProduceAndConsumeLargeNumbersOfMessages() throws Exception {
         int count = 1000;
-        connection = createConnection();
+        connection = createConnectionWithRetry(name.toString(), false);
         Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
         Queue queue = session.createQueue(getDestinationName());
         connection.start();

@@ -17,22 +17,44 @@
 package org.apache.activemq.store.jdbc;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.io.PrintWriter;
+import java.net.Socket;
+import java.rmi.registry.Registry;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
-import javax.jms.Connection;
+import jakarta.jms.Connection;
+import javax.management.*;
+import javax.management.loading.ClassLoaderRepository;
+import javax.management.remote.JMXConnectorServer;
+import javax.management.remote.JMXConnectorServerFactory;
+import javax.management.remote.JMXServiceURL;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.ft.SyncCreateDataSource;
+import org.apache.activemq.broker.jmx.ManagementContext;
 import org.apache.activemq.bugs.embedded.ThreadExplorer;
+import org.apache.activemq.util.DefaultTestAppender;
 import org.apache.activemq.util.IOHelper;
 import org.apache.activemq.util.LeaseLockerIOExceptionHandler;
 import org.apache.activemq.util.Wait;
 import org.apache.derby.jdbc.EmbeddedDataSource;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.Property;
+import org.apache.logging.log4j.core.filter.AbstractFilter;
+import org.apache.logging.log4j.core.layout.MessageLayout;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -104,7 +126,34 @@ public class JDBCIOExceptionHandlerTest {
 
     @Test
     public void testStartWithDatabaseDown() throws Exception {
+        final AtomicBoolean connectorStarted = new AtomicBoolean(false);
+        final AtomicBoolean connectorStopped = new AtomicBoolean(false);
+
+        // start new
+        final var rootLogger = org.apache.logging.log4j.core.Logger.class.cast(LogManager.getRootLogger());
+        final var appender = new AbstractAppender("testAppender", new AbstractFilter() {}, new MessageLayout(), false, new Property[0]) {
+            @Override
+            public void append(LogEvent event) {
+                if (event.getMessage().getFormattedMessage().startsWith("JMX consoles can connect to")) {
+                    connectorStarted.set(true);
+                }
+
+                if (event.getMessage().getFormattedMessage().equals("Stopping jmx connector")) {
+                    connectorStopped.set(true);
+                }
+            }
+        };
+        appender.start();
+
+        Level previousLevel = rootLogger.getLevel();
+        rootLogger.get().addAppender(appender, Level.DEBUG, new AbstractFilter() {});
+        rootLogger.addAppender(appender);
+        rootLogger.setLevel(Level.DEBUG);
+        // end new
+
         BrokerService broker = new BrokerService();
+        broker.getManagementContext().setCreateConnector(true);
+        broker.getManagementContext().setCreateMBeanServer(true);
 
         JDBCPersistenceAdapter jdbc = new JDBCPersistenceAdapter();
         EmbeddedDataSource embeddedDataSource = (EmbeddedDataSource) jdbc.getDataSource();
@@ -137,9 +186,16 @@ public class JDBCIOExceptionHandlerTest {
                     fail("IOExceptionHanlder still active");
                 }
             }
+
+            if (connectorStarted.get() && !connectorStopped.get()) {
+                fail("JMX Server Connector should have been stopped!");
+            }
+
         } finally {
             dataSource = null;
             broker = null;
+            rootLogger.removeAppender(appender);
+            rootLogger.setLevel(previousLevel);
         }
     }
 

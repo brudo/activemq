@@ -30,6 +30,7 @@ import javax.net.SocketFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLEngineResult;
+import javax.net.ssl.SSLParameters;
 
 import org.apache.activemq.thread.TaskRunnerFactory;
 import org.apache.activemq.util.IOExceptionSupport;
@@ -89,6 +90,12 @@ public class AutoInitNioSSLTransport extends NIOSSLTransport {
                 sslEngine = sslContext.createSSLEngine();
             }
 
+            if (verifyHostName) {
+                SSLParameters sslParams = new SSLParameters();
+                sslParams.setEndpointIdentificationAlgorithm("HTTPS");
+                sslEngine.setSSLParameters(sslParams);
+            }
+
             sslEngine.setUseClientMode(false);
             if (enabledCipherSuites != null) {
                 sslEngine.setEnabledCipherSuites(enabledCipherSuites);
@@ -141,14 +148,8 @@ public class AutoInitNioSSLTransport extends NIOSSLTransport {
 
     private volatile byte[] readData;
 
-    private final AtomicInteger readSize = new AtomicInteger();
-
     public byte[] getReadData() {
         return readData != null ? readData : new byte[0];
-    }
-
-    public AtomicInteger getReadSize() {
-        return readSize;
     }
 
     @Override
@@ -162,6 +163,11 @@ public class AutoInitNioSSLTransport extends NIOSSLTransport {
             plain.position(plain.limit());
 
             while (true) {
+                //If the transport was already stopped then break
+                if (this.isStopped()) {
+                    return;
+                }
+
                 if (!plain.hasRemaining()) {
                     int readCount = secureRead(plain);
 
@@ -175,14 +181,13 @@ public class AutoInitNioSSLTransport extends NIOSSLTransport {
                         break;
                     }
 
-                    receiveCounter += readCount;
-                    readSize.addAndGet(readCount);
+                    receiveCounter.addAndGet(readCount);
                 }
 
                 if (status == SSLEngineResult.Status.OK && handshakeStatus != SSLEngineResult.HandshakeStatus.NEED_UNWRAP) {
                     processCommand(plain);
                     //we have received enough bytes to detect the protocol
-                    if (receiveCounter >= 8) {
+                    if (receiveCounter.get() >= 8) {
                         break;
                     }
                 }
@@ -196,7 +201,7 @@ public class AutoInitNioSSLTransport extends NIOSSLTransport {
 
     @Override
     protected void processCommand(ByteBuffer plain) throws Exception {
-        ByteBuffer newBuffer = ByteBuffer.allocate(receiveCounter);
+        ByteBuffer newBuffer = ByteBuffer.allocate(receiveCounter.get());
         if (readData != null) {
             newBuffer.put(readData);
         }

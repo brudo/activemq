@@ -19,11 +19,15 @@ package org.apache.activemq.transport.mqtt;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
+import java.io.IOException;
+import java.net.ProtocolException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.activemq.util.ByteSequence;
 import org.fusesource.hawtbuf.Buffer;
 import org.fusesource.hawtbuf.DataByteArrayInputStream;
 import org.fusesource.hawtbuf.DataByteArrayOutputStream;
@@ -34,6 +38,7 @@ import org.fusesource.mqtt.codec.CONNECT;
 import org.fusesource.mqtt.codec.MQTTFrame;
 import org.fusesource.mqtt.codec.PUBLISH;
 import org.fusesource.mqtt.codec.SUBSCRIBE;
+import org.fusesource.mqtt.codec.UNSUBSCRIBE;
 import org.junit.Before;
 import org.junit.Test;
 import org.slf4j.Logger;
@@ -255,6 +260,28 @@ public class MQTTCodecTest {
     }
 
     @Test
+    public void testMessageDecodingCorrupted() throws Exception {
+        UNSUBSCRIBE unsubscribe = new UNSUBSCRIBE();
+
+        MQTTFrame frame = unsubscribe.encode();
+
+        DataByteArrayOutputStream str = new DataByteArrayOutputStream(5);
+        str.write(new byte[] {0,0,0,0,0});
+
+        frame.buffers[0] = str.toBuffer();
+
+        boolean decodingFailed = false;
+        try {
+            unsubscribe.decode(frame);
+        } catch (ProtocolException pe) {
+            decodingFailed = true;
+        }
+        if (!decodingFailed) {
+            fail("Should have failed decoding the frame");
+        }
+    }
+
+    @Test
     public void testMessageDecodingPerformance() throws Exception {
 
         byte[] CONTENTS = new byte[MESSAGE_SIZE];
@@ -289,4 +316,50 @@ public class MQTTCodecTest {
 
         LOG.info("Total time to process: {}", TimeUnit.MILLISECONDS.toSeconds(duration));
     }
+
+    @Test
+    public void testParseInvalidRemainingLengthField() throws Exception {
+        try {
+            // The maximum bytes in the remaining length field is 4
+            // The most significant bit is used to indicate that there are following bytes in the representation.
+            // If the most significant digit is a 1 in byte 4 that is an error and invalid length field
+            final Buffer buffer = new Buffer(new byte[]{CONNECT.TYPE, (byte) 0x81, (byte) 0x81,
+                    (byte) 0x81, (byte) 0x81});
+            final DataByteArrayInputStream input = new DataByteArrayInputStream(buffer);
+            codec.parse(input, buffer.length());
+            fail("Parsing should have failed invalid remaining length field");
+        } catch (IOException e) {
+            // expected
+            assertEquals("Remaining length exceeds 4 bytes", e.getMessage());
+        }
+    }
+
+    @Test
+    public void testPartialReadInvalidRemainingLengthField() throws Exception {
+        // Test Invalid remaining field checking still works with partial reads
+        Buffer buffer = new Buffer(new byte[]{CONNECT.TYPE, (byte) 0x81, (byte) 0x81});
+        codec.parse(new DataByteArrayInputStream(buffer), buffer.length());
+        try {
+            buffer = new Buffer(new byte[]{(byte) 0x81, (byte) 0x81});
+            codec.parse(new DataByteArrayInputStream(buffer), buffer.length());
+            fail("Parsing should have failed invalid remaining length field");
+        } catch (IOException e) {
+            // expected
+            assertEquals("Remaining length exceeds 4 bytes", e.getMessage());
+        }
+    }
+
+    @Test
+    public void testUnmarshalInvalidRemainingLengthField() {
+        try {
+            // Test Invalid remaining field checking using the marshaller
+            wireFormat.unmarshal(new ByteSequence(new byte[]{CONNECT.TYPE, (byte) 0x81, (byte) 0x81,
+                    (byte) 0x81, (byte) 0x81}));
+            fail("Parsing should have failed invalid remaining length field");
+        } catch (IOException e) {
+            // expected
+            assertEquals("Remaining length exceeds 4 bytes", e.getMessage());
+        }
+    }
+
 }

@@ -16,11 +16,11 @@
  */
 package org.apache.activemq.bugs;
 
-import javax.jms.BytesMessage;
-import javax.jms.DeliveryMode;
-import javax.jms.MessageProducer;
-import javax.jms.Queue;
-import javax.jms.Session;
+import jakarta.jms.BytesMessage;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
 
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.ActiveMQConnectionFactory;
@@ -28,9 +28,12 @@ import org.apache.activemq.broker.BrokerService;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+@Category(ParallelTest.class)
 public class AMQ5822Test {
 
     private static final Logger LOG = LoggerFactory.getLogger(AMQ5822Test.class);

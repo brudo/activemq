@@ -21,7 +21,7 @@ import java.util.Vector;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import javax.jms.ConnectionMetaData;
+import jakarta.jms.ConnectionMetaData;
 
 /**
  * A <CODE>ConnectionMetaData</CODE> object provides information describing
@@ -33,6 +33,7 @@ public final class ActiveMQConnectionMetaData implements ConnectionMetaData {
     public static final int PROVIDER_MAJOR_VERSION;
     public static final int PROVIDER_MINOR_VERSION;
     public static final String PROVIDER_NAME = "ActiveMQ";
+    public static final String DEFAULT_PLATFORM_DETAILS = "Java";
     public static final String PLATFORM_DETAILS;
 
     public static final ActiveMQConnectionMetaData INSTANCE = new ActiveMQConnectionMetaData();
@@ -42,7 +43,7 @@ public final class ActiveMQConnectionMetaData implements ConnectionMetaData {
         int major = 0;
         int minor = 0;
         try {
-            Package p = Package.getPackage("org.apache.activemq");
+            Package p = ActiveMQConnectionMetaData.class.getPackage();
             if (p != null) {
                 version = p.getImplementationVersion();
                 if (version != null) {

@@ -22,9 +22,12 @@ import org.apache.activemq.EmbeddedBrokerTestSupport;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.TransportConnector;
 
-import javax.jms.*;
+import jakarta.jms.*;
 import java.net.URI;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class DiscoveryUriTest extends EmbeddedBrokerTestSupport {
 
     @Override

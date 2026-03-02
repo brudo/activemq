@@ -29,7 +29,10 @@ import org.apache.activemq.command.Message;
 import org.apache.activemq.command.ProducerInfo;
 import org.apache.activemq.command.RemoveInfo;
 import org.apache.activemq.command.SessionInfo;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class AdvisoryBrokerTest extends BrokerTestSupport {
      
     public void testConnectionAdvisories() throws Exception {
@@ -132,12 +135,12 @@ public class AdvisoryBrokerTest extends BrokerTestSupport {
 
         ActiveMQDestination queue = new ActiveMQQueue("test");
         ActiveMQDestination destination = AdvisorySupport.getConsumerAdvisoryTopic(queue);
-        
+
         // Setup a first connection
         StubConnection connection1 = createConnection();
         ConnectionInfo connectionInfo1 = createConnectionInfo();
         SessionInfo sessionInfo1 = createSessionInfo(connectionInfo1);
-        
+
         connection1.send(connectionInfo1);
         connection1.send(sessionInfo1);
 
@@ -146,12 +149,15 @@ public class AdvisoryBrokerTest extends BrokerTestSupport {
         ConnectionInfo connectionInfo2 = createConnectionInfo();
         SessionInfo sessionInfo2 = createSessionInfo(connectionInfo2);
         ConsumerInfo consumerInfo2 = createConsumerInfo(sessionInfo2, queue);
-        consumerInfo2.setPrefetchSize(100);        
+        consumerInfo2.setPrefetchSize(100);
         connection2.send(connectionInfo2);
         connection2.send(sessionInfo2);
-        connection2.send(consumerInfo2);
-        
-        // We should get an advisory of the previous consumer.        
+        // Use request() to ensure consumer is fully registered and its "new consumer"
+        // advisory is fired before we create the advisory consumer. This prevents a race
+        // where the advisory consumer could receive both a replay AND the broadcast advisory.
+        connection2.request(consumerInfo2);
+
+        // We should get an advisory of the previous consumer.
         ConsumerInfo consumerInfo1 = createConsumerInfo(sessionInfo1, destination);
         consumerInfo1.setPrefetchSize(100);
         connection1.send(consumerInfo1);
@@ -174,7 +180,6 @@ public class AdvisoryBrokerTest extends BrokerTestSupport {
         
         assertNoMessagesLeft(connection2);
     }
-
 
     public void testProducerAdvisories() throws Exception {
 
@@ -244,12 +249,15 @@ public class AdvisoryBrokerTest extends BrokerTestSupport {
         SessionInfo sessionInfo2 = createSessionInfo(connectionInfo2);
         ProducerInfo producerInfo2 = createProducerInfo(sessionInfo2);
         producerInfo2.setDestination(queue);
-        
+
         connection2.send(connectionInfo2);
         connection2.send(sessionInfo2);
-        connection2.send(producerInfo2);
-        
-        // Create the advisory consumer.. it should see the previous producer        
+        // Use request() to ensure producer is fully registered and its "new producer"
+        // advisory is fired before we create the advisory consumer. This prevents a race
+        // where the advisory consumer could receive both a replay AND the broadcast advisory.
+        connection2.request(producerInfo2);
+
+        // Create the advisory consumer.. it should see the previous producer
         ConsumerInfo consumerInfo1 = createConsumerInfo(sessionInfo1, destination);
         consumerInfo1.setPrefetchSize(100);
         connection1.send(consumerInfo1);
@@ -317,6 +325,105 @@ public class AdvisoryBrokerTest extends BrokerTestSupport {
 
         // But the first consumer should not see the replay.
         assertNoMessagesLeft(connection1);
+    }
+
+    public void testAnonymousProducerAdvisoriesTrue() throws Exception {
+        //turn on support for anonymous producers
+        broker.setAnonymousProducerAdvisorySupport(true);
+
+        ActiveMQDestination destination = AdvisorySupport.getProducerAdvisoryTopic(null);
+        assertEquals(AdvisorySupport.ANONYMOUS_PRODUCER_ADVISORY_TOPIC_PREFIX, destination.getPhysicalName());
+
+        // Setup a first connection
+        StubConnection connection1 = createConnection();
+        ConnectionInfo connectionInfo1 = createConnectionInfo();
+        SessionInfo sessionInfo1 = createSessionInfo(connectionInfo1);
+        ConsumerInfo consumerInfo1 = createConsumerInfo(sessionInfo1, destination);
+        consumerInfo1.setPrefetchSize(100);
+
+        connection1.send(connectionInfo1);
+        connection1.send(sessionInfo1);
+        connection1.send(consumerInfo1);
+
+        assertNoMessagesLeft(connection1);
+
+        // Setup a producer.
+        StubConnection connection2 = createConnection();
+        ConnectionInfo connectionInfo2 = createConnectionInfo();
+        SessionInfo sessionInfo2 = createSessionInfo(connectionInfo2);
+        ProducerInfo producerInfo2 = createProducerInfo(sessionInfo2);
+        //don't set a destination
+
+        connection2.send(connectionInfo2);
+        connection2.send(sessionInfo2);
+        connection2.send(producerInfo2);
+
+        // We should get an advisory of the new produver.
+        Message m1 = receiveMessage(connection1);
+        assertNotNull(m1);
+        assertNotNull(m1.getDataStructure());
+        assertEquals(((ProducerInfo)m1.getDataStructure()).getProducerId(), producerInfo2.getProducerId());
+        assertEquals(AdvisorySupport.ANONYMOUS_PRODUCER_ADVISORY_TOPIC_PREFIX, m1.getDestination().getPhysicalName());
+
+        // Close the second connection.
+        connection2.request(closeConnectionInfo(connectionInfo2));
+        connection2.stop();
+
+        // We should get an advisory of the producer closing
+        m1 = receiveMessage(connection1);
+        assertNotNull(m1);
+        assertNotNull(m1.getDataStructure());
+        RemoveInfo r = (RemoveInfo) m1.getDataStructure();
+        assertEquals(r.getObjectId(), producerInfo2.getProducerId());
+        assertEquals(AdvisorySupport.ANONYMOUS_PRODUCER_ADVISORY_TOPIC_PREFIX, m1.getDestination().getPhysicalName());
+
+        assertNoMessagesLeft(connection2);
+    }
+
+    public void testAnonymousProducerAdvisoriesFalse() throws Exception {
+        broker.setAnonymousProducerAdvisorySupport(false);
+
+        assertAnonymousProducerAdvisoriesOff();
+    }
+
+    public void testAnonymousProducerAdvisoriesDefault() throws Exception {
+        //Default for now is to have anonymous producer advisories turned off
+        assertAnonymousProducerAdvisoriesOff();
+    }
+
+    private void assertAnonymousProducerAdvisoriesOff() throws Exception {
+        ActiveMQDestination destination = AdvisorySupport.getProducerAdvisoryTopic(null);
+        assertEquals(AdvisorySupport.ANONYMOUS_PRODUCER_ADVISORY_TOPIC_PREFIX, destination.getPhysicalName());
+
+        // Setup a first connection
+        StubConnection connection1 = createConnection();
+        ConnectionInfo connectionInfo1 = createConnectionInfo();
+        SessionInfo sessionInfo1 = createSessionInfo(connectionInfo1);
+        ConsumerInfo consumerInfo1 = createConsumerInfo(sessionInfo1, destination);
+        consumerInfo1.setPrefetchSize(100);
+
+        connection1.send(connectionInfo1);
+        connection1.send(sessionInfo1);
+        connection1.send(consumerInfo1);
+
+        assertNoMessagesLeft(connection1);
+
+        // Setup a producer.
+        StubConnection connection2 = createConnection();
+        ConnectionInfo connectionInfo2 = createConnectionInfo();
+        SessionInfo sessionInfo2 = createSessionInfo(connectionInfo2);
+        ProducerInfo producerInfo2 = createProducerInfo(sessionInfo2);
+        //don't set a destination
+
+        connection2.send(connectionInfo2);
+        connection2.send(sessionInfo2);
+        connection2.send(producerInfo2);
+
+        // We should get an advisory of the new produver.
+        Message m1 = receiveMessage(connection1, 1000);
+        assertNull(m1);
+
+        assertNoMessagesLeft(connection2);
     }
 
     public static Test suite() {

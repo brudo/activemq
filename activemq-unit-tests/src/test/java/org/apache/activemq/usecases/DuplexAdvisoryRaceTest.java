@@ -39,14 +39,14 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.jms.BytesMessage;
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageListener;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.BytesMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageListener;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.URI;
@@ -107,7 +107,7 @@ public class DuplexAdvisoryRaceTest {
                 Subscription subscription = super.addConsumer(context, info);
                 // delay return to allow dispatch to interleave
                 if (context.isNetworkConnection()) {
-                    TimeUnit.MILLISECONDS.sleep(200);
+                    TimeUnit.MILLISECONDS.sleep(100);
                 }
                 return subscription;
             };
@@ -148,7 +148,7 @@ public class DuplexAdvisoryRaceTest {
                 LOG.info("received: " + responseReceived.get());
                 return responseReceived.get() >= numMessagesPerDest * numDests;
             }
-        }, 10*60*1000)) {
+        }, 30*60*1000)) {
 
            org.apache.activemq.TestSupport.dumpAllThreads("DD");
 

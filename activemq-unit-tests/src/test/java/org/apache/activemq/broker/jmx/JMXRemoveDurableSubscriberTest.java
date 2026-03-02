@@ -30,9 +30,11 @@ import org.apache.activemq.security.AuthorizationMap;
 import org.apache.activemq.security.AuthorizationPlugin;
 import org.apache.activemq.security.DefaultAuthorizationMap;
 import org.apache.activemq.security.JaasAuthenticationPlugin;
+import org.apache.activemq.test.annotations.ParallelTest;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,6 +43,7 @@ import org.slf4j.LoggerFactory;
  * brokerServer.getAdminView() when JAAS authentication and authorization are
  * setup
  */
+@Category(ParallelTest.class)
 public class JMXRemoveDurableSubscriberTest {
 
     private static final Logger LOG = LoggerFactory.getLogger(JMXRemoveDurableSubscriberTest.class);
@@ -156,7 +159,7 @@ public class JMXRemoveDurableSubscriberTest {
         try {
             brokerService.getAdminView().destroyDurableSubscriber(clientId, subscriberName);
             LOG.info("Successfully destroyed durable subscriber " + subscriberName + " via AdminView");
-        } catch (javax.jms.InvalidDestinationException t) {
+        } catch (jakarta.jms.InvalidDestinationException t) {
             if (t.getMessage().equals("No durable subscription exists for clientID: 10 and subscriptionName: testSubscriber")) {
                 subscriberAlreadyDeleted = true;
             }

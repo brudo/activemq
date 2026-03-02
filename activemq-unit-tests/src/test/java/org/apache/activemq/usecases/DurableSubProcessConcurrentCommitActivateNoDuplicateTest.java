@@ -30,12 +30,12 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.ActiveMQConnectionFactory;
@@ -45,7 +45,6 @@ import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.region.policy.PolicyEntry;
 import org.apache.activemq.broker.region.policy.PolicyMap;
 import org.apache.activemq.command.ActiveMQTopic;
-import org.apache.activemq.leveldb.LevelDBStore;
 import org.apache.activemq.store.kahadb.KahaDBPersistenceAdapter;
 import org.apache.activemq.util.ThreadTracker;
 import org.junit.After;
@@ -849,7 +848,7 @@ public class DurableSubProcessConcurrentCommitActivateNoDuplicateTest {
     }
 
     private enum Persistence {
-        MEMORY, LEVELDB, KAHADB
+        MEMORY, KAHADB
     }
 
     private void startBroker() throws Exception {
@@ -868,17 +867,6 @@ public class DurableSubProcessConcurrentCommitActivateNoDuplicateTest {
         switch (PERSISTENT_ADAPTER) {
         case MEMORY:
             broker.setPersistent(false);
-            break;
-
-        case LEVELDB:
-            File amqData = new File("activemq-data/" + getName() + "-leveldb");
-            if (deleteAllMessages)
-                delete(amqData);
-
-            broker.setPersistent(true);
-            LevelDBStore amq = new LevelDBStore();
-            amq.setDirectory(amqData);
-            broker.setPersistenceAdapter(amq);
             break;
 
         case KAHADB:

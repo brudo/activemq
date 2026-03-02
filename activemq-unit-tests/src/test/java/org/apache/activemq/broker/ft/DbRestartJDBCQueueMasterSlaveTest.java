@@ -20,13 +20,13 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TransactionRolledBackException;
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.TransactionRolledBackException;
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.command.ActiveMQMessage;
@@ -45,6 +45,7 @@ public class DbRestartJDBCQueueMasterSlaveTest extends JDBCQueueMasterSlaveTest 
             LOG.info("STOPPING DB!@!!!!");
             final EmbeddedDataSource ds = ((SyncCreateDataSource)getExistingDataSource()).getDelegate();
             ds.setShutdownDatabase("shutdown");
+            ds.setCreateDatabase("not_any_more");
             LOG.info("DB STOPPED!@!!!!");
             
             Thread dbRestartThread = new Thread("db-re-start-thread") {

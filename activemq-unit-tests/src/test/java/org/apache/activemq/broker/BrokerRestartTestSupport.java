@@ -22,6 +22,8 @@ import java.net.URISyntaxException;
 
 import org.apache.activemq.util.IOHelper;
 
+
+
 public class BrokerRestartTestSupport extends BrokerTestSupport {
 
     @Override
@@ -58,10 +60,13 @@ public class BrokerRestartTestSupport extends BrokerTestSupport {
      * @throws URISyntaxException
      */
     protected void restartBroker() throws Exception {
-        broker.stop();
-        broker.waitUntilStopped();
-        broker = createRestartedBroker();
+        stopBroker();
         broker.start();
     }
 
+    protected void stopBroker() throws Exception {
+        broker.stop();
+        broker.waitUntilStopped();
+        broker = createRestartedBroker();
+    }
 }

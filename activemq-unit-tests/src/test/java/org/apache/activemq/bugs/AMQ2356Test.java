@@ -18,14 +18,14 @@ package org.apache.activemq.bugs;
 
 import java.io.File;
 
-import javax.jms.BytesMessage;
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.BytesMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 
 import junit.framework.TestCase;
 
@@ -59,6 +59,9 @@ import org.apache.activemq.store.kahadb.KahaDBStore;
  The first pair usually gets through their 100 messages and disconnect, at which point all the other pairs have
  deadlocked at less than 30 messages each.
  */
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
+@Category(ParallelTest.class)
 public class AMQ2356Test extends TestCase {
     protected static final int MESSAGE_COUNT = 1000;
     protected static final int NUMBER_OF_PAIRS = 10;

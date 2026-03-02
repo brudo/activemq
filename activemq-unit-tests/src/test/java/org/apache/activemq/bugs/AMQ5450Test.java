@@ -19,10 +19,10 @@ package org.apache.activemq.bugs;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
-import javax.jms.Connection;
-import javax.jms.JMSException;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.region.Destination;
@@ -33,12 +33,15 @@ import org.apache.activemq.store.kahadb.KahaDBPersistenceAdapter;
 import org.apache.activemq.store.kahadb.MultiKahaDBPersistenceAdapter;
 import org.junit.After;
 import org.junit.Test;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 
 import static org.junit.Assert.*;
 
+@Category(ParallelTest.class)
 public class AMQ5450Test {
 
     static final Logger LOG = LoggerFactory.getLogger(AMQ5450Test.class);

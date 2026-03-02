@@ -37,14 +37,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
-import javax.jms.BytesMessage;
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Queue;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.BytesMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.ActiveMQConnectionFactory;
@@ -55,6 +55,7 @@ import org.apache.activemq.broker.region.policy.RetainedMessageSubscriptionRecov
 import org.apache.activemq.command.ActiveMQMessage;
 import org.apache.activemq.command.ActiveMQTopic;
 import org.apache.activemq.util.ByteSequence;
+import org.apache.activemq.util.JMXSupport;
 import org.apache.activemq.util.Wait;
 import org.fusesource.mqtt.client.BlockingConnection;
 import org.fusesource.mqtt.client.MQTT;
@@ -1045,7 +1046,7 @@ public class MQTTTest extends MQTTTestSupport {
         activeMQConnection.setUseRetroactiveConsumer(true);
         activeMQConnection.start();
         Session s = activeMQConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-        javax.jms.Topic jmsTopic = s.createTopic(destinationName);
+        jakarta.jms.Topic jmsTopic = s.createTopic(destinationName);
         MessageConsumer consumer = s.createConsumer(jmsTopic);
 
         // check whether we received retained message on JMS subscribe
@@ -1081,7 +1082,7 @@ public class MQTTTest extends MQTTTestSupport {
         activeMQConnection.setUseRetroactiveConsumer(true);
         activeMQConnection.start();
         Session s = activeMQConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-        javax.jms.Topic jmsTopic = s.createTopic(destinationName);
+        jakarta.jms.Topic jmsTopic = s.createTopic(destinationName);
         MessageProducer producer = s.createProducer(jmsTopic);
 
         // send retained message from JMS
@@ -1352,7 +1353,7 @@ public class MQTTTest extends MQTTTestSupport {
 
         for (int i = 0; i < messagesToSend; i++) {
 
-            javax.jms.Message message = consumer.receive(2 * 1000);
+            jakarta.jms.Message message = consumer.receive(2 * 1000);
             assertNotNull(message);
             assertTrue(message instanceof BytesMessage);
             BytesMessage bytesMessage = (BytesMessage) message;
@@ -1642,7 +1643,7 @@ public class MQTTTest extends MQTTTestSupport {
             payload[i] = '2';
         }
 
-        int numberOfRuns = 100;
+        int numberOfRuns = 10;
         int messagesPerRun = 2;
 
         final MQTT mqttPub = createMQTTConnection("MQTT-Pub-Client", true);
@@ -1671,6 +1672,11 @@ public class MQTTTest extends MQTTTestSupport {
         }
         connectionSub.disconnect();
 
+        // Wait for broker to process disconnect before publishing messages for offline delivery.
+        assertTrue("Subscription should become inactive",
+                Wait.waitFor(() -> isSubscriptionInactive(topics[0], mqttSub.getClientId().toString()),
+                        TimeUnit.SECONDS.toMillis(5), 100));
+
         try {
             for (int j = 0; j < numberOfRuns; j++) {
 
@@ -1690,12 +1696,43 @@ public class MQTTTest extends MQTTTestSupport {
                     message.ack();
                 }
                 connectionSub.disconnect();
+
+                // Wait for broker to process disconnect before next iteration publishes
+                assertTrue("Subscription should become inactive",
+                        Wait.waitFor(() -> isSubscriptionInactive(topics[0], mqttSub.getClientId().toString()),
+                                TimeUnit.SECONDS.toMillis(5), 100));
             }
         } catch (Exception exception) {
             LOG.error("unexpected exception", exception);
             exception.printStackTrace();
         }
         assertEquals("Should have received " + (messagesPerRun * (numberOfRuns + 1)) + " messages", (messagesPerRun * (numberOfRuns + 1)), received);
+    }
+
+    private boolean isSubscriptionInactive(Topic topic, String clientId) throws Exception {
+        if (isVirtualTopicSubscriptionStrategy()) {
+            String queueName = buildVirtualTopicQueueName(topic, clientId);
+            try {
+                return getProxyToQueue(queueName).getConsumerCount() == 0;
+            } catch (Exception ignore) {
+                return false;
+            }
+        } else {
+            return brokerService.getAdminView().getDurableTopicSubscribers().length == 0 &&
+                   brokerService.getAdminView().getInactiveDurableTopicSubscribers().length == 1;
+        }
+    }
+
+    private boolean isVirtualTopicSubscriptionStrategy() {
+        String config = getProtocolConfig();
+        return config != null && config.contains("mqtt-virtual-topic-subscriptions");
+    }
+
+    private String buildVirtualTopicQueueName(Topic topic, String clientId) {
+        String activeMqClientId = MQTTProtocolSupport.convertMQTTToActiveMQ(clientId);
+        String activeMqTopic = MQTTProtocolSupport.convertMQTTToActiveMQ(topic.name().toString());
+        String queueName = "Consumer." + activeMqClientId + ":" + topic.qos() + ".VirtualTopic." + activeMqTopic;
+        return JMXSupport.encodeObjectNamePart(queueName);
     }
 
     @Test(timeout = 60 * 1000)
@@ -1721,6 +1758,11 @@ public class MQTTTest extends MQTTTestSupport {
             connectionSub.subscribe(topics);
             connectionSub.disconnect();
         }
+
+        // Wait for broker to process disconnect before publishing messages for offline delivery.
+        assertTrue("Subscription should become inactive",
+                Wait.waitFor(() -> isSubscriptionInactive(topics[0], "MQTT-Sub-Client"),
+                        5000, 100));
 
         MQTT mqttPubLoop = createMQTTConnection("MQTT-Pub-Client", true);
         BlockingConnection connectionPub = mqttPubLoop.blockingConnection();

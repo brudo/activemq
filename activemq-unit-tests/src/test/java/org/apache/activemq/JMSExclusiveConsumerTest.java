@@ -16,20 +16,23 @@
  */
 package org.apache.activemq;
 
-import javax.jms.DeliveryMode;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 
 import junit.framework.Test;
 import org.apache.activemq.command.ActiveMQQueue;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  * Test cases used to test the JMS message exclusive consumers.
  * 
  * 
  */
+@Category(ParallelTest.class)
 public class JMSExclusiveConsumerTest extends JmsTestSupport {
 
     public int deliveryMode;
@@ -43,7 +46,7 @@ public class JMSExclusiveConsumerTest extends JmsTestSupport {
     }
 
     public void initCombosForTestRoundRobinDispatchOnNonExclusive() {
-        addCombinationValues("deliveryMode", new Object[] {Integer.valueOf(DeliveryMode.NON_PERSISTENT), Integer.valueOf(DeliveryMode.PERSISTENT)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT, DeliveryMode.PERSISTENT});
     }
 
     /**
@@ -80,7 +83,7 @@ public class JMSExclusiveConsumerTest extends JmsTestSupport {
     }
 
     public void initCombosForTestDispatchExclusive() {
-        addCombinationValues("deliveryMode", new Object[] {Integer.valueOf(DeliveryMode.NON_PERSISTENT), Integer.valueOf(DeliveryMode.PERSISTENT)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT, DeliveryMode.PERSISTENT});
     }
 
     /**

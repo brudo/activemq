@@ -22,9 +22,9 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.JMSException;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.JMSException;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 
@@ -250,7 +250,7 @@ public abstract class AbstractAmqCommand extends AbstractCommand {
         if (passwordFactory == null && passwordFactoryClassString != null) {
             try {
                 Class klass = Class.forName(passwordFactoryClassString);
-                passwordFactory = (PasswordFactory) klass.newInstance();
+                passwordFactory = PasswordFactory.class.cast(klass.getConstructor().newInstance());
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }

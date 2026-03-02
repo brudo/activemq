@@ -24,17 +24,17 @@ import java.io.Writer;
 import java.lang.management.ManagementFactory;
 import java.util.Date;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.DeliveryMode;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
-import javax.jms.Topic;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
+import jakarta.jms.Topic;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 
@@ -50,7 +50,10 @@ import org.apache.activemq.store.kahadb.KahaDBStore;
 import org.apache.activemq.util.Wait;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class DurableSubscriberNonPersistentMessageTest extends TestCase {
 
     private final Logger LOG = LoggerFactory.getLogger(DurableSubscriberNonPersistentMessageTest.class);
@@ -150,7 +153,7 @@ public class DurableSubscriberNonPersistentMessageTest extends TestCase {
                 public boolean isSatisified() throws Exception {
                     Integer pendingQueueSize = (Integer) mbeanServer.getAttribute(new ObjectName(theJmxObject), "PendingQueueSize");
                     LOG.info("pendingQueueSize = " + pendingQueueSize);
-                    return pendingQueueSize.intValue() == 0;
+                    return pendingQueueSize == 0;
                 }
             }));
 
@@ -159,7 +162,7 @@ public class DurableSubscriberNonPersistentMessageTest extends TestCase {
                 public boolean isSatisified() throws Exception {
                     Long cursorMemoryUsage = (Long) mbeanServer.getAttribute(new ObjectName(theJmxObject), "CursorMemoryUsage");
                     LOG.info("cursorMemoryUsage = " + cursorMemoryUsage);
-                    return cursorMemoryUsage.longValue() == 0L;
+                    return cursorMemoryUsage == 0L;
                 }
             }));
 

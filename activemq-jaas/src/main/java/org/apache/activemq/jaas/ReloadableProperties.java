@@ -24,6 +24,8 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,6 +35,7 @@ public class ReloadableProperties {
     private Properties props = new Properties();
     private Map<String, String> invertedProps;
     private Map<String, Set<String>> invertedValueProps;
+    private Map<String, Pattern> regexpProps;
     private long reloadTime = -1;
     private final PropertiesLoader.FileNameKey key;
 
@@ -46,18 +49,25 @@ public class ReloadableProperties {
 
     public synchronized ReloadableProperties obtained() {
         if (reloadTime < 0 || (key.isReload() && hasModificationAfter(reloadTime))) {
-            props = new Properties();
+            // Load into a local variable first to preserve old data if reload fails
+            // If we assigned 'props = new Properties()' first and load() throws IOException,
+            // we'd expose empty Properties. By loading into newProps first, we preserve the
+            // old data if the reload fails.
+            final Properties newProps = new Properties();
             try {
-                load(key.file(), props);
+                load(key.file(), newProps);
+                // Only assign to the instance field after successful load
+                props = newProps;
                 invertedProps = null;
                 invertedValueProps = null;
+                regexpProps = null;
                 if (key.isDebug()) {
-                    LOG.debug("Load of: " + key);
+                    LOG.debug("Load of: {}", key);
                 }
             } catch (IOException e) {
-                LOG.error("Failed to load: " + key + ", reason:" + e.getLocalizedMessage());
+                LOG.error("Failed to load: {}, reason:{}", key, e.getLocalizedMessage());
                 if (key.isDebug()) {
-                    LOG.debug("Load of: " + key + ", failure exception" + e);
+                    LOG.debug("Load of: {}, failure exception{}", key, e);
                 }
             }
             reloadTime = System.currentTimeMillis();
@@ -69,7 +79,10 @@ public class ReloadableProperties {
         if (invertedProps == null) {
             invertedProps = new HashMap<>(props.size());
             for (Map.Entry<Object, Object> val : props.entrySet()) {
-                invertedProps.put((String) val.getValue(), (String) val.getKey());
+                String str = (String) val.getValue();
+                if (!looksLikeRegexp(str)) {
+                    invertedProps.put(str, (String) val.getKey());
+                }
             }
         }
         return invertedProps;
@@ -93,15 +106,34 @@ public class ReloadableProperties {
         return invertedValueProps;
     }
 
+    public synchronized Map<String, Pattern> regexpPropertiesMap() {
+        if (regexpProps == null) {
+            regexpProps = new HashMap<>(props.size());
+            for (Map.Entry<Object, Object> val : props.entrySet()) {
+                String str = (String) val.getValue();
+                if (looksLikeRegexp(str)) {
+                    try {
+                        Pattern p = Pattern.compile(str.substring(1, str.length() - 1));
+                        regexpProps.put((String) val.getKey(), p);
+                    } catch (PatternSyntaxException e) {
+                        LOG.warn("Ignoring invalid regexp: " + str);
+                    }
+                }
+            }
+        }
+        return regexpProps;
+    }
+
     private void load(final File source, Properties props) throws IOException {
-        FileInputStream in = new FileInputStream(source);
+        final FileInputStream in = new FileInputStream(source);
         try {
             props.load(in);
             if (key.isDecrypt()) {
                 try {
-                    EncryptionSupport.decrypt(this.props);
+                    // Decrypt the parameter props, not this.props (which may be the old instance)
+                    EncryptionSupport.decrypt(props, key.getAlgorithm());
                 } catch (NoClassDefFoundError e) {
-                    // this Happens whe jasypt is not on the classpath..
+                    // this Happens when jasypt is not on the classpath..
                     key.setDecrypt(false);
                     LOG.info("jasypt is not on the classpath: password decryption disabled.");
                 }
@@ -114,6 +146,11 @@ public class ReloadableProperties {
 
     private boolean hasModificationAfter(long reloadTime) {
         return key.file.lastModified() > reloadTime;
+    }
+
+    private boolean looksLikeRegexp(String str) {
+        int len = str.length();
+        return len > 2 && str.charAt(0) == '/' && str.charAt(len - 1) == '/';
     }
 
 }

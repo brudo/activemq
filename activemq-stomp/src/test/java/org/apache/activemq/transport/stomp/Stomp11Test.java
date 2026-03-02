@@ -16,22 +16,17 @@
  */
 package org.apache.activemq.transport.stomp;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-
 import java.io.DataInputStream;
 import java.net.SocketTimeoutException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.Connection;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 import javax.management.ObjectName;
 
 import org.apache.activemq.broker.jmx.BrokerViewMBean;
@@ -43,6 +38,11 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.junit.Assert.*;
+
+import org.junit.experimental.categories.Category;
+
+@Category(ParallelTest.class)
 public class Stomp11Test extends StompTestSupport {
 
     private static final Logger LOG = LoggerFactory.getLogger(Stomp11Test.class);
@@ -565,13 +565,27 @@ public class Stomp11Test extends StompTestSupport {
                      received.getHeaders().get("message-id") + "\n\n" + Stomp.NULL;
         stompConnection.sendFrame(ack);
 
-        StompFrame error = stompConnection.receive();
-        LOG.info("Received Frame: {}", error);
-        assertTrue("Expected ERROR but got: " + error.getAction(), error.getAction().equals("ERROR"));
-
+        // Unsubscribe immediately after invalid ACK to prevent message redelivery
+        // while waiting for ERROR frame. This avoids race condition where message
+        // could be redelivered before ERROR is received.
         String unsub = "UNSUBSCRIBE\n" + "destination:/queue/" + getQueueName() + "\n" +
                        "id:12345\n\n" + Stomp.NULL;
         stompConnection.sendFrame(unsub);
+
+        // Receive frames until we get the ERROR frame, ignoring any MESSAGE frames
+        // that arrive due to redelivery (especially relevant for SSL transport)
+        // Use timeout to fail fast if ERROR frame never arrives
+        StompFrame error = null;
+        for (int i = 0; i < 5; i++) {
+            error = stompConnection.receive(TimeUnit.SECONDS.toMillis(5));
+            LOG.info("Received Frame: {}", error);
+            if (error != null && error.getAction().equals("ERROR")) {
+                break;
+            }
+            // If we get a MESSAGE, it's a redelivery - keep trying for ERROR
+        }
+        assertNotNull("Did not receive ERROR frame within timeout", error);
+        assertTrue("Expected ERROR but got: " + error.getAction(), error.getAction().equals("ERROR"));
     }
 
     @Test(timeout = 60000)
@@ -1206,6 +1220,44 @@ public class Stomp11Test extends StompTestSupport {
     @Test(timeout = 60000)
     public void testAckMessagesInTransactionOutOfOrderWithTXClientIndividualAck() throws Exception {
         doTestAckMessagesInTransactionOutOfOrderWithTXClientAck("client-individual");
+    }
+
+    @Test(timeout = 60000)
+    public void testFrameHeaderEscapes() throws Exception {
+        String connectFrame = "STOMP\n" +
+                "login:system\n" +
+                "passcode:manager\n" +
+                "accept-version:1.1\n" +
+                "host:localhost\n" +
+                "\n" + Stomp.NULL;
+        stompConnection.sendFrame(connectFrame);
+
+        String f = stompConnection.receiveFrame();
+        LOG.debug("Broker sent: " + f);
+
+        assertTrue(f.startsWith("CONNECTED"));
+
+        String frame = "SUBSCRIBE\n" + "destination:/queue/" + getQueueName() + "\n" +
+                "id:12345\n" +
+                "ack:auto\n\n" + Stomp.NULL;
+        stompConnection.sendFrame(frame);
+
+        String message = "SEND\n" + "destination:/queue/" + getQueueName() + "\n" +
+                "colon:\\c\n" +
+                "linefeed:\\n\n" +
+                "backslash:\\\\\n" +
+                "carriagereturn:\\r\n" +
+                "\n" + Stomp.NULL;
+        stompConnection.sendFrame(message);
+
+        frame = stompConnection.receiveFrame();
+
+        LOG.debug("Broker sent: " + frame);
+        assertTrue(frame.startsWith("MESSAGE"));
+        assertTrue(frame.contains("colon:\\c\n"));
+        assertTrue(frame.contains("linefeed:\\n\n"));
+        assertTrue(frame.contains("backslash:\\\\\n"));
+        assertFalse(frame.contains("carriagereturn:\\r\n"));
     }
 
     public void doTestAckMessagesInTransactionOutOfOrderWithTXClientAck(String ackMode) throws Exception {

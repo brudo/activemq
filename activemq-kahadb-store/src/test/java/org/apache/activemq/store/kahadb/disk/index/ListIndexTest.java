@@ -31,6 +31,7 @@ import java.util.LinkedList;
 import java.util.Map;
 import java.util.Random;
 
+import org.apache.activemq.store.kahadb.ParallelTest;
 import org.apache.activemq.store.kahadb.disk.page.PageFile;
 import org.apache.activemq.store.kahadb.disk.util.LongMarshaller;
 import org.apache.activemq.store.kahadb.disk.util.Sequence;
@@ -38,9 +39,11 @@ import org.apache.activemq.store.kahadb.disk.util.SequenceSet;
 import org.apache.activemq.store.kahadb.disk.util.StringMarshaller;
 import org.apache.activemq.store.kahadb.disk.util.VariableMarshaller;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+@Category(ParallelTest.class)
 public class ListIndexTest extends IndexTestSupport {
     private static final Logger LOG = LoggerFactory.getLogger(ListIndexTest.class);
     private NumberFormat nf;
@@ -57,12 +60,11 @@ public class ListIndexTest extends IndexTestSupport {
     protected Index<String, Long> createIndex() throws Exception {
 
         long id = tx.allocate().getPageId();
-        tx.commit();
-
         ListIndex<String, Long> index = new ListIndex<String, Long>(pf, id);
         index.setKeyMarshaller(StringMarshaller.INSTANCE);
         index.setValueMarshaller(LongMarshaller.INSTANCE);
-
+        index.load(tx);
+        tx.commit();
         return index;
     }
 
@@ -118,7 +120,7 @@ public class ListIndexTest extends IndexTestSupport {
         tx = pf.tx();
         Long value = listIndex.get(tx, key(10));
         assertNotNull(value);
-        listIndex.put(tx, key(10), Long.valueOf(1024));
+        listIndex.put(tx, key(10), 1024L);
         tx.commit();
 
         tx = pf.tx();
@@ -128,7 +130,7 @@ public class ListIndexTest extends IndexTestSupport {
         tx.commit();
 
         tx = pf.tx();
-        value = listIndex.put(tx, key(31), Long.valueOf(2048));
+        value = listIndex.put(tx, key(31), 2048L);
         assertNull(value);
         assertTrue(listIndex.size() == 31);
         tx.commit();
@@ -408,7 +410,7 @@ public class ListIndexTest extends IndexTestSupport {
         for (long i = 0; i < NUM_ADDITIONS; ++i) {
             final int stringSize = getMessageSize(1, 4096);
             String val = new String(new byte[stringSize]);
-            expected.add(Long.valueOf(stringSize));
+            expected.add((long) stringSize);
             test.add(tx, i, val);
         }
         tx.commit();
@@ -426,7 +428,7 @@ public class ListIndexTest extends IndexTestSupport {
         for (long i = 0; i < NUM_ADDITIONS; ++i) {
             final int stringSize = getMessageSize(1, 4096);
             String val = new String(new byte[stringSize]);
-            expected.add(Long.valueOf(stringSize));
+            expected.add((long) stringSize);
             test.addFirst(tx, i+NUM_ADDITIONS, val);
         }
         tx.commit();
@@ -444,7 +446,7 @@ public class ListIndexTest extends IndexTestSupport {
         for (long i = 0; i < NUM_ADDITIONS; ++i) {
             final int stringSize = getMessageSize(1, 4096);
             String val = new String(new byte[stringSize]);
-            expected.add(Long.valueOf(stringSize));
+            expected.add((long) stringSize);
             test.put(tx, i, val);
         }
         tx.commit();

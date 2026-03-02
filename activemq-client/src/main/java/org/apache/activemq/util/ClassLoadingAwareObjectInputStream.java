@@ -40,8 +40,7 @@ public class ClassLoadingAwareObjectInputStream extends ObjectInputStream {
     private final ClassLoader inLoader;
 
     static {
-        serializablePackages = System.getProperty("org.apache.activemq.SERIALIZABLE_PACKAGES",
-                    "java.lang,javax.security,java.util,org.apache.activemq,org.fusesource.hawtbuf,com.thoughtworks.xstream.mapper").split(",");
+        serializablePackages = System.getProperty("org.apache.activemq.SERIALIZABLE_PACKAGES","java.lang,org.apache.activemq,org.fusesource.hawtbuf,com.thoughtworks.xstream.mapper").split(",");
     }
 
     public ClassLoadingAwareObjectInputStream(InputStream in) throws IOException {
@@ -99,18 +98,21 @@ public class ClassLoadingAwareObjectInputStream extends ObjectInputStream {
     }
 
     private void checkSecurity(Class clazz) throws ClassNotFoundException {
-        if (!clazz.isPrimitive()) {
-            if (clazz.getPackage() != null && !trustAllPackages()) {
-               boolean found = false;
-               for (String packageName : getTrustedPackages()) {
-                   if (clazz.getPackage().getName().equals(packageName) || clazz.getPackage().getName().startsWith(packageName + ".")) {
-                       found = true;
-                       break;
-                   }
-               }
-               if (!found) {
-                   throw new ClassNotFoundException("Forbidden " + clazz + "! This class is not trusted to be serialized as ObjectMessage payload. Please take a look at http://activemq.apache.org/objectmessage.html for more information on how to configure trusted classes.");
-               }
+        if (trustAllPackages() || clazz.isPrimitive()) {
+            return;
+        }
+
+        boolean found = false;
+        Package thePackage = clazz.getPackage();
+        if (thePackage != null) {
+            for (String trustedPackage : getTrustedPackages()) {
+                if (thePackage.getName().equals(trustedPackage) || thePackage.getName().startsWith(trustedPackage + ".")) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                throw new ClassNotFoundException("Forbidden " + clazz + "! This class is not trusted to be serialized as ObjectMessage payload. Please take a look at http://activemq.apache.org/objectmessage.html for more information on how to configure trusted classes.");
             }
         }
     }
@@ -119,7 +121,7 @@ public class ClassLoadingAwareObjectInputStream extends ObjectInputStream {
         // check for simple types first
         final Class<?> clazz = loadSimpleType(className);
         if (clazz != null) {
-            LOG.trace("Loaded class: {} as simple type -> ", className, clazz);
+            LOG.trace("Loaded class: {} as simple type -> {}", className, clazz);
             return clazz;
         }
 
@@ -129,7 +131,7 @@ public class ClassLoadingAwareObjectInputStream extends ObjectInputStream {
             try {
                 Class<?> answer = Class.forName(className, false, loader);
                 if (LOG.isTraceEnabled()) {
-                    LOG.trace("Loaded class: {} using classloader: {} -> ", new Object[]{className, cl, answer});
+                    LOG.trace("Loaded class: {} using classloader: {} -> {}", className, cl, answer);
                 }
                 return answer;
             } catch (ClassNotFoundException e) {

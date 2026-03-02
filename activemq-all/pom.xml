@@ -14,7 +14,7 @@
   <parent>
     <groupId>org.apache.activemq</groupId>
     <artifactId>activemq-parent</artifactId>
-    <version>5.16.0-SNAPSHOT</version>
+    <version>6.3.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>activemq-all</artifactId>
@@ -25,10 +25,6 @@
   <dependencies>
 
     <!-- activemq -->
-    <dependency>
-      <groupId>${project.groupId}</groupId>
-      <artifactId>activemq-camel</artifactId>
-    </dependency>
     <dependency>
       <groupId>${project.groupId}</groupId>
       <artifactId>activemq-console</artifactId>
@@ -60,20 +56,12 @@
       <artifactId>activemq-jdbc-store</artifactId>
     </dependency>
     <dependency>
-      <groupId>${project.groupId}</groupId>
-      <artifactId>activemq-leveldb-store</artifactId>
+      <groupId>jakarta.annotation</groupId>
+      <artifactId>jakarta.annotation-api</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.apache.geronimo.specs</groupId>
-      <artifactId>geronimo-annotation_1.0_spec</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-log4j12</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>jcl-over-slf4j</artifactId>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-slf4j2-impl</artifactId>
     </dependency>
   </dependencies>
 
@@ -84,7 +72,6 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-shade-plugin</artifactId>
-        <version>${maven-shade-plugin-version}</version>
         <executions>
           <execution>
             <phase>package</phase>
@@ -96,7 +83,6 @@
                 <includes>
                   <include>${project.groupId}:activemq-client</include>
                   <include>${project.groupId}:activemq-openwire-legacy</include>
-                  <include>${project.groupId}:activemq-camel</include>
                   <include>${project.groupId}:activemq-jaas</include>
                   <include>${project.groupId}:activemq-broker</include>
                   <include>${project.groupId}:activemq-console</include>
@@ -109,19 +95,16 @@
                   <include>${project.groupId}:activemq-mqtt</include>
                   <include>${project.groupId}:activemq-stomp</include>
                   <include>${project.groupId}:activemq-kahadb-store</include>
-                  <include>${project.groupId}:activemq-leveldb-store</include>
                   <include>${project.groupId}:activemq-jdbc-store</include>
                   <include>org.apache.activemq.protobuf:activemq-protobuf</include>
                   <include>org.fusesource.hawtbuf:hawtbuf</include>
                   <include>org.jasypt:jasypt</include>
-                  <include>org.apache.geronimo.specs:geronimo-jms_1.1_spec</include>
-                  <include>org.apache.geronimo.specs:geronimo-jta_1.0.1B_spec</include>
-                  <include>org.apache.geronimo.specs:geronimo-j2ee-management_1.1_spec</include>
-                  <include>org.apache.geronimo.specs:geronimo-annotation_1.0_spec</include>
+                  <include>jakarta.jms:jakarta.jms-api</include>
+                  <include>org.apache.geronimo.specs:geronimo-jta_1.1_spec</include>
+                  <include>org.apache.geronimo.specs:geronimo-annotation_1.3_spec</include>
                   <include>org.slf4j:slf4j-api</include>
-                  <include>org.slf4j:slf4j-log4j12</include>
+                  <include>org.apache.logging.log4j:log4j-slf4j2-impl</include>
                   <include>org.slf4j:jcl-over-slf4j</include>
-                  <include>log4j:log4j</include>
                   <include>org.springframework:spring-core</include>
                   <include>org.springframework:spring-beans</include>
                   <include>org.springframework:spring-context</include>
@@ -181,7 +164,6 @@
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-source-plugin</artifactId>
-            <version>${maven-source-plugin-version}</version>
             <configuration>
               <attach>false</attach>
             </configuration>
@@ -212,13 +194,6 @@
         <dependency>
           <groupId>${project.groupId}</groupId>
           <artifactId>activemq-openwire-legacy</artifactId>
-          <version>${project.version}</version>
-          <classifier>sources</classifier>
-          <optional>true</optional>
-        </dependency>
-        <dependency>
-          <groupId>${project.groupId}</groupId>
-          <artifactId>activemq-camel</artifactId>
           <version>${project.version}</version>
           <classifier>sources</classifier>
           <optional>true</optional>
@@ -315,13 +290,6 @@
           <optional>true</optional>
         </dependency>
         <dependency>
-          <groupId>${project.groupId}</groupId>
-          <artifactId>activemq-leveldb-store</artifactId>
-          <version>${project.version}</version>
-          <classifier>sources</classifier>
-          <optional>true</optional>
-        </dependency>
-        <dependency>
           <groupId>org.apache.activemq.protobuf</groupId>
           <artifactId>activemq-protobuf</artifactId>
           <version>${activemq-protobuf-version}</version>
@@ -343,23 +311,16 @@
           <optional>true</optional>
         </dependency>
         <dependency>
-          <groupId>org.apache.geronimo.specs</groupId>
-          <artifactId>geronimo-jms_1.1_spec</artifactId>
-          <version>1.1.1</version>
+          <groupId>jakarta.jms</groupId>
+          <artifactId>jakarta.jms-api</artifactId>
+          <version>2.0.3</version>
           <classifier>sources</classifier>
           <optional>true</optional>
         </dependency>
         <dependency>
           <groupId>org.apache.geronimo.specs</groupId>
-          <artifactId>geronimo-j2ee-management_1.1_spec</artifactId>
-          <version>1.0.1</version>
-          <classifier>sources</classifier>
-          <optional>true</optional>
-        </dependency>
-        <dependency>
-          <groupId>org.apache.geronimo.specs</groupId>
-          <artifactId>geronimo-annotation_1.0_spec</artifactId>
-          <version>1.1.1</version>
+          <artifactId>geronimo-annotation_1.3_spec</artifactId>
+          <version>1.3</version>
           <classifier>sources</classifier>
           <optional>true</optional>
         </dependency>
@@ -371,15 +332,15 @@
           <optional>true</optional>
         </dependency>
         <dependency>
-          <groupId>org.slf4j</groupId>
-          <artifactId>slf4j-log4j12</artifactId>
-          <version>${slf4j-version}</version>
+          <groupId>org.apache.logging.log4j</groupId>
+          <artifactId>log4j-slf4j2-impl</artifactId>
+          <version>${log4j-version}</version>
           <classifier>sources</classifier>
           <optional>true</optional>
         </dependency>
         <dependency>
-          <groupId>log4j</groupId>
-          <artifactId>log4j</artifactId>
+          <groupId>org.apache.logging.log4j</groupId>
+          <artifactId>log4j-api</artifactId>
           <version>${log4j-version}</version>
           <classifier>sources</classifier>
           <optional>true</optional>

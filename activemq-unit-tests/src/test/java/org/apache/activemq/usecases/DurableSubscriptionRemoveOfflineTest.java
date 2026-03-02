@@ -16,10 +16,10 @@
  */
 package org.apache.activemq.usecases;
 
-import javax.jms.Connection;
-import javax.jms.Session;
-import javax.jms.Topic;
-import javax.jms.TopicSubscriber;
+import jakarta.jms.Connection;
+import jakarta.jms.Session;
+import jakarta.jms.Topic;
+import jakarta.jms.TopicSubscriber;
 
 import junit.framework.Test;
 
@@ -28,7 +28,10 @@ import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.util.Wait;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class DurableSubscriptionRemoveOfflineTest extends EmbeddedBrokerTestSupport {
 
     private static final Logger LOG = LoggerFactory.getLogger(DurableSubscriptionRemoveOfflineTest.class);

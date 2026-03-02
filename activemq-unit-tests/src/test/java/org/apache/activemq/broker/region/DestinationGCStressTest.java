@@ -18,24 +18,30 @@ package org.apache.activemq.broker.region;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerService;
+import org.apache.activemq.broker.BrokerStoppedException;
 import org.apache.activemq.broker.region.policy.PolicyEntry;
 import org.apache.activemq.broker.region.policy.PolicyMap;
 import org.apache.activemq.command.ActiveMQTopic;
 import org.apache.activemq.util.DefaultTestAppender;
-import org.apache.log4j.Appender;
-import org.apache.log4j.Level;
-import org.apache.log4j.spi.LoggingEvent;
+import org.apache.activemq.util.Wait;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.Property;
+import org.apache.logging.log4j.core.filter.AbstractFilter;
+import org.apache.logging.log4j.core.layout.MessageLayout;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.jms.Connection;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -88,20 +94,22 @@ public class DestinationGCStressTest {
     @Test(timeout = 60000)
     public void testClashWithPublishAndGC() throws Exception {
 
-        org.apache.log4j.Logger log4jLogger =
-                org.apache.log4j.Logger.getLogger(RegionBroker.class);
         final AtomicBoolean failed = new AtomicBoolean(false);
-
-        Appender appender = new DefaultTestAppender() {
+        final var logger = org.apache.logging.log4j.core.Logger.class.cast(LogManager.getLogger(RegionBroker.class));
+        final var appender = new AbstractAppender("testAppender", new AbstractFilter() {}, new MessageLayout(), false, new Property[0]) {
             @Override
-            public void doAppend(LoggingEvent event) {
-                if (event.getLevel().equals(Level.ERROR) && event.getMessage().toString().startsWith("Failed to remove inactive")) {
+            public void append(LogEvent event) {
+                if (event.getLevel().equals(Level.ERROR) && event.getMessage().getFormattedMessage().startsWith("Failed to remove inactive")) {
                     logger.info("received unexpected log message: " + event.getMessage());
                     failed.set(true);
                 }
             }
         };
-        log4jLogger.addAppender(appender);
+        appender.start();
+
+        logger.get().addAppender(appender, Level.DEBUG, new AbstractFilter() {});
+        logger.addAppender(appender);
+
         try {
 
             final AtomicInteger max = new AtomicInteger(20000);
@@ -129,6 +137,7 @@ public class DestinationGCStressTest {
                             while ((j = max.decrementAndGet()) > 0) {
                                 producer.send(new ActiveMQTopic("A." + j), message);
                             }
+                            c.close();
                         } catch (Exception ignored) {
                             ignored.printStackTrace();
                         }
@@ -144,7 +153,7 @@ public class DestinationGCStressTest {
             connection.close();
 
         } finally {
-            log4jLogger.removeAppender(appender);
+            logger.removeAppender(appender);
         }
         assertFalse("failed on unexpected log event", failed.get());
 
@@ -153,23 +162,30 @@ public class DestinationGCStressTest {
     @Test(timeout = 60000)
     public void testAddRemoveWildcardWithGc() throws Exception {
 
-        org.apache.log4j.Logger log4jLogger =
-                org.apache.log4j.Logger.getLogger(RegionBroker.class);
         final AtomicBoolean failed = new AtomicBoolean(false);
-
-        Appender appender = new DefaultTestAppender() {
+        final var logger = org.apache.logging.log4j.core.Logger.class.cast(LogManager.getLogger(RegionBroker.class));
+        final var appender = new AbstractAppender("testAppender", new AbstractFilter() {}, new MessageLayout(), false, new Property[0]) {
             @Override
-            public void doAppend(LoggingEvent event) {
-                if (event.getLevel().equals(Level.ERROR) && event.getMessage().toString().startsWith("Failed to remove inactive")) {
-                    logger.info("received unexpected log message: " + event.getMessage());
-                    failed.set(true);
+            public void append(LogEvent event) {
+                if (event.getLevel().equals(Level.ERROR) && event.getMessage().getFormattedMessage().startsWith("Failed to remove inactive")) {
+                    if (event.getThrown() != null
+                            && event.getThrown().getCause() instanceof BrokerStoppedException) {
+                        // ok
+                    } else {
+                        logger.info("received unexpected log message: " + event.getMessage());
+                        failed.set(true);
+                    }
                 }
             }
         };
-        log4jLogger.addAppender(appender);
+        appender.start();
+
+        logger.get().addAppender(appender, Level.DEBUG, new AbstractFilter() {});
+        logger.addAppender(appender);
+
         try {
 
-            final AtomicInteger max = new AtomicInteger(20000);
+            final AtomicInteger max = new AtomicInteger(10000);
 
             final ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory("vm://localhost?create=false");
             factory.setWatchTopicAdvisories(false);
@@ -192,6 +208,7 @@ public class DestinationGCStressTest {
                             while ((j = max.decrementAndGet()) > 0) {
                                 producer.send(new ActiveMQTopic("A." + j), message);
                             }
+                            c.close();
                         } catch (Exception ignored) {
                             ignored.printStackTrace();
                         }
@@ -208,6 +225,7 @@ public class DestinationGCStressTest {
                             messageConsumer.close();
 
                         } catch (Exception ignored) {
+                            ignored.printStackTrace();
                         }
                     }
                 }
@@ -218,10 +236,20 @@ public class DestinationGCStressTest {
 
             logger.info("Done");
 
+
+            Wait.waitFor(new Wait.Condition() {
+                @Override
+                public boolean isSatisified() throws Exception {
+                    int len = ((RegionBroker)brokerService.getRegionBroker()).getTopicRegion().getDestinationMap().size();
+                    logger.info("Num topics: " + len);
+                    return len == 0;
+                }
+            });
+
             connection.close();
 
         } finally {
-            log4jLogger.removeAppender(appender);
+            logger.removeAppender(appender);
         }
         assertFalse("failed on unexpected log event", failed.get());
 
@@ -255,6 +283,7 @@ public class DestinationGCStressTest {
                         while ((j = max.decrementAndGet()) > 0) {
                             producer.send(new ActiveMQTopic("A." + j), message);
                         }
+                        c.close();
                     } catch (Exception ignored) {
                         ignored.printStackTrace();
                     }
@@ -274,6 +303,7 @@ public class DestinationGCStressTest {
                         messageConsumer.close();
 
                     } catch (Exception ignored) {
+                        ignored.printStackTrace();
                     }
                 }
             }

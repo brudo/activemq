@@ -20,11 +20,11 @@ import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 
-import javax.jms.Connection;
-import javax.jms.DeliveryMode;
-import javax.jms.Destination;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Destination;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 
 import org.apache.activemq.EmbeddedBrokerTestSupport;
 import org.apache.activemq.broker.BrokerService;
@@ -45,6 +45,8 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.util.Assert;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  * This test will determine that the producer flow control does not kick in.
@@ -59,6 +61,7 @@ import org.springframework.util.Assert;
  *
  * @author Claudio Corsi
  */
+@Category(ParallelTest.class)
 public class MirroredQueueCorrectMemoryUsageTest extends EmbeddedBrokerTestSupport {
 
     private static final Logger logger = LoggerFactory.getLogger(MirroredQueueCorrectMemoryUsageTest.class);

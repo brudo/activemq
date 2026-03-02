@@ -21,21 +21,24 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.util.Map;
 
-import javax.servlet.Servlet;
+import jakarta.servlet.Servlet;
 
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.BrokerServiceAware;
 import org.apache.activemq.command.BrokerInfo;
 import org.apache.activemq.transport.SocketConnectorFactory;
 import org.apache.activemq.transport.WebTransportServerSupport;
-import org.apache.activemq.transport.ws.jetty9.WSServlet;
+import org.apache.activemq.transport.ws.jetty11.WSServlet;
 import org.apache.activemq.util.IntrospectionSupport;
 import org.apache.activemq.util.ServiceStopper;
 import org.eclipse.jetty.security.ConstraintSecurityHandler;
+import org.eclipse.jetty.server.ConnectionFactory;
 import org.eclipse.jetty.server.Connector;
+import org.eclipse.jetty.server.HttpConnectionFactory;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
+import org.eclipse.jetty.websocket.server.config.JettyWebSocketServletContainerInitializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -64,13 +67,19 @@ public class WSTransportServer extends WebTransportServerSupport implements Brok
             connector = socketConnectorFactory.createConnector(server);
         }
 
+        for(ConnectionFactory cf  : connector.getConnectionFactories()) {
+            if(HttpConnectionFactory.class.isAssignableFrom(cf.getClass())) {
+                HttpConnectionFactory.class.cast(cf).getHttpConfiguration().setSendServerVersion(false);
+            }
+        }
+
         URI boundTo = bind();
 
         ServletContextHandler contextHandler =
                 new ServletContextHandler(server, "/", ServletContextHandler.SECURITY);
 
         ServletHolder holder = new ServletHolder();
-
+        JettyWebSocketServletContainerInitializer.configure(contextHandler, null);
         //AMQ-6182 - disabling trace by default
         configureTraceMethod((ConstraintSecurityHandler) contextHandler.getSecurityHandler(),
                 httpOptions.isEnableTrace());
@@ -163,5 +172,16 @@ public class WSTransportServer extends WebTransportServerSupport implements Brok
         if (servlet != null) {
             servlet.setBrokerService(brokerService);
         }
+    }
+
+    @Override
+    public long getMaxConnectionExceededCount() {
+        // Max Connection Count not supported for ws
+        return -1l;
+    }
+
+    @Override
+    public void resetStatistics() {
+        // Statistics not implemented for ws
     }
 }

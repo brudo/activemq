@@ -16,15 +16,13 @@
  */
 package org.apache.activemq.broker.region.policy;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.ConnectionContext;
+import org.apache.activemq.broker.region.AbstractSubscription;
 import org.apache.activemq.broker.region.Destination;
 import org.apache.activemq.broker.region.Subscription;
 import org.slf4j.Logger;
@@ -73,12 +71,22 @@ public class AbortSlowAckConsumerStrategy extends AbortSlowConsumerStrategy {
             return;
         }
 
-        if (getMaxSlowDuration() > 0) {
-            // For subscriptions that are already slow we mark them again and check below if
-            // they've exceeded their configured lifetime.
-            for (SlowConsumerEntry entry : slowConsumers.values()) {
-                entry.mark();
+
+        List<Subscription> subscribersDestroyed  = new LinkedList<Subscription>();
+        // check for removed consumers also
+        for (Map.Entry<Subscription, SlowConsumerEntry> entry : slowConsumers.entrySet()) {
+            if (getMaxSlowDuration() > 0) {
+                // For subscriptions that are already slow we mark them again and check below if
+                // they've exceeded their configured lifetime.
+                entry.getValue().mark();
             }
+            if (!entry.getKey().isSlowConsumer()) {
+                subscribersDestroyed.add(entry.getKey());
+            }
+        }
+
+        for (Subscription subscription: subscribersDestroyed) {
+            slowConsumers.remove(subscription);
         }
 
         List<Destination> disposed = new ArrayList<Destination>();
@@ -128,6 +136,15 @@ public class AbortSlowAckConsumerStrategy extends AbortSlowConsumerStrategy {
                     LOG.debug("sub: {} is now slow", subscriber.getConsumerInfo().getConsumerId());
                     SlowConsumerEntry entry = new SlowConsumerEntry(subscriber.getContext());
                     entry.mark(); // mark consumer on first run
+                    if (subscriber instanceof AbstractSubscription) {
+                        AbstractSubscription abstractSubscription = (AbstractSubscription) subscriber;
+                        if (!abstractSubscription.isSlowConsumer()) {
+                            abstractSubscription.setSlowConsumer(true);
+                            for (Destination destination: abstractSubscription.getDestinations()) {
+                               destination.slowConsumer(broker.getAdminConnectionContext(), abstractSubscription);
+                            }
+                        }
+                    }
                     slowConsumers.put(subscriber, entry);
                 } else if (getMaxSlowCount() > 0) {
                     slowConsumers.get(subscriber).slow();
@@ -146,16 +163,20 @@ public class AbortSlowAckConsumerStrategy extends AbortSlowConsumerStrategy {
             if (getMaxSlowDuration() > 0 && (entry.getValue().markCount * getCheckPeriod() >= getMaxSlowDuration()) ||
                 getMaxSlowCount() > 0 && entry.getValue().slowCount >= getMaxSlowCount()) {
 
-                LOG.trace("Transferring consumer{} to the abort list: {} slow duration = {}, slow count = {}",
-                        new Object[]{ entry.getKey().getConsumerInfo().getConsumerId(),
+                LOG.trace("Transferring consumer {} to the abort list: {} slow duration = {}, slow count = {}",
+                        entry.getKey().getConsumerInfo().getConsumerId(),
+                        toAbort,
                         entry.getValue().markCount * getCheckPeriod(),
-                        entry.getValue().getSlowCount() });
+                        entry.getValue().getSlowCount());
 
                 toAbort.put(entry.getKey(), entry.getValue());
                 slowConsumers.remove(entry.getKey());
             } else {
 
-                LOG.trace("Not yet time to abort consumer {}: slow duration = {}, slow count = {}", new Object[]{ entry.getKey().getConsumerInfo().getConsumerId(), entry.getValue().markCount * getCheckPeriod(), entry.getValue().slowCount });
+                LOG.trace("Not yet time to abort consumer {}: slow duration = {}, slow count = {}",
+                        entry.getKey().getConsumerInfo().getConsumerId(),
+                        entry.getValue().markCount * getCheckPeriod(),
+                        entry.getValue().slowCount);
 
             }
         }

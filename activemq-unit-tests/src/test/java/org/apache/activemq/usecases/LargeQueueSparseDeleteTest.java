@@ -17,10 +17,10 @@
 
 package org.apache.activemq.usecases;
 
-import javax.jms.Connection;
-import javax.jms.Message;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.Message;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 
 import org.apache.activemq.EmbeddedBrokerTestSupport;
 import org.apache.activemq.broker.ConnectionContext;
@@ -29,12 +29,15 @@ import org.apache.activemq.filter.NonCachedMessageEvaluationContext;
 import org.junit.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  * This unit test creates a fixed size queue and moves the last message in the
  * queue to another queue. The test is used to very the performance of
  * {@link org.apache.activemq.broker.region.Queue#moveMatchingMessagesTo(org.apache.activemq.broker.ConnectionContext, String, org.apache.activemq.command.ActiveMQDestination)}.
  */
+@Category(ParallelTest.class)
 public class LargeQueueSparseDeleteTest extends EmbeddedBrokerTestSupport {
     private static final Logger LOG = LoggerFactory.getLogger(LargeQueueSparseDeleteTest.class);
 
@@ -84,8 +87,7 @@ public class LargeQueueSparseDeleteTest extends EmbeddedBrokerTestSupport {
         Queue queue = (Queue) broker.getRegionBroker().getDestinationMap().get(
                 destination);
 
-        ConnectionContext context = new ConnectionContext(
-                new NonCachedMessageEvaluationContext());
+        ConnectionContext context = new ConnectionContext();
         context.setBroker(broker.getBroker());
         context.getMessageEvaluationContext().setDestination(destination);
 
@@ -133,8 +135,7 @@ public class LargeQueueSparseDeleteTest extends EmbeddedBrokerTestSupport {
         Queue queue = (Queue) broker.getRegionBroker().getDestinationMap().get(
                 destination);
 
-        ConnectionContext context = new ConnectionContext(
-                new NonCachedMessageEvaluationContext());
+        ConnectionContext context = new ConnectionContext();
         context.setBroker(broker.getBroker());
         context.getMessageEvaluationContext().setDestination(destination);
 
@@ -179,8 +180,7 @@ public class LargeQueueSparseDeleteTest extends EmbeddedBrokerTestSupport {
         Queue queue = (Queue) broker.getRegionBroker().getDestinationMap().get(
                 destination);
 
-        ConnectionContext context = new ConnectionContext(
-                new NonCachedMessageEvaluationContext());
+        ConnectionContext context = new ConnectionContext();
         context.setBroker(broker.getBroker());
         context.getMessageEvaluationContext().setDestination(destination);
 

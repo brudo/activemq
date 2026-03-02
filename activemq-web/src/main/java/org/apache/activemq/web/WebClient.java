@@ -22,28 +22,29 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Semaphore;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.DeliveryMode;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.servlet.ServletContext;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpSession;
-import javax.servlet.http.HttpSessionActivationListener;
-import javax.servlet.http.HttpSessionBindingEvent;
-import javax.servlet.http.HttpSessionBindingListener;
-import javax.servlet.http.HttpSessionEvent;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.servlet.ServletContext;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpSession;
+import jakarta.servlet.http.HttpSessionActivationListener;
+import jakarta.servlet.http.HttpSessionBindingEvent;
+import jakarta.servlet.http.HttpSessionBindingListener;
+import jakarta.servlet.http.HttpSessionEvent;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.MessageAvailableConsumer;
@@ -289,13 +290,13 @@ public class WebClient implements HttpSessionActivationListener, HttpSessionBind
 
             // Set prefetch policy for factory
             if (servletContext.getInitParameter(CONNECTION_FACTORY_PREFETCH_PARAM) != null) {
-                int prefetch = Integer.valueOf(getInitParameter(servletContext, CONNECTION_FACTORY_PREFETCH_PARAM)).intValue();
+                int prefetch = Integer.valueOf(getInitParameter(servletContext, CONNECTION_FACTORY_PREFETCH_PARAM));
                 amqfactory.getPrefetchPolicy().setAll(prefetch);
             }
 
             // Set optimize acknowledge setting
             if (servletContext.getInitParameter(CONNECTION_FACTORY_OPTIMIZE_ACK_PARAM) != null) {
-                boolean optimizeAck = Boolean.valueOf(getInitParameter(servletContext, CONNECTION_FACTORY_OPTIMIZE_ACK_PARAM)).booleanValue();
+                boolean optimizeAck = Boolean.valueOf(getInitParameter(servletContext, CONNECTION_FACTORY_OPTIMIZE_ACK_PARAM));
                 amqfactory.setOptimizeAcknowledge(optimizeAck);
             }
 
@@ -385,7 +386,7 @@ public class WebClient implements HttpSessionActivationListener, HttpSessionBind
             String[] tokens = auth.split(" ");
             if (tokens.length == 2) {
                 String encoded = tokens[1].trim();
-                String credentials = new String(javax.xml.bind.DatatypeConverter.parseBase64Binary(encoded));
+                String credentials = new String(Base64.getDecoder().decode(encoded));
                 String[] creds = credentials.split(":");
                 if (creds.length == 2) {
                     client.setUsername(creds[0]);

@@ -29,8 +29,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Set;
 
-import javax.jms.JMSException;
-import javax.jms.Message;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
 
 import org.apache.activemq.ScheduledMessage;
 import org.apache.activemq.command.ActiveMQDestination;
@@ -90,7 +90,9 @@ public abstract class InboundTransformer {
             jms.setBooleanProperty(JMS_AMQP_HEADER, true);
 
             if (header.getDurable() != null) {
-                jms.setPersistent(header.getDurable().booleanValue());
+                jms.setPersistent(header.getDurable());
+            } else {
+                jms.setPersistent(false);
             }
 
             if (header.getPriority() != null) {
@@ -149,8 +151,8 @@ public abstract class InboundTransformer {
 
         final ApplicationProperties ap = amqp.getApplicationProperties();
         if (ap != null) {
-            for (Map.Entry<Object, Object> entry : (Set<Map.Entry<Object, Object>>) ap.getValue().entrySet()) {
-                setProperty(jms,  entry.getKey().toString(), entry.getValue());
+            for (Map.Entry<String, Object> entry : ((Map<String, Object>) ap.getValue()).entrySet()) {
+                setProperty(jms,  entry.getKey(), entry.getValue());
             }
         }
 
@@ -207,7 +209,7 @@ public abstract class InboundTransformer {
                 ttl = header.getTtl().longValue();
             }
 
-            if (ttl != javax.jms.Message.DEFAULT_TIME_TO_LIVE) {
+            if (ttl != jakarta.jms.Message.DEFAULT_TIME_TO_LIVE) {
                 jms.setExpiration(System.currentTimeMillis() + ttl);
             }
         }

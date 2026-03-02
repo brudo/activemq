@@ -24,16 +24,19 @@ import java.io.DataInput;
 import java.io.DataInputStream;
 import java.io.IOException;
 
-import javax.jms.Connection;
-import javax.jms.Message;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.Message;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 
 import org.apache.activemq.command.ActiveMQQueue;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.junit.experimental.categories.Category;
+
+@Category(ParallelTest.class)
 public class StompSubscriptionRemoveTest extends StompTestSupport {
 
     private static final Logger LOG = LoggerFactory.getLogger(StompSubscriptionRemoveTest.class);

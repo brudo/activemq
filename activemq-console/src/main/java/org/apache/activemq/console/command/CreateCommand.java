@@ -16,12 +16,12 @@
  */
 package org.apache.activemq.console.command;
 
+import org.apache.activemq.util.XmlFactories;
 import org.w3c.dom.Attr;
 import org.w3c.dom.Element;
 import org.xml.sax.SAXException;
 
 import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.transform.*;
 import javax.xml.transform.dom.DOMSource;
@@ -158,7 +158,7 @@ public class CreateCommand extends AbstractCommand {
         File dest = new File(targetBase, DEFAULT_TARGET_ACTIVEMQ_CONF);
         context.print("Copying from: " + src.getCanonicalPath() + "\n          to: " + dest.getCanonicalPath());
 
-        DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+        DocumentBuilder builder = XmlFactories.getSafeDocumentBuilderFactory().newDocumentBuilder();
         Element docElem = builder.parse(src).getDocumentElement();
 
         XPath xpath = XPathFactory.newInstance().newXPath();
@@ -204,11 +204,10 @@ public class CreateCommand extends AbstractCommand {
 
     // utlity method to write an xml source to file
     private void writeToFile(Source src, File file) throws TransformerException {
-        TransformerFactory tFactory = TransformerFactory.newInstance();
-        Transformer fileTransformer = tFactory.newTransformer();
-
-        Result res = new StreamResult(file);
-        fileTransformer.transform(src, res);
+        final Result res = new StreamResult(file);
+        XmlFactories.getSafeTransformFactory()
+                .newTransformer()
+                .transform(src, res);
     }
 
     // utility method to copy one file to another
@@ -266,6 +265,7 @@ public class CreateCommand extends AbstractCommand {
 
    private String getUnixActivemqData() {
        StringBuffer res = new StringBuffer();
+       res.append("#!/bin/sh\n\n");
        res.append("## Figure out the ACTIVEMQ_BASE from the directory this script was run from\n");
        res.append("PRG=\"$0\"\n");
        res.append("progname=`basename \"$0\"`\n");

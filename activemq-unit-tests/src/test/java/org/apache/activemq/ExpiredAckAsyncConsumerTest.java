@@ -24,18 +24,18 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionConsumer;
-import javax.jms.ExceptionListener;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageListener;
-import javax.jms.MessageProducer;
-import javax.jms.Queue;
-import javax.jms.ServerSession;
-import javax.jms.ServerSessionPool;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionConsumer;
+import jakarta.jms.ExceptionListener;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageListener;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.ServerSession;
+import jakarta.jms.ServerSessionPool;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.region.policy.PolicyEntry;
@@ -47,6 +47,8 @@ import org.junit.Before;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 
 /**
@@ -60,6 +62,7 @@ import org.slf4j.LoggerFactory;
  * Now only messages tied to the MessageAck are expired which fixes this problem.
  *
  */
+@Category(ParallelTest.class)
 public class ExpiredAckAsyncConsumerTest {
     private static final Logger LOG = LoggerFactory.getLogger(ExpiredAckAsyncConsumerTest.class);
 
@@ -99,8 +102,12 @@ public class ExpiredAckAsyncConsumerTest {
 
     @After
     public void tearDown() throws Exception {
-        connectionConsumer.close();
-        connection.close();
+        try {
+            connectionConsumer.close();
+            connection.close();
+        } catch (Exception e) {
+            //swallow any error so broker can still be stopped
+        }
         broker.stop();
         broker.waitUntilStopped();
     }

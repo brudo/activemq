@@ -39,11 +39,12 @@ import java.io.ObjectInputStream;
 import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import javax.jms.JMSException;
+import jakarta.jms.JMSException;
 
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.command.ActiveMQBytesMessage;
@@ -57,6 +58,10 @@ import org.apache.activemq.command.ActiveMQTempQueue;
 import org.apache.activemq.command.ActiveMQTempTopic;
 import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.command.ActiveMQTopic;
+import org.apache.activemq.command.ConnectionId;
+import org.apache.activemq.command.ConnectionInfo;
+import org.apache.activemq.command.RemoveInfo;
+import org.apache.activemq.transport.amqp.ParallelTest;
 import org.apache.activemq.util.ByteArrayInputStream;
 import org.apache.qpid.proton.amqp.Binary;
 import org.apache.qpid.proton.amqp.Symbol;
@@ -66,8 +71,10 @@ import org.apache.qpid.proton.amqp.messaging.Data;
 import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
 import org.apache.qpid.proton.message.Message;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 import org.mockito.Mockito;
 
+@Category(ParallelTest.class)
 public class JMSMappingOutboundTransformerTest {
 
     private final UUID TEST_OBJECT_VALUE = UUID.fromString("fee14b62-09e0-4ac6-a4c3-4206c630d844");
@@ -770,6 +777,82 @@ public class JMSMappingOutboundTransformerTest {
         Binary data = ((Data) amqp.getBody()).getValue();
         String contents = new String(data.getArray(), data.getArrayOffset(), data.getLength(), StandardCharsets.UTF_8);
         assertEquals(contentString, contents);
+    }
+    
+    @Test 
+    public void testConvertConnectionInfo() throws Exception {
+    	String connectionId = "myConnectionId";
+    	String clientId = "myClientId";
+
+    	ConnectionInfo dataStructure = new ConnectionInfo();
+    	dataStructure.setConnectionId(new ConnectionId(connectionId));
+    	dataStructure.setClientId(clientId);
+    	
+    	ActiveMQMessage outbound = createMessage();
+    	Map<String, String> properties = new HashMap<String, String>();
+    	properties.put("originUrl", "localhost");
+    	outbound.setProperties(properties);
+    	outbound.setDataStructure(dataStructure);
+    	outbound.onSend();
+    	outbound.storeContent();
+    	
+    	JMSMappingOutboundTransformer transformer = new JMSMappingOutboundTransformer();
+
+        EncodedMessage encoded = transformer.transform(outbound);
+        assertNotNull(encoded);
+        
+        Message amqp = encoded.decode();
+
+        assertNotNull(amqp.getApplicationProperties());
+        
+        Map<String, Object> apMap = amqp.getApplicationProperties().getValue();
+        assertEquals(ConnectionInfo.class.getSimpleName(), apMap.get("ActiveMqDataStructureType"));
+        
+        assertNotNull(amqp.getBody());
+        assertTrue(amqp.getBody() instanceof AmqpValue);
+        assertTrue(((AmqpValue) amqp.getBody()).getValue() instanceof Map);
+
+        @SuppressWarnings("unchecked")
+        Map<Object, Object> amqpMap = (Map<Object, Object>) ((AmqpValue) amqp.getBody()).getValue();
+
+        assertTrue(connectionId.equals(amqpMap.get("ConnectionId")));
+        assertTrue(clientId.equals(amqpMap.get("ClientId")));
+    }
+
+    @Test 
+    public void testConvertRemoveInfo() throws Exception {
+    	String connectionId = "myConnectionId";
+
+    	RemoveInfo dataStructure = new RemoveInfo(new ConnectionId(connectionId));
+    	
+    	ActiveMQMessage outbound = createMessage();
+    	Map<String, String> properties = new HashMap<String, String>();
+    	properties.put("originUrl", "localhost");
+    	outbound.setProperties(properties);
+    	outbound.setDataStructure(dataStructure);
+    	outbound.onSend();
+    	outbound.storeContent();
+    	
+    	JMSMappingOutboundTransformer transformer = new JMSMappingOutboundTransformer();
+
+        EncodedMessage encoded = transformer.transform(outbound);
+        assertNotNull(encoded);
+        
+        Message amqp = encoded.decode();
+
+        assertNotNull(amqp.getApplicationProperties());
+        
+        Map<String, Object> apMap = amqp.getApplicationProperties().getValue();
+        assertEquals(RemoveInfo.class.getSimpleName(), apMap.get("ActiveMqDataStructureType"));
+        
+        assertNotNull(amqp.getBody());
+        assertTrue(amqp.getBody() instanceof AmqpValue);
+        assertTrue(((AmqpValue) amqp.getBody()).getValue() instanceof Map);
+
+        @SuppressWarnings("unchecked")
+        Map<Object, Object> amqpMap = (Map<Object, Object>) ((AmqpValue) amqp.getBody()).getValue();
+
+        assertTrue(connectionId.equals(amqpMap.get("ConnectionId")));
     }
 
     //----- Test JMSDestination Handling -------------------------------------//

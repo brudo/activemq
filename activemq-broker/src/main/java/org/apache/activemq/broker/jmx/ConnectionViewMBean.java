@@ -69,6 +69,14 @@ public interface ConnectionViewMBean extends Service {
     String getClientId();
 
     /**
+     * Returns the identifier for this connection
+     *
+     * @return the identifier for this connection
+     */
+    @MBeanInfo("ID for this connection")
+    String getConnectionId();
+
+    /**
      * Returns the number of messages to be dispatched to this connection
      * @return the  number of messages pending dispatch
      */
@@ -115,5 +123,35 @@ public interface ConnectionViewMBean extends Service {
      */
     @MBeanInfo("The age in ms of the oldest active transaction established on this Connection.")
     public Long getOldestActiveTransactionDuration();
+
+    /**
+     * @return true if the Connection is fault tolerant
+     */
+    @MBeanInfo("Connection is fault tolerant.")
+    boolean isFaultTolerantConnection();
+
+    /**
+     * @return true if the Connection is manageable
+     */
+    @MBeanInfo("Connection is manageable.")
+    boolean isManageable();
+
+    /**
+     * @return true if the Connection is a network connection
+     */
+    @MBeanInfo("Connection is a network connection.")
+    boolean isNetworkConnection();
+
+    /**
+     * @return the time in ms since epoch when connection was established
+     */
+    @MBeanInfo("Time in ms since epoch when connection was established.")
+    long getConnectedTimestamp();
+
+    /**
+     * @return the WireFormatInfo information
+     */
+    @MBeanInfo("WireFormatInfo for the connection")
+    public String getWireFormatInfo();
 
 }

@@ -27,6 +27,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.NoSuchElementException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.apache.activemq.ActiveMQSslConnectionFactoryTest.getKeyManager;
@@ -54,7 +55,7 @@ public class NetworkReconnectSslNioTest {
         local.setSslContext(sslContext);
         local.setUseJmx(false);
         local.setPersistent(false);
-        final NetworkConnector networkConnector = local.addNetworkConnector("static:(" + remote.getTransportConnectorByScheme("nio+ssl").getPublishableConnectString().replace("nio+ssl", "ssl") + ")?useExponentialBackOff=false&initialReconnectDelay=10");
+        final NetworkConnector networkConnector = local.addNetworkConnector("static:(" + remote.getTransportConnectorByScheme("nio+ssl").getPublishableConnectString().replace("nio+ssl", "ssl") + "?socket.verifyHostName=false" + ")?useExponentialBackOff=false&initialReconnectDelay=10");
         local.start();
 
         assertTrue("Bridge created", Wait.waitFor(new Wait.Condition() {
@@ -68,9 +69,18 @@ public class NetworkReconnectSslNioTest {
         assertTrue("Connected to R", bridge.get().getRemoteBrokerName().equals("R"));
 
         for (int i=0; i<200;  i++) {
-            LOG.info("Forcing error on NC via remote exception, iteration:" + i + ",  bridge: " + bridge);
+            LOG.info("Forcing error on NC via remote exception, iteration:{},  bridge: {}", i, bridge);
 
-            TransportConnection connection = transportConnector.getConnections().iterator().next();
+            // Wait for connection to be available before accessing it
+            assertTrue("Connection available for iteration " + i, Wait.waitFor(() -> {
+                try {
+                    return !transportConnector.getConnections().isEmpty();
+                } catch (Exception e) {
+                    return false;
+                }
+            }, TimeUnit.SECONDS.toMillis(10), 10));
+
+            final TransportConnection connection = transportConnector.getConnections().iterator().next();
             connection.dispatchAsync(new ConnectionError());
 
             assertTrue("bridge failed", Wait.waitFor(new Wait.Condition() {
@@ -87,14 +97,14 @@ public class NetworkReconnectSslNioTest {
                     if (!networkConnector.activeBridges().isEmpty()) {
                         try {
                             DurableConduitBridge durableConduitBridge = (DurableConduitBridge) networkConnector.activeBridges().iterator().next();
-                            if ("R".equals(durableConduitBridge.getRemoteBrokerName())) {
+                            if ("R".equals(durableConduitBridge.getRemoteBrokerName()) && durableConduitBridge.bridgeFailed.get() == false) {
                                 bridge.set(durableConduitBridge);
                             }
                         } catch (NoSuchElementException expectedContention) {}
                     }
                     return bridge.get() != null;
                 }
-            }, 10*1000, 10));
+            }, TimeUnit.SECONDS.toMillis(10), 10));
         }
         local.stop();
         remote.stop();

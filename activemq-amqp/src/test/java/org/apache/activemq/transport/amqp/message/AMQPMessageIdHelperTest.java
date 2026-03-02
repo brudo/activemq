@@ -28,11 +28,15 @@ import static org.junit.Assert.fail;
 import java.util.UUID;
 
 import org.apache.activemq.transport.amqp.AmqpProtocolException;
+import org.apache.activemq.transport.amqp.ParallelTest;
 import org.apache.qpid.jms.exceptions.IdConversionException;
 import org.apache.qpid.proton.amqp.Binary;
 import org.apache.qpid.proton.amqp.UnsignedLong;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
+
+@Category(ParallelTest.class)
 
 public class AMQPMessageIdHelperTest {
 
@@ -104,7 +108,7 @@ public class AMQPMessageIdHelperTest {
      */
     @Test
     public void testToBaseMessageIdStringWithStringBeginningWithEncodingPrefixForLong() {
-        String longStringMessageId = AMQPMessageIdHelper.AMQP_ULONG_PREFIX + Long.valueOf(123456789L);
+        String longStringMessageId = AMQPMessageIdHelper.AMQP_ULONG_PREFIX + 123456789L;
         String expected = AMQPMessageIdHelper.AMQP_STRING_PREFIX + longStringMessageId;
 
         String baseMessageIdString = messageIdHelper.toBaseMessageIdString(longStringMessageId);

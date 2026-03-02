@@ -74,13 +74,20 @@ public class DurableConduitBridge extends ConduitBridge {
 
                             String candidateSubName = getSubscriberName(dest);
                             for (Subscription subscription : topicRegion.getDurableSubscriptions().values()) {
-                                String subName = subscription.getConsumerInfo().getSubscriptionName();
-                                if (subName != null && subName.equals(candidateSubName)) {
-                                    DemandSubscription sub = createDemandSubscription(dest, subName);
-                                    sub.getLocalInfo().setSubscriptionName(getSubscriberName(dest));
-                                    sub.setStaticallyIncluded(true);
-                                    addSubscription(sub);
-                                    break;
+                                ConsumerInfo subInfo = subscription.getConsumerInfo();
+                                String subName = subInfo.getSubscriptionName();
+                                String clientId = subscription.getContext().getClientId();
+                                if (subName != null && subName.equals(candidateSubName) && clientId.startsWith(configuration.getName())) {
+                                    // Include the brokerPath if it exists so that we can handle TTL more correctly
+                                    // This only works if the consumers are online as offline consumers are missing TTL
+                                    // For TTL > 1 configurations setting dynamicOnly to true may make more sense
+                                    DemandSubscription sub = createDemandSubscription(dest, subName, subInfo.getBrokerPath());
+                                    if (sub != null) {
+                                        sub.getLocalInfo().setSubscriptionName(getSubscriberName(dest));
+                                        sub.setStaticallyIncluded(true);
+                                        addSubscription(sub);
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -139,7 +146,7 @@ public class DurableConduitBridge extends ConduitBridge {
             info.setSubscriptionName(getSubscriberName(info.getDestination()));
             // and override the consumerId with something unique so that it won't
             // be removed if the durable subscriber (at the other end) goes away
-            info.setConsumerId(new ConsumerId(localSessionInfo.getSessionId(),
+           info.setConsumerId(new ConsumerId(localSessionInfo.getSessionId(),
                                consumerIdGenerator.getNextSequenceId()));
         }
         info.setSelector(null);

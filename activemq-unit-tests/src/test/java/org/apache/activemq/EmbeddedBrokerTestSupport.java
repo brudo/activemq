@@ -16,9 +16,9 @@
  */
 package org.apache.activemq;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.Destination;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.Destination;
 
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.command.ActiveMQDestination;
@@ -63,7 +63,10 @@ public abstract class EmbeddedBrokerTestSupport extends CombinationTestSupport {
         if (broker != null) {
             try {
                 broker.stop();
+                broker.waitUntilStopped();
             } catch (Exception e) {
+            } finally {
+                broker = null;
             }
         }
     }

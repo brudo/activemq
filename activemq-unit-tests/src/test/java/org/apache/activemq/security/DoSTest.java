@@ -20,8 +20,8 @@ import java.net.URI;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import javax.jms.Connection;
-import javax.jms.JMSException;
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.JmsTestSupport;
 import org.apache.activemq.broker.BrokerFactory;
@@ -37,6 +37,7 @@ import org.slf4j.LoggerFactory;
  * As the maximum connections allowed is 2, no more connections would be allowed unless
  * the transport was adequately destroyed on the broker side.
  */
+
 
 public class DoSTest extends JmsTestSupport {
 

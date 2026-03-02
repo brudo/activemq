@@ -16,25 +16,23 @@
  */
 package org.apache.activemq.transport.http;
 
-import java.io.BufferedReader;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.util.HashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.zip.GZIPInputStream;
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServlet;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.jms.JMSException;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 import org.apache.activemq.Service;
 import org.apache.activemq.command.Command;
 import org.apache.activemq.command.ConnectionInfo;
+import org.apache.activemq.command.ShutdownInfo;
 import org.apache.activemq.command.WireFormatInfo;
 import org.apache.activemq.transport.Transport;
 import org.apache.activemq.transport.TransportAcceptListener;
@@ -42,6 +40,7 @@ import org.apache.activemq.transport.util.TextWireFormat;
 import org.apache.activemq.transport.xstream.XStreamWireFormat;
 import org.apache.activemq.util.IOExceptionSupport;
 import org.apache.activemq.util.ServiceListener;
+import org.apache.http.HttpStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -60,6 +59,7 @@ public class HttpTunnelServlet extends HttpServlet {
     private ConcurrentMap<String, BlockingQueueTransport> clients = new ConcurrentHashMap<String, BlockingQueueTransport>();
     private final long requestTimeout = 30000L;
     private HashMap<String, Object> transportOptions;
+    private HashMap<String, Object> wireFormatOptions;
 
     @SuppressWarnings("unchecked")
     @Override
@@ -74,6 +74,7 @@ public class HttpTunnelServlet extends HttpServlet {
             throw new ServletException("No such attribute 'transportFactory' available in the ServletContext");
         }
         transportOptions = (HashMap<String, Object>)getServletContext().getAttribute("transportOptions");
+        wireFormatOptions = (HashMap<String, Object>)getServletContext().getAttribute("wireFormatOptions");
         wireFormat = (TextWireFormat)getServletContext().getAttribute("wireFormat");
         if (wireFormat == null) {
             wireFormat = createWireFormat();
@@ -104,6 +105,11 @@ public class HttpTunnelServlet extends HttpServlet {
 
             packet = (Command)transportChannel.getQueue().poll(requestTimeout, TimeUnit.MILLISECONDS);
 
+            // If the packet is ShutDownInfo then we are shutting down so return.
+            if (packet instanceof ShutdownInfo) {
+                return;
+            }
+
             DataOutputStream stream = new DataOutputStream(response.getOutputStream());
             wireFormat.marshal(packet, stream);
             count++;
@@ -117,54 +123,58 @@ public class HttpTunnelServlet extends HttpServlet {
 
     @Override
     protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
-
-        InputStream stream = request.getInputStream();
-        String contentType = request.getContentType();
-        if (contentType != null && contentType.equals("application/x-gzip")) {
-            stream = new GZIPInputStream(stream);
-        }
-
-        // Read the command directly from the reader, assuming UTF8 encoding
-        Command command = (Command) wireFormat.unmarshalText(new InputStreamReader(stream, "UTF-8"));
-
-        if (command instanceof WireFormatInfo) {
-            WireFormatInfo info = (WireFormatInfo) command;
-            if (!canProcessWireFormatVersion(info.getVersion())) {
-                response.sendError(HttpServletResponse.SC_NOT_FOUND, "Cannot process wire format of version: "
-                        + info.getVersion());
-            }
-
-        } else {
-
-            BlockingQueueTransport transport = getTransportChannel(request, response);
-            if (transport == null) {
+        try {
+            if (wireFormatOptions.get("maxFrameSize") != null && request.getContentLength() > Integer.parseInt(wireFormatOptions.get("maxFrameSize").toString())) {
+                response.setStatus(405);
+                response.setContentType("plain/text");
+                PrintWriter writer = response.getWriter();
+                writer.println("maxFrameSize exceeded");
+                writer.flush();
+                writer.close();
                 return;
             }
 
-            if (command instanceof ConnectionInfo) {
-                ((ConnectionInfo) command).setTransportContext(request.getAttribute("javax.servlet.request.X509Certificate"));
+            InputStream stream = request.getInputStream();
+            String contentType = request.getContentType();
+            if (contentType != null && contentType.equals("application/x-gzip")) {
+                stream = new GZIPInputStream(stream);
             }
-            transport.doConsume(command);
+
+            // Read the command directly from the reader, assuming UTF8 encoding
+            Command command = (Command) wireFormat.unmarshalText(new InputStreamReader(stream, "UTF-8"));
+
+            if (command instanceof WireFormatInfo) {
+                WireFormatInfo info = (WireFormatInfo) command;
+                if (!canProcessWireFormatVersion(info.getVersion())) {
+                    response.sendError(HttpServletResponse.SC_NOT_FOUND, "Cannot process wire format of version: "
+                            + info.getVersion());
+                }
+
+            } else {
+
+                BlockingQueueTransport transport = getTransportChannel(request, response);
+                if (transport == null) {
+                    return;
+                }
+
+                if (command instanceof ConnectionInfo) {
+                    ((ConnectionInfo) command).setTransportContext(request.getAttribute("jakarta.servlet.request.X509Certificate"));
+                }
+                transport.doConsume(command);
+            }
+        } catch (Exception e) {
+            // no stack trace
+            if (wireFormatOptions.get("sendStackTrace") != null && Boolean.parseBoolean(wireFormatOptions.get("sendStackTrace").toString()) == false) {
+                LOG.warn(e.getMessage(), e);
+                response.sendError(HttpStatus.SC_INTERNAL_SERVER_ERROR);
+            } else {
+                throw e;
+            }
         }
     }
 
     private boolean canProcessWireFormatVersion(int version) {
         return true;
-    }
-
-    protected String readRequestBody(HttpServletRequest request) throws IOException {
-        StringBuffer buffer = new StringBuffer();
-        BufferedReader reader = request.getReader();
-        while (true) {
-            String line = reader.readLine();
-            if (line == null) {
-                break;
-            } else {
-                buffer.append(line);
-                buffer.append("\n");
-            }
-        }
-        return buffer.toString();
     }
 
     protected BlockingQueueTransport getTransportChannel(HttpServletRequest request, HttpServletResponse response) throws IOException {
@@ -176,7 +186,7 @@ public class HttpTunnelServlet extends HttpServlet {
         }
         BlockingQueueTransport answer = clients.get(clientID);
         if (answer == null) {
-            LOG.warn("The clientID header specified is invalid. Client sesion has not yet been established for it: " + clientID);
+            LOG.warn("The clientID header specified is invalid. Client session has not yet been established for it: " + clientID);
             return null;
         }
         return answer;
@@ -197,7 +207,7 @@ public class HttpTunnelServlet extends HttpServlet {
         // Record the client's transport and ensure that it has not already registered; this is thread-safe and only allows one
         // thread to register the client
         if (clients.putIfAbsent(clientID, answer) != null) {
-            response.sendError(HttpServletResponse.SC_BAD_REQUEST, "A session for clientID '" + clientID + "' has already been established");
+            response.sendError(HttpServletResponse.SC_BAD_REQUEST, "A session for the given clientID has already been established");
             LOG.warn("A session for clientID '" + clientID + "' has already been established");
             return null;
         }
@@ -210,7 +220,17 @@ public class HttpTunnelServlet extends HttpServlet {
             }
 
             public void stopped(Service service) {
-                clients.remove(clientID);
+                final BlockingQueueTransport removed = clients.remove(clientID);
+                if (removed != null) {
+                    try {
+                        // Send a ShutdownInfo() packet on stop so that we unblock any calls
+                        // to transportChannel.getQueue().poll()
+                        removed.getQueue().add(new ShutdownInfo());
+                    } catch (Exception e) {
+                        LOG.debug("Could not send ShutdownInfo() packet to BlockingQueueTransport "
+                            + "on shutdown for client {}", clientID);
+                    }
+                }
             }
         });
 
@@ -237,7 +257,7 @@ public class HttpTunnelServlet extends HttpServlet {
 
         // Ensure that the transport was not prematurely disposed.
         if (transport.isDisposed()) {
-            response.sendError(HttpServletResponse.SC_BAD_REQUEST, "The session for clientID '" + clientID + "' was prematurely disposed");
+            response.sendError(HttpServletResponse.SC_BAD_REQUEST, "The session for the given clientID was prematurely disposed");
             LOG.warn("The session for clientID '" + clientID + "' was prematurely disposed");
             return null;
         }

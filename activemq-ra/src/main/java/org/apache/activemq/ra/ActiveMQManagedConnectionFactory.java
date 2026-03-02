@@ -24,14 +24,14 @@ import java.io.Serializable;
 import java.util.Iterator;
 import java.util.Set;
 
-import javax.jms.JMSException;
-import javax.resource.ResourceException;
-import javax.resource.spi.ConnectionManager;
-import javax.resource.spi.ConnectionRequestInfo;
-import javax.resource.spi.ManagedConnection;
-import javax.resource.spi.ManagedConnectionFactory;
-import javax.resource.spi.ResourceAdapter;
-import javax.resource.spi.ResourceAdapterAssociation;
+import jakarta.jms.JMSException;
+import jakarta.resource.ResourceException;
+import jakarta.resource.spi.ConnectionManager;
+import jakarta.resource.spi.ConnectionRequestInfo;
+import jakarta.resource.spi.ManagedConnection;
+import jakarta.resource.spi.ManagedConnectionFactory;
+import jakarta.resource.spi.ResourceAdapter;
+import jakarta.resource.spi.ResourceAdapterAssociation;
 import javax.security.auth.Subject;
 
 import org.slf4j.LoggerFactory;
@@ -76,20 +76,32 @@ public class ActiveMQManagedConnectionFactory extends ActiveMQConnectionSupport 
             if (getUserName() == null) {
                 setUserName(baseInfo.getUserName());
             }
-            if (getDurableTopicPrefetch() != null) {
+            if (getDurableTopicPrefetch() == null) {
                 setDurableTopicPrefetch(baseInfo.getDurableTopicPrefetch());
             }
-            if (getOptimizeDurableTopicPrefetch() != null) {
+            if (getOptimizeDurableTopicPrefetch() == null) {
                 setOptimizeDurableTopicPrefetch(baseInfo.getOptimizeDurableTopicPrefetch());
             }
-            if (getQueuePrefetch() != null) {
+            if (getQueuePrefetch() == null) {
                 setQueuePrefetch(baseInfo.getQueuePrefetch());
             }
-            if (getQueueBrowserPrefetch() != null) {
+            if (getQueueBrowserPrefetch() == null) {
                 setQueueBrowserPrefetch(baseInfo.getQueueBrowserPrefetch());
             }
-            if (getTopicPrefetch() != null) {
+            if (getTopicPrefetch() == null) {
                 setTopicPrefetch(baseInfo.getTopicPrefetch());
+            }
+            if (getKeyStore() == null) {
+                setKeyStore(baseInfo.getKeyStore());
+            }
+            if (getKeyStorePassword() == null) {
+                setKeyStorePassword(baseInfo.getKeyStorePassword());
+            }
+            if (getTrustStore() == null) {
+                setTrustStore(baseInfo.getTrustStore());
+            }
+            if (getTrustStorePassword() == null) {
+                setTrustStorePassword(baseInfo.getTrustStorePassword());
             }
         }
     }

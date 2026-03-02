@@ -24,11 +24,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Vector;
 
-import javax.jms.DeliveryMode;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.MessageFormatException;
-import javax.jms.MessageNotWriteableException;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageFormatException;
+import jakarta.jms.MessageNotWriteableException;
 
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.ScheduledMessage;
@@ -360,7 +360,7 @@ public class ActiveMQMessage extends Message implements org.apache.activemq.Mess
                 if (rc == null) {
                     throw new MessageFormatException("Property JMSXDeliveryCount cannot be set from a " + value.getClass().getName() + ".");
                 }
-                message.setRedeliveryCounter(rc.intValue() - 1);
+                message.setRedeliveryCounter(rc - 1);
             }
         });
         JMS_PROPERTY_SETERS.put("JMSXGroupID", new PropertySetter() {
@@ -380,7 +380,7 @@ public class ActiveMQMessage extends Message implements org.apache.activemq.Mess
                 if (rc == null) {
                     throw new MessageFormatException("Property JMSXGroupSeq cannot be set from a " + value.getClass().getName() + ".");
                 }
-                message.setGroupSequence(rc.intValue());
+                message.setGroupSequence(rc);
             }
         });
         JMS_PROPERTY_SETERS.put("JMSCorrelationID", new PropertySetter() {
@@ -415,7 +415,7 @@ public class ActiveMQMessage extends Message implements org.apache.activemq.Mess
                     if (bool == null) {
                         throw new MessageFormatException("Property JMSDeliveryMode cannot be set from a " + value.getClass().getName() + ".");
                     } else {
-                        rc = bool.booleanValue() ? DeliveryMode.PERSISTENT : DeliveryMode.NON_PERSISTENT;
+                        rc = bool ? DeliveryMode.PERSISTENT : DeliveryMode.NON_PERSISTENT;
                     }
                 }
                 ((ActiveMQMessage) message).setJMSDeliveryMode(rc);
@@ -428,7 +428,7 @@ public class ActiveMQMessage extends Message implements org.apache.activemq.Mess
                 if (rc == null) {
                     throw new MessageFormatException("Property JMSExpiration cannot be set from a " + value.getClass().getName() + ".");
                 }
-                ((ActiveMQMessage) message).setJMSExpiration(rc.longValue());
+                ((ActiveMQMessage) message).setJMSExpiration(rc);
             }
         });
         JMS_PROPERTY_SETERS.put("JMSPriority", new PropertySetter() {
@@ -438,7 +438,7 @@ public class ActiveMQMessage extends Message implements org.apache.activemq.Mess
                 if (rc == null) {
                     throw new MessageFormatException("Property JMSPriority cannot be set from a " + value.getClass().getName() + ".");
                 }
-                ((ActiveMQMessage) message).setJMSPriority(rc.intValue());
+                ((ActiveMQMessage) message).setJMSPriority(rc);
             }
         });
         JMS_PROPERTY_SETERS.put("JMSRedelivered", new PropertySetter() {
@@ -448,7 +448,7 @@ public class ActiveMQMessage extends Message implements org.apache.activemq.Mess
                 if (rc == null) {
                     throw new MessageFormatException("Property JMSRedelivered cannot be set from a " + value.getClass().getName() + ".");
                 }
-                ((ActiveMQMessage) message).setJMSRedelivered(rc.booleanValue());
+                ((ActiveMQMessage) message).setJMSRedelivered(rc);
             }
         });
         JMS_PROPERTY_SETERS.put("JMSReplyTo", new PropertySetter() {
@@ -468,7 +468,7 @@ public class ActiveMQMessage extends Message implements org.apache.activemq.Mess
                 if (rc == null) {
                     throw new MessageFormatException("Property JMSTimestamp cannot be set from a " + value.getClass().getName() + ".");
                 }
-                ((ActiveMQMessage) message).setJMSTimestamp(rc.longValue());
+                ((ActiveMQMessage) message).setJMSTimestamp(rc);
             }
         });
         JMS_PROPERTY_SETERS.put("JMSType", new PropertySetter() {
@@ -543,27 +543,28 @@ public class ActiveMQMessage extends Message implements org.apache.activemq.Mess
         }
     }
 
-    protected void checkValidScheduled(String name, Object value) throws MessageFormatException {
-        if (AMQ_SCHEDULED_DELAY.equals(name) || AMQ_SCHEDULED_PERIOD.equals(name) || AMQ_SCHEDULED_REPEAT.equals(name)) {
-            if (value instanceof Long == false && value instanceof Integer == false) {
-                throw new MessageFormatException(name + " should be long or int value");
-            }
-        }
-        if (AMQ_SCHEDULED_CRON.equals(name)) {
-            CronParser.validate(value.toString());
-        }
-    }
-
     protected Object convertScheduled(String name, Object value) throws MessageFormatException {
         Object result = value;
         if (AMQ_SCHEDULED_DELAY.equals(name)){
             result = TypeConversionSupport.convert(value, Long.class);
+            if (result != null && (Long)result < 0) {
+                throw new MessageFormatException(name + " must not be a negative value");
+            }
         }
         else if (AMQ_SCHEDULED_PERIOD.equals(name)){
             result = TypeConversionSupport.convert(value, Long.class);
+            if (result != null && (Long)result < 0) {
+                throw new MessageFormatException(name + " must not be a negative value");
+            }
         }
         else if (AMQ_SCHEDULED_REPEAT.equals(name)){
             result = TypeConversionSupport.convert(value, Integer.class);
+            if (result != null && (Integer)result < 0) {
+                throw new MessageFormatException(name + " must not be a negative value");
+            }
+        }
+        else if (AMQ_SCHEDULED_CRON.equals(name)) {
+            CronParser.validate(value.toString());
         }
         return result;
     }
@@ -589,7 +590,7 @@ public class ActiveMQMessage extends Message implements org.apache.activemq.Mess
         if (rc == null) {
             throw new MessageFormatException("Property " + name + " was a " + value.getClass().getName() + " and cannot be read as a boolean");
         }
-        return rc.booleanValue();
+        return rc;
     }
 
     @Override
@@ -602,7 +603,7 @@ public class ActiveMQMessage extends Message implements org.apache.activemq.Mess
         if (rc == null) {
             throw new MessageFormatException("Property " + name + " was a " + value.getClass().getName() + " and cannot be read as a byte");
         }
-        return rc.byteValue();
+        return rc;
     }
 
     @Override
@@ -615,7 +616,7 @@ public class ActiveMQMessage extends Message implements org.apache.activemq.Mess
         if (rc == null) {
             throw new MessageFormatException("Property " + name + " was a " + value.getClass().getName() + " and cannot be read as a short");
         }
-        return rc.shortValue();
+        return rc;
     }
 
     @Override
@@ -628,7 +629,7 @@ public class ActiveMQMessage extends Message implements org.apache.activemq.Mess
         if (rc == null) {
             throw new MessageFormatException("Property " + name + " was a " + value.getClass().getName() + " and cannot be read as an integer");
         }
-        return rc.intValue();
+        return rc;
     }
 
     @Override
@@ -641,7 +642,7 @@ public class ActiveMQMessage extends Message implements org.apache.activemq.Mess
         if (rc == null) {
             throw new MessageFormatException("Property " + name + " was a " + value.getClass().getName() + " and cannot be read as a long");
         }
-        return rc.longValue();
+        return rc;
     }
 
     @Override
@@ -654,7 +655,7 @@ public class ActiveMQMessage extends Message implements org.apache.activemq.Mess
         if (rc == null) {
             throw new MessageFormatException("Property " + name + " was a " + value.getClass().getName() + " and cannot be read as a float");
         }
-        return rc.floatValue();
+        return rc;
     }
 
     @Override
@@ -667,13 +668,13 @@ public class ActiveMQMessage extends Message implements org.apache.activemq.Mess
         if (rc == null) {
             throw new MessageFormatException("Property " + name + " was a " + value.getClass().getName() + " and cannot be read as a double");
         }
-        return rc.doubleValue();
+        return rc;
     }
 
     @Override
     public String getStringProperty(String name) throws JMSException {
         Object value = null;
-        if (name.equals("JMSXUserID")) {
+        if ("JMSXUserID".equals(name)) {
             value = getUserID();
             if (value == null) {
                 value = getObjectProperty(name);
@@ -697,37 +698,37 @@ public class ActiveMQMessage extends Message implements org.apache.activemq.Mess
     }
 
     public void setBooleanProperty(String name, boolean value, boolean checkReadOnly) throws JMSException {
-        setObjectProperty(name, Boolean.valueOf(value), checkReadOnly);
+        setObjectProperty(name, value, checkReadOnly);
     }
 
     @Override
     public void setByteProperty(String name, byte value) throws JMSException {
-        setObjectProperty(name, Byte.valueOf(value));
+        setObjectProperty(name, value);
     }
 
     @Override
     public void setShortProperty(String name, short value) throws JMSException {
-        setObjectProperty(name, Short.valueOf(value));
+        setObjectProperty(name, value);
     }
 
     @Override
     public void setIntProperty(String name, int value) throws JMSException {
-        setObjectProperty(name, Integer.valueOf(value));
+        setObjectProperty(name, value);
     }
 
     @Override
     public void setLongProperty(String name, long value) throws JMSException {
-        setObjectProperty(name, Long.valueOf(value));
+        setObjectProperty(name, value);
     }
 
     @Override
     public void setFloatProperty(String name, float value) throws JMSException {
-        setObjectProperty(name, new Float(value));
+        setObjectProperty(name, value);
     }
 
     @Override
     public void setDoubleProperty(String name, double value) throws JMSException {
-        setObjectProperty(name, new Double(value));
+        setObjectProperty(name, value);
     }
 
     @Override
@@ -735,7 +736,7 @@ public class ActiveMQMessage extends Message implements org.apache.activemq.Mess
         setObjectProperty(name, value);
     }
 
-    private void checkReadOnlyProperties() throws MessageNotWriteableException {
+    protected void checkReadOnlyProperties() throws MessageNotWriteableException {
         if (readOnlyProperties) {
             throw new MessageNotWriteableException("Message properties are read-only");
         }
@@ -776,4 +777,40 @@ public class ActiveMQMessage extends Message implements org.apache.activemq.Mess
     public void storeContentAndClear() {
         storeContent();
     }
+
+    @Override
+    protected boolean isContentMarshalled() {
+        //Always return true because ActiveMQMessage only has a content field
+        //which is already marshalled
+        return true;
+    }
+
+	@Override
+	public long getJMSDeliveryTime() throws JMSException {
+        return deliveryTime;
+	}
+
+	@Override
+	public void setJMSDeliveryTime(long deliveryTime) throws JMSException {
+        this.deliveryTime = deliveryTime;
+	}
+
+    @Override
+    public final <T> T getBody(Class<T> asType) throws JMSException {
+        if (isBodyAssignableTo(asType)) {
+            return doGetBody(asType);
+        }
+
+        throw new MessageFormatException("Message body cannot be read as type: " + asType);
+    }
+
+    @Override
+    public boolean isBodyAssignableTo(Class c) throws JMSException {
+        return true;
+    }
+
+    protected <T> T doGetBody(Class<T> asType) throws JMSException {
+        return null;
+    }
+
 }

@@ -21,33 +21,39 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.util.Hashtable;
 import java.util.Vector;
 
-import javax.jms.JMSException;
-import javax.jms.QueueConnection;
-import javax.jms.QueueConnectionFactory;
-import javax.jms.QueueSender;
-import javax.jms.QueueSession;
-import javax.jms.Session;
-import javax.jms.TopicConnection;
-import javax.jms.TopicConnectionFactory;
-import javax.jms.TopicPublisher;
-import javax.jms.TopicSession;
-import javax.jms.XAConnection;
-import javax.jms.XAConnectionFactory;
+import jakarta.jms.JMSException;
+import jakarta.jms.QueueConnection;
+import jakarta.jms.QueueConnectionFactory;
+import jakarta.jms.QueueSender;
+import jakarta.jms.QueueSession;
+import jakarta.jms.Session;
+import jakarta.jms.TopicConnection;
+import jakarta.jms.TopicConnectionFactory;
+import jakarta.jms.TopicPublisher;
+import jakarta.jms.TopicSession;
+import jakarta.jms.XAConnection;
+import jakarta.jms.XAConnectionFactory;
+import jakarta.jms.XAJMSContext;
 import javax.naming.spi.ObjectFactory;
-import javax.transaction.HeuristicMixedException;
-import javax.transaction.HeuristicRollbackException;
-import javax.transaction.InvalidTransactionException;
-import javax.transaction.NotSupportedException;
-import javax.transaction.RollbackException;
-import javax.transaction.Status;
-import javax.transaction.Synchronization;
-import javax.transaction.SystemException;
-import javax.transaction.Transaction;
-import javax.transaction.TransactionManager;
+import jakarta.transaction.HeuristicMixedException;
+import jakarta.transaction.HeuristicRollbackException;
+import jakarta.transaction.InvalidTransactionException;
+import jakarta.transaction.NotSupportedException;
+import jakarta.transaction.RollbackException;
+import jakarta.transaction.Status;
+import jakarta.transaction.Synchronization;
+import jakarta.transaction.SystemException;
+import jakarta.transaction.Transaction;
+import jakarta.transaction.TransactionManager;
+import javax.transaction.xa.XAException;
 import javax.transaction.xa.XAResource;
+import javax.transaction.xa.Xid;
 
 import org.apache.activemq.ActiveMQXAConnectionFactory;
 import org.apache.activemq.ActiveMQXASession;
@@ -63,6 +69,9 @@ public class XAConnectionPoolTest extends JmsPoolTestSupport {
         ActiveMQTopic topic = new ActiveMQTopic("test");
         XaPooledConnectionFactory pcf = new XaPooledConnectionFactory();
         pcf.setConnectionFactory(new XAConnectionFactoryOnly(new ActiveMQXAConnectionFactory("vm://test?broker.persistent=false")));
+
+        final Xid xid = createXid();
+
         // simple TM that is in a tx and will track syncs
         pcf.setTransactionManager(new TransactionManager(){
             @Override
@@ -92,7 +101,12 @@ public class XAConnectionPoolTest extends JmsPoolTestSupport {
 
                     @Override
                     public boolean enlistResource(XAResource xaRes) throws IllegalStateException, RollbackException, SystemException {
-                        return false;
+                        try {
+                            xaRes.start(xid, 0);
+                        } catch (XAException e) {
+                            throw new SystemException(e.getMessage());
+                        }
+                        return true;
                     }
 
                     @Override
@@ -159,6 +173,33 @@ public class XAConnectionPoolTest extends JmsPoolTestSupport {
 
         pcf.stop();
     }
+
+    static long txGenerator = 22;
+    public Xid createXid() throws IOException {
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        DataOutputStream os = new DataOutputStream(baos);
+        os.writeLong(++txGenerator);
+        os.close();
+        final byte[] bs = baos.toByteArray();
+
+        return new Xid() {
+
+            public int getFormatId() {
+                return 86;
+            }
+
+            public byte[] getGlobalTransactionId() {
+                return bs;
+            }
+
+            public byte[] getBranchQualifier() {
+                return bs;
+            }
+        };
+    }
+
+
 
     @Test(timeout = 60000)
     public void testAckModeOfPoolNonXAWithTM() throws Exception {
@@ -282,8 +323,8 @@ public class XAConnectionPoolTest extends JmsPoolTestSupport {
     public void testBindableEnvOverrides() throws Exception {
         XaPooledConnectionFactory pcf = new XaPooledConnectionFactory();
         assertTrue(pcf instanceof ObjectFactory);
-        Hashtable<String, String> environment = new Hashtable<String, String>();
-        environment.put("tmFromJndi", String.valueOf(Boolean.FALSE));
+        Hashtable<String, Object> environment = new Hashtable<>();
+        environment.put("tmFromJndi", Boolean.FALSE);
         assertTrue(((ObjectFactory) pcf).getObjectInstance(null, null, null, environment) instanceof XaPooledConnectionFactory);
         assertFalse(pcf.isTmFromJndi());
         pcf.stop();
@@ -377,6 +418,16 @@ public class XAConnectionPoolTest extends JmsPoolTestSupport {
 
         XAConnectionFactoryOnly(XAConnectionFactory connectionFactory) {
             this.connectionFactory = connectionFactory;
+        }
+
+        @Override
+        public XAJMSContext createXAContext() {
+            throw new UnsupportedOperationException("createXAContext() is not supported");
+        }
+
+        @Override
+        public XAJMSContext createXAContext(String userName, String password) {
+            throw new UnsupportedOperationException("createXAContext(userName, password) is not supported");
         }
 
         @Override

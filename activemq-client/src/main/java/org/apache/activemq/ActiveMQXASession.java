@@ -17,13 +17,13 @@
 
 package org.apache.activemq;
 
-import javax.jms.JMSException;
-import javax.jms.QueueSession;
-import javax.jms.Session;
-import javax.jms.TopicSession;
-import javax.jms.TransactionInProgressException;
-import javax.jms.XAQueueSession;
-import javax.jms.XATopicSession;
+import jakarta.jms.JMSException;
+import jakarta.jms.QueueSession;
+import jakarta.jms.Session;
+import jakarta.jms.TopicSession;
+import jakarta.jms.TransactionInProgressException;
+import jakarta.jms.XAQueueSession;
+import jakarta.jms.XATopicSession;
 import javax.transaction.xa.XAResource;
 
 import org.apache.activemq.command.SessionId;
@@ -57,20 +57,15 @@ import org.apache.activemq.command.SessionId;
  * than use these XA  interfaces directly.
  *
  * 
- * @see javax.jms.Session
- * @see javax.jms.QueueSession
- * @see javax.jms.TopicSession
- * @see javax.jms.XASession
+ * @see jakarta.jms.Session
+ * @see jakarta.jms.QueueSession
+ * @see jakarta.jms.TopicSession
+ * @see jakarta.jms.XASession
  */
 public class ActiveMQXASession extends ActiveMQSession implements QueueSession, TopicSession, XAQueueSession, XATopicSession {
 
     public ActiveMQXASession(ActiveMQXAConnection connection, SessionId sessionId, int theAcknowlegeMode, boolean dispatchAsync) throws JMSException {
         super(connection, sessionId, theAcknowlegeMode, dispatchAsync);
-    }
-
-    public boolean getTransacted() throws JMSException {
-        checkClosed();
-        return getTransactionContext().isInXATransaction();
     }
 
     public void rollback() throws JMSException {
@@ -99,16 +94,12 @@ public class ActiveMQXASession extends ActiveMQSession implements QueueSession, 
         return new ActiveMQTopicSession(this);
     }
 
-    /*
-     * when there is no XA transaction it is auto ack
-     */
-    public boolean isAutoAcknowledge() {
-      return true;
-    }
-    
     protected void doStartTransaction() throws JMSException {
-        // allow non transactional auto ack work on an XASession
-        // Seems ok by the spec that an XAConnection can be used without an XA tx
+        if (acknowledgementMode != SESSION_TRANSACTED) {
+            // ok once the factory XaAckMode has been explicitly set to allow use outside an XA tx
+        } else if (!getTransactionContext().isInXATransaction()) {
+            throw new JMSException("Session's XAResource has not been enlisted in a distributed transaction.");
+        }
     }
 
 }

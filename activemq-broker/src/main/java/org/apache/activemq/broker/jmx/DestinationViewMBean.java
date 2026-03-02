@@ -20,7 +20,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
-import javax.jms.InvalidSelectorException;
+import jakarta.jms.InvalidSelectorException;
 import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
 import javax.management.openmbean.CompositeData;
@@ -68,6 +68,26 @@ public interface DestinationViewMBean {
      */
     @MBeanInfo("Number of messages that has been acknowledged (and removed) from the destination.")
     long getDequeueCount();
+
+    /**
+     * Returns the number of duplicate messages that have been paged-in 
+     * from the store.
+     *
+     * @return The number of duplicate messages that have been paged-in 
+     *         from the store.
+     */
+    @MBeanInfo("Number of duplicate messages that have been paged-in from the store.")
+    long getDuplicateFromStoreCount();
+
+    /**
+     * Returns the config setting to send a duplicate message from store 
+     * to the dead letter queue.
+     *
+     * @return The config setting to send a duplicate message from store 
+     *         to the dead letter queue.
+     */
+    @MBeanInfo("Config setting to send a duplicate from store message to the dead letter queue.")
+    boolean isSendDuplicateFromStoreToDLQ();
 
     /**
      * Returns the number of messages that have been acknowledged by network subscriptions from the
@@ -168,13 +188,30 @@ public interface DestinationViewMBean {
     /**
      * Sends a TextMessage to the destination.
      *
-     * @param properties the message properties to set as a comma sep name=value list. Can only
-     *                contain Strings maped to primitive types or JMS properties. eg: body=hi,JMSReplyTo=Queue2
+     * @param properties the message properties to set as name=value list separated
+     *                   by a comma. Can only contain Strings mapped to primitive
+     *                   types or JMS properties. eg: body=hi,JMSReplyTo=Queue2
      * @return the message id of the message sent.
      * @throws Exception
      */
-    @MBeanInfo("Sends a TextMessage to the destination.")
-    public String sendTextMessageWithProperties(String properties) throws Exception;
+    @MBeanInfo("Sends a TextMessage to the destination using comma separeted properties list. Example properties: body=value,header=value")
+    public String sendTextMessageWithProperties(@MBeanInfo("properties") String properties) throws Exception;
+
+    /**
+     * Sends a TextMessage to the destination.
+     *
+     * @param properties the message properties to set as name=value list separated
+     *                   by a custom delimiter. Can only contain Strings mapped to
+     *                   primitive types or JMS properties. eg:
+     *                   body=hi,JMSReplyTo=Queue2
+     * @param delimiter  The delimiter that separates each property. Defaults to
+     *                   comma if none is provided.
+     * @return the message id of the message sent.
+     * @throws Exception
+     */
+    @MBeanInfo("Sends a TextMessage to the destination using properties separeted by arbetrary delimiter. Example properties: body=value;header=value")
+    public String sendTextMessageWithProperties(@MBeanInfo("properties") String properties,
+            @MBeanInfo("delimiter") String delimiter) throws Exception;
 
     /**
      * Sends a TextMesage to the destination.
@@ -237,6 +274,24 @@ public interface DestinationViewMBean {
      * @param limit
      */
     void setMemoryLimit(long limit);
+
+    /**
+     * @return the percentage of amount of temp usage used
+     */
+    @MBeanInfo("The percentage of the temp usage limit used")
+    int getTempUsagePercentUsage();
+
+    /**
+     * @return the amount of temp usage allocated to this destination
+     */
+    @MBeanInfo("Temp usage limit, in bytes, assigned to this destination.")
+    long getTempUsageLimit();
+
+    /**
+     * set the amount of temp usage allocated to this destination
+     * @param limit the amount of temp usage allocated to this destination
+     */
+    void setTempUsageLimit(long limit);
 
     /**
      * @return the portion of memory from the broker memory limit for this destination
@@ -363,6 +418,13 @@ public interface DestinationViewMBean {
     public void setMaxPageSize(@MBeanInfo("pageSize") int pageSize);
 
     /**
+     * @return the maximum number of message to be paged into the
+     * destination for browsing
+     */
+    @MBeanInfo("Maximum number of messages to be paged in for browsing")
+    public int getMaxBrowsePageSize();
+
+    /**
      * @return true if caching is allowed of for the destination
      */
     @MBeanInfo("Caching is allowed")
@@ -424,4 +486,51 @@ public interface DestinationViewMBean {
     @MBeanInfo("Total time (ms) messages have been blocked by flow control")
     long getTotalBlockedTime();
 
+    @MBeanInfo("Number of times the max uncommitted limit has been exceed for this destination")
+    long getMaxUncommittedExceededCount();
+
+    @MBeanInfo("Query Advanced Network Statistics flag")
+    boolean isAdvancedNetworkStatisticsEnabled();
+
+    @MBeanInfo("Toggle Advanced Network Statistics flag")
+    void setAdvancedNetworkStatisticsEnabled(boolean advancedNetworkStatisticsEnabled);
+
+    @MBeanInfo("Number of messages sent to the destination via network connection")
+    long getNetworkEnqueues();
+
+    @MBeanInfo("Number of messages acknowledged from the destination via network connection")
+    long getNetworkDequeues();
+   
+    @MBeanInfo("Query Advanced Message Statistics flag")
+    boolean isAdvancedMessageStatisticsEnabled();
+
+    @MBeanInfo("Toggle Advanced Message Statistics flag")
+    void setAdvancedMessageStatisticsEnabled(boolean advancedMessageStatisticsEnabled);
+
+    @MBeanInfo("Broker in time (ms) of last enqueued message to the destination")
+    long getEnqueuedMessageBrokerInTime();
+
+    @MBeanInfo("ClientID of last enqueued message to the destination")
+    String getEnqueuedMessageClientId();
+
+    @MBeanInfo("MessageID of last enqueued message to the destination")
+    String getEnqueuedMessageId();
+
+    @MBeanInfo("Message timestamp in (ms) of last enqueued message to the destination")
+    long getEnqueuedMessageTimestamp();
+
+    @MBeanInfo("Broker in time (ms) of last dequeued message to the destination")
+    long getDequeuedMessageBrokerInTime();
+
+    @MBeanInfo("Broker out time (ms) of last dequeued message to the destination")
+    long getDequeuedMessageBrokerOutTime();
+
+    @MBeanInfo("ClientID of last dequeued message to the destination")
+    String getDequeuedMessageClientId();
+
+    @MBeanInfo("MessageID of last dequeued message to the destination")
+    String getDequeuedMessageId();
+
+    @MBeanInfo("Message timestamp in (ms) of last dequeued message to the destination")
+    long getDequeuedMessageTimestamp();
 }

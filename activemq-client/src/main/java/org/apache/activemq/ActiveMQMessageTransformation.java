@@ -16,18 +16,20 @@
  */
 package org.apache.activemq;
 
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.net.MalformedURLException;
 import java.util.Enumeration;
 
-import javax.jms.BytesMessage;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.MapMessage;
-import javax.jms.Message;
-import javax.jms.MessageEOFException;
-import javax.jms.ObjectMessage;
-import javax.jms.StreamMessage;
-import javax.jms.TextMessage;
+import jakarta.jms.BytesMessage;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.MapMessage;
+import jakarta.jms.Message;
+import jakarta.jms.MessageEOFException;
+import jakarta.jms.ObjectMessage;
+import jakarta.jms.StreamMessage;
+import jakarta.jms.TextMessage;
 
 import org.apache.activemq.blob.BlobDownloader;
 import org.apache.activemq.command.ActiveMQBlobMessage;
@@ -179,6 +181,7 @@ public final class ActiveMQMessageTransformation {
         toMessage.setJMSReplyTo(transformDestination(fromMessage.getJMSReplyTo()));
         toMessage.setJMSDestination(transformDestination(fromMessage.getJMSDestination()));
         toMessage.setJMSDeliveryMode(fromMessage.getJMSDeliveryMode());
+        toMessage.setJMSDeliveryTime(getFromMessageDeliveryTime(fromMessage)); // TODO: AMQ-8500 DeliveryTime support ref: ActiveMQSession#send
         toMessage.setJMSRedelivered(fromMessage.getJMSRedelivered());
         toMessage.setJMSType(fromMessage.getJMSType());
         toMessage.setJMSExpiration(fromMessage.getJMSExpiration());
@@ -192,5 +195,24 @@ public final class ActiveMQMessageTransformation {
             Object obj = fromMessage.getObjectProperty(name);
             toMessage.setObjectProperty(name, obj);
         }
+    }
+
+    private static long getFromMessageDeliveryTime(Message fromMessage) throws JMSException {
+        Method deliveryTimeGetMethod = null;
+        try {
+            Class<?> clazz = fromMessage.getClass();
+            Method method = clazz.getMethod("getJMSDeliveryTime");
+            if (!Modifier.isAbstract(method.getModifiers())) {
+                deliveryTimeGetMethod = method;
+            }
+        } catch (NoSuchMethodException e) {
+            // We fallback to JMSTimestamp for jms v1.x
+        }
+
+        if (deliveryTimeGetMethod != null) {
+            return fromMessage.getJMSDeliveryTime();
+        }
+
+        return fromMessage.getJMSTimestamp();
     }
 }

@@ -16,13 +16,13 @@
  */
 package org.apache.activemq.jms.pool;
 
-import javax.jms.JMSException;
-import javax.jms.MessageProducer;
-import javax.jms.QueueSender;
-import javax.jms.QueueSession;
-import javax.jms.Session;
-import javax.jms.TopicPublisher;
-import javax.jms.TopicSession;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.QueueSender;
+import jakarta.jms.QueueSession;
+import jakarta.jms.Session;
+import jakarta.jms.TopicPublisher;
+import jakarta.jms.TopicSession;
 
 /**
  * Used to store a pooled session instance and any resources that can
@@ -33,9 +33,9 @@ import javax.jms.TopicSession;
 public class SessionHolder {
 
     private final Session session;
-    private MessageProducer producer;
-    private TopicPublisher publisher;
-    private QueueSender sender;
+    private volatile MessageProducer producer;
+    private volatile TopicPublisher publisher;
+    private volatile QueueSender sender;
 
     public SessionHolder(Session session) {
         this.session = session;

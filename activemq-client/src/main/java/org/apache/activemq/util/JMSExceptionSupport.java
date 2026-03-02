@@ -16,10 +16,23 @@
  */
 package org.apache.activemq.util;
 
-import javax.jms.JMSException;
-import javax.jms.JMSSecurityException;
-import javax.jms.MessageEOFException;
-import javax.jms.MessageFormatException;
+import jakarta.jms.IllegalStateRuntimeException;
+import jakarta.jms.InvalidClientIDRuntimeException;
+import jakarta.jms.InvalidDestinationRuntimeException;
+import jakarta.jms.InvalidSelectorRuntimeException;
+import jakarta.jms.JMSException;
+import jakarta.jms.JMSRuntimeException;
+import jakarta.jms.JMSSecurityException;
+import jakarta.jms.JMSSecurityRuntimeException;
+import jakarta.jms.MessageEOFException;
+import jakarta.jms.MessageFormatException;
+import jakarta.jms.MessageFormatRuntimeException;
+import jakarta.jms.MessageNotWriteableRuntimeException;
+import jakarta.jms.ResourceAllocationRuntimeException;
+import jakarta.jms.TransactionInProgressRuntimeException;
+import jakarta.jms.TransactionRolledBackRuntimeException;
+
+import org.apache.activemq.MaxFrameSizeExceededException;
 
 public final class JMSExceptionSupport {
 
@@ -61,6 +74,12 @@ public final class JMSExceptionSupport {
         if (cause instanceof JMSException) {
             return (JMSException)cause;
         }
+        if (cause instanceof MaxFrameSizeExceededException) {
+            JMSException jmsException = new JMSException(cause.getMessage(), "41300");
+            jmsException.setLinkedException(cause);
+            jmsException.initCause(cause);
+            return jmsException;
+        }
         String msg = cause.getMessage();
         if (msg == null || msg.length() == 0) {
             msg = cause.toString();
@@ -96,5 +115,39 @@ public final class JMSExceptionSupport {
         exception.setLinkedException(cause);
         exception.initCause(cause);
         return exception;
+    }
+
+    public static JMSRuntimeException convertToJMSRuntimeException(JMSException e) {
+        if (e instanceof jakarta.jms.IllegalStateException) {
+            return new IllegalStateRuntimeException(e.getMessage(), e.getErrorCode(), e);
+        }
+        if (e instanceof jakarta.jms.InvalidClientIDException) {
+            return new InvalidClientIDRuntimeException(e.getMessage(), e.getErrorCode(), e);
+        }
+        if (e instanceof jakarta.jms.InvalidDestinationException) {
+            return new InvalidDestinationRuntimeException(e.getMessage(), e.getErrorCode(), e);
+        }
+        if (e instanceof jakarta.jms.InvalidSelectorException) {
+            return new InvalidSelectorRuntimeException(e.getMessage(), e.getErrorCode(), e);
+        }
+        if (e instanceof jakarta.jms.JMSSecurityException) {
+            return new JMSSecurityRuntimeException(e.getMessage(), e.getErrorCode(), e);
+        }
+        if (e instanceof jakarta.jms.MessageFormatException) {
+            return new MessageFormatRuntimeException(e.getMessage(), e.getErrorCode(), e);
+        }
+        if (e instanceof jakarta.jms.MessageNotWriteableException) {
+            return new MessageNotWriteableRuntimeException(e.getMessage(), e.getErrorCode(), e);
+        }
+        if (e instanceof jakarta.jms.ResourceAllocationException) {
+            return new ResourceAllocationRuntimeException(e.getMessage(), e.getErrorCode(), e);
+        }
+        if (e instanceof jakarta.jms.TransactionInProgressException) {
+            return new TransactionInProgressRuntimeException(e.getMessage(), e.getErrorCode(), e);
+        }
+        if (e instanceof jakarta.jms.TransactionRolledBackException) {
+            return new TransactionRolledBackRuntimeException(e.getMessage(), e.getErrorCode(), e);
+        }
+        return new JMSRuntimeException(e.getMessage(), e.getErrorCode(), e);
     }
 }

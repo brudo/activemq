@@ -29,6 +29,8 @@ import org.apache.activemq.transport.Transport;
 import org.apache.activemq.transport.TransportFactory;
 import org.apache.activemq.usage.SystemUsage;
 
+
+
 public class ProxyTestSupport extends BrokerTestSupport {
 
     protected ArrayList<StubConnection> connections = new ArrayList<StubConnection>();
@@ -83,7 +85,11 @@ public class ProxyTestSupport extends BrokerTestSupport {
     protected void tearDown() throws Exception {
         for (Iterator<StubConnection> iter = connections.iterator(); iter.hasNext();) {
             StubConnection connection = iter.next();
-            connection.stop();
+            try {
+                connection.stop();
+            } catch (Exception e) {
+                //swallow any error so broker can still be stopped
+            }
             iter.remove();
         }
         remoteBroker.stop();

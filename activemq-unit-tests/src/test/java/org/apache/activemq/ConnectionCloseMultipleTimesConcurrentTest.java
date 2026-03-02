@@ -20,14 +20,17 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import javax.jms.JMSException;
-import javax.jms.Session;
+import jakarta.jms.JMSException;
+import jakarta.jms.Session;
 
 import junit.framework.TestCase;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  * 
  */
+@Category(ParallelTest.class)
 public class ConnectionCloseMultipleTimesConcurrentTest extends TestCase {
 
     private ActiveMQConnection connection;
@@ -55,7 +58,7 @@ public class ConnectionCloseMultipleTimesConcurrentTest extends TestCase {
     }
 
     /**
-     * @throws javax.jms.JMSException
+     * @throws jakarta.jms.JMSException
      */
     public void testCloseMultipleTimes() throws Exception {
         connection.createSession(false, Session.AUTO_ACKNOWLEDGE);

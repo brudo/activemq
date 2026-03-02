@@ -16,14 +16,18 @@
  */
 package org.apache.activemq.statistics;
 
-import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageConsumer;
 
 import org.apache.activemq.broker.region.Subscription;
 import org.apache.activemq.broker.region.Topic;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQTopic;
+import org.apache.activemq.test.annotations.ParallelTest;
 import org.apache.activemq.util.SubscriptionKey;
+import org.junit.Assume;
+import org.junit.Test;
+import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
@@ -31,16 +35,18 @@ import org.junit.runners.Parameterized;
  * This test shows Inflight Message sizes are correct for various acknowledgement modes
  * using a DurableSubscription
  */
+@Category(ParallelTest.class)
 @RunWith(Parameterized.class)
 public class DurableSubscriptionInflightMessageSizeTest extends AbstractInflightMessageSizeTest {
 
-    public DurableSubscriptionInflightMessageSizeTest(int ackType, boolean optimizeAcknowledge) {
-        super(ackType, optimizeAcknowledge);
+    public DurableSubscriptionInflightMessageSizeTest(int ackType, boolean optimizeAcknowledge,
+            boolean useTopicSubscriptionInflightStats) {
+        super(ackType, optimizeAcknowledge, useTopicSubscriptionInflightStats);
     }
 
     @Override
-    protected MessageConsumer getMessageConsumer() throws JMSException {
-        return session.createDurableSubscriber((javax.jms.Topic)dest, "sub1");
+    protected MessageConsumer getMessageConsumer(String destName) throws JMSException {
+        return session.createDurableSubscriber(getDestination(destName), "sub1");
     }
 
     @Override
@@ -49,13 +55,22 @@ public class DurableSubscriptionInflightMessageSizeTest extends AbstractInflight
     }
 
     @Override
-    protected javax.jms.Topic getDestination() throws JMSException {
+    protected jakarta.jms.Topic getDestination(String destName) throws JMSException {
         return session.createTopic(destName);
     }
 
     @Override
-    protected ActiveMQDestination getActiveMQDestination() {
+    protected ActiveMQDestination getActiveMQDestination(String destName) {
         return new ActiveMQTopic(destName);
+    }
+
+    @Test(timeout=60000)
+    public void testInflightMessageSizeRemoveDestination() throws Exception {
+        Assume.assumeTrue(useTopicSubscriptionInflightStats);
+        //Close as we will re-create with a wildcard sub
+        consumer.close();
+        session.unsubscribe("sub1");
+        super.testInflightMessageSizeRemoveDestination();
     }
 
 }

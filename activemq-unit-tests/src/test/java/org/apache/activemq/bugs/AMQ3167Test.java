@@ -22,12 +22,12 @@ import static org.junit.Assert.fail;
 
 import java.util.ArrayList;
 
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerService;
@@ -35,9 +35,11 @@ import org.apache.activemq.broker.region.policy.PolicyEntry;
 import org.apache.activemq.broker.region.policy.PolicyMap;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQMessage;
+import org.apache.activemq.test.annotations.ParallelTest;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 
 /**
  * Test the loss of messages detected during testing with ActiveMQ 5.4.1 and 5.4.2.
@@ -52,7 +54,7 @@ import org.junit.Test;
  * (probably because memory limits not reached). - Producers sending a number of messages before consumers come online
  * increases rate of occurrence.
  */
-
+@Category(ParallelTest.class)
 public class AMQ3167Test {
     protected BrokerService embeddedBroker;
 
@@ -83,7 +85,7 @@ public class AMQ3167Test {
      * @password Password for the JMS user; may be null.
      */
 
-    protected Connection createUnsecuredConnection(String username, String password) throws javax.jms.JMSException {
+    protected Connection createUnsecuredConnection(String username, String password) throws jakarta.jms.JMSException {
         ActiveMQConnectionFactory conn_fact;
 
         conn_fact = new ActiveMQConnectionFactory(embeddedBroker.getVmConnectorURI());
@@ -119,7 +121,6 @@ public class AMQ3167Test {
 
         broker_svc.setUseJmx(false);
         broker_svc.setPersistent(true);
-        broker_svc.setDataDirectory("target/AMQ3167Test");
         configureDestinationPolicy(broker_svc);
     }
 
@@ -426,7 +427,7 @@ public class AMQ3167Test {
          * number (starting at 0).
          */
 
-        protected void checkMessage(Message msg, int exp_seq) throws javax.jms.JMSException {
+        protected void checkMessage(Message msg, int exp_seq) throws jakarta.jms.JMSException {
             int seq;
 
             seq = msg.getIntProperty("seq");

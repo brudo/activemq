@@ -30,7 +30,7 @@ public class ActiveMQSslConnectionFactoryTest {
     final String TRUST_STORE_DIRECTORY_NAME = "src/test/resources/ssl/";
     final String TRUST_STORE_RESOURCE_PREFIX = "ssl/";
     final String TRUST_STORE_PASSWORD = "password";
-    final String SSL_TRANSPORT = "ssl://localhost:0";
+    final String SSL_TRANSPORT = "ssl://localhost:61617";
     final String FAILOVER_SSL_TRANSPORT = "failover:(" + SSL_TRANSPORT + ")?maxReconnectAttempts=1";
 
     @Test(expected = ConnectException.class)
@@ -128,10 +128,10 @@ public class ActiveMQSslConnectionFactoryTest {
             activeMQSslConnectionFactory.setTrustStore(name);
             activeMQSslConnectionFactory.setTrustStorePassword(TRUST_STORE_PASSWORD);
 
-            javax.jms.Connection connection = activeMQSslConnectionFactory.createConnection();
+            jakarta.jms.Connection connection = activeMQSslConnectionFactory.createConnection();
             connection.start();
             connection.stop();
-        } catch (javax.jms.JMSException e) {
+        } catch (jakarta.jms.JMSException e) {
             e.getCause().printStackTrace();
             throw e.getCause();
         }

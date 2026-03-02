@@ -20,7 +20,6 @@ package org.apache.activemq.transport.ws;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-import java.io.File;
 import java.io.IOException;
 import java.net.Socket;
 import java.net.URI;
@@ -32,44 +31,32 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.transport.SocketConnectorFactory;
 import org.apache.activemq.transport.stomp.StompConnection;
-import org.apache.activemq.util.Wait;
 import org.eclipse.jetty.client.HttpClient;
 import org.eclipse.jetty.client.api.Request;
 import org.eclipse.jetty.client.api.Result;
+import org.eclipse.jetty.client.dynamic.HttpClientTransportDynamic;
 import org.eclipse.jetty.client.util.BufferingResponseListener;
 import org.eclipse.jetty.http.HttpMethod;
 import org.eclipse.jetty.http.HttpStatus;
+import org.eclipse.jetty.io.ClientConnector;
 import org.eclipse.jetty.server.Connector;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.eclipse.jetty.webapp.WebAppContext;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
-import org.openqa.selenium.By;
-import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.WebElement;
-import org.openqa.selenium.chrome.ChromeDriver;
-import org.openqa.selenium.chrome.ChromeOptions;
-import org.openqa.selenium.firefox.FirefoxDriver;
-import org.openqa.selenium.firefox.FirefoxProfile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class WSTransportTest extends WSTransportTestSupport {
 
     private static final Logger LOG = LoggerFactory.getLogger(WSTransportTest.class);
-    private static final int MESSAGE_COUNT = 1000;
 
     private Server server;
-    private WebDriver driver;
-    private File profileDir;
 
     private String stompUri;
     private StompConnection stompConnection = new StompConnection();
-
-    protected final int port = 61623;
 
     @Override
     protected void addAdditionalConnectors(BrokerService service) throws Exception {
@@ -78,7 +65,7 @@ public class WSTransportTest extends WSTransportTestSupport {
 
     @Override
     protected String getWSConnectorURI() {
-        return "ws://127.0.0.1:" + port + "?websocket.maxTextMessageSize=99999&transport.maxIdleTime=1001";
+        return "ws://127.0.0.1:0?websocket.maxTextMessageSize=99999&transport.maxIdleTime=1001";
     }
 
     protected Server createWebServer() throws Exception {
@@ -116,7 +103,6 @@ public class WSTransportTest extends WSTransportTestSupport {
     @Before
     public void setUp() throws Exception {
         super.setUp();
-        profileDir = new File("activemq-data/profiles");
         stompConnect();
         server = createWebServer();
     }
@@ -135,12 +121,6 @@ public class WSTransportTest extends WSTransportTestSupport {
                 LOG.warn("Error on super tearDown()");
             }
 
-            if (driver != null) {
-                try {
-                    driver.quit();
-                } catch (Exception e) {}
-                driver = null;
-            }
             if (server != null) {
                 try {
                     server.stop();
@@ -156,14 +136,17 @@ public class WSTransportTest extends WSTransportTestSupport {
 
     @Test(timeout=10000)
     public void testGet() throws Exception {
-        testGet("http://127.0.0.1:" + port, null);
+        testGet("http://127.0.0.1:" + wsConnectUri.getPort(), null);
     }
 
 
-    protected void testGet(final String uri, SslContextFactory
+    protected void testGet(final String uri, SslContextFactory.Client
             sslContextFactory) throws Exception {
-        HttpClient httpClient = sslContextFactory != null ? new HttpClient(sslContextFactory) :
-            new HttpClient(new SslContextFactory());
+
+        ClientConnector clientConnector = new ClientConnector();
+        clientConnector.setSslContextFactory(sslContextFactory);
+
+        HttpClient httpClient = sslContextFactory != null ? new HttpClient(new HttpClientTransportDynamic(clientConnector)) : new HttpClient();
         httpClient.start();
 
         final CountDownLatch latch = new CountDownLatch(1);
@@ -178,36 +161,6 @@ public class WSTransportTest extends WSTransportTestSupport {
         });
         latch.await();
         assertEquals(HttpStatus.OK_200, status.get());
-    }
-
-    @Ignore
-    @Test
-    public void testFireFoxWebSockets() throws Exception {
-        driver = createFireFoxWebDriver();
-        doTestWebSockets(driver);
-    }
-
-    @Ignore
-    @Test
-    public void testChromeWebSockets() throws Exception {
-        driver = createChromeWebDriver();
-        doTestWebSockets(driver);
-    }
-
-    protected WebDriver createChromeWebDriver() throws Exception {
-        File profile = new File(profileDir, "chrome");
-        profile.mkdirs();
-        ChromeOptions options = new ChromeOptions();
-        options.addArguments("--enable-udd-profiles",
-                             "--user-data-dir=" + profile,
-                             "--allow-file-access-from-files");
-        return new ChromeDriver(options);
-    }
-
-    protected WebDriver createFireFoxWebDriver() throws Exception {
-        File profile = new File(profileDir, "firefox");
-        profile.mkdirs();
-        return new FirefoxDriver(new FirefoxProfile(profile));
     }
 
     private void stompConnect() throws IOException, URISyntaxException, UnknownHostException {
@@ -231,58 +184,4 @@ public class WSTransportTest extends WSTransportTestSupport {
         return "http://localhost:" + port + "/websocket.html#" + wsConnectUri;
     }
 
-    public void doTestWebSockets(WebDriver driver) throws Exception {
-
-        driver.get(getTestURI());
-
-        final WebElement webStatus = driver.findElement(By.id("status"));
-        final WebElement webReceived = driver.findElement(By.id("received"));
-
-        while ("Loading" == webStatus.getText()) {
-            Thread.sleep(100);
-        }
-
-        // Skip test if browser does not support websockets..
-        if (webStatus.getText() != "No WebSockets") {
-
-            assertTrue("Should have connected", Wait.waitFor(new Wait.Condition() {
-
-                @Override
-                public boolean isSatisified() throws Exception {
-                    return webStatus.getText().equals("Connected");
-                }
-            }));
-
-            stompConnection.connect("system", "manager");
-
-            stompConnection.send("/queue/websocket", "Hello");
-            assertTrue("Should have received message by now.", Wait.waitFor(new Wait.Condition() {
-                @Override
-                public boolean isSatisified() throws Exception {
-                    return webReceived.getText().equals("Hello");
-                }
-            }));
-
-            for (int i = 1; i <= MESSAGE_COUNT; ++i) {
-                stompConnection.send("/queue/websocket", "messages #" + i);
-            }
-
-            assertTrue("Should have received messages by now.", Wait.waitFor(new Wait.Condition() {
-                @Override
-                public boolean isSatisified() throws Exception {
-                    return webReceived.getText().equals("messages #" + MESSAGE_COUNT);
-                }
-            }));
-
-            Thread.sleep(1000);
-
-            assertTrue("Should have disconnected", Wait.waitFor(new Wait.Condition() {
-
-                @Override
-                public boolean isSatisified() throws Exception {
-                    return webStatus.getText().equals("Disconnected");
-                }
-            }));
-        }
-    }
 }

@@ -30,6 +30,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -39,6 +40,7 @@ import java.util.TreeMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.Adler32;
 import java.util.zip.Checksum;
 
@@ -135,12 +137,15 @@ public class PageFile {
     private final AtomicLong nextFreePageId = new AtomicLong();
     private SequenceSet freeList = new SequenceSet();
 
+    private AtomicReference<SequenceSet> recoveredFreeList = new AtomicReference<SequenceSet>();
+    private AtomicReference<SequenceSet> trackingFreeDuringRecovery = new AtomicReference<SequenceSet>();
+
     private final AtomicLong nextTxid = new AtomicLong();
 
     // Persistent settings stored in the page file.
     private MetaData metaData;
 
-    private final ArrayList<File> tmpFilesForRemoval = new ArrayList<File>();
+    private final HashMap<File, RandomAccessFile> tmpFilesForRemoval = new HashMap<>();
 
     private boolean useLFRUEviction = false;
     private float LFUEvictionFactor = 0.2f;
@@ -173,7 +178,6 @@ public class PageFile {
             this.page = page;
             current = data;
             currentLocation = -1;
-            diskBoundLocation = -1;
         }
 
         public void setCurrentLocation(Page page, long location, int length) {
@@ -193,12 +197,18 @@ public class PageFile {
             return page;
         }
 
-        public byte[] getDiskBound() throws IOException {
+        public byte[] getDiskBound(HashMap<File, RandomAccessFile> tmpFiles) throws IOException {
             if (diskBound == null && diskBoundLocation != -1) {
                 diskBound = new byte[length];
-                try(RandomAccessFile file = new RandomAccessFile(tmpFile, "r")) {
+                if (tmpFiles.containsKey(tmpFile) && tmpFiles.get(tmpFile).getChannel().isOpen()) {
+                    RandomAccessFile file = tmpFiles.get(tmpFile);
                     file.seek(diskBoundLocation);
                     file.read(diskBound);
+                } else {
+                    try (RandomAccessFile file = new RandomAccessFile(tmpFile, "r")) {
+                        file.seek(diskBoundLocation);
+                        file.read(diskBound);
+                    }
                 }
                 diskBoundLocation = -1;
             }
@@ -340,20 +350,15 @@ public class PageFile {
 
     /**
      * @param file
-     * @throws IOException
      */
-    private void delete(File file) throws IOException {
-        if (file.exists() && !file.delete()) {
-            throw new IOException("Could not delete: " + file.getPath());
-        }
+    private void delete(File file) {
+        IOHelper.deleteFileNonBlocking(file);
     }
 
     private void archive(File file, String suffix) throws IOException {
         if (file.exists()) {
-            File archive = new File(file.getPath() + "-" + suffix);
-            if (!file.renameTo(archive)) {
-                throw new IOException("Could not archive: " + file.getPath() + " to " + file.getPath());
-            }
+            final File archiveFile = new File(file.getPath() + "-" + suffix);
+            IOHelper.renameFile(file, archiveFile);
         }
     }
 
@@ -378,7 +383,7 @@ public class PageFile {
 
             File file = getMainPageFile();
             IOHelper.mkdirs(file.getParentFile());
-            writeFile = new RecoverableRandomAccessFile(file, "rw");
+            writeFile = new RecoverableRandomAccessFile(file, "rw", false);
             readFile = new RecoverableRandomAccessFile(file, "r");
 
             if (readFile.length() > 0) {
@@ -401,8 +406,6 @@ public class PageFile {
                 recoveryFile = new RecoverableRandomAccessFile(getRecoveryFile(), "rw");
             }
 
-            boolean needsFreePageRecovery = false;
-
             if (metaData.isCleanShutdown()) {
                 nextTxid.set(metaData.getLastTxId() + 1);
                 if (metaData.getFreePages() > 0) {
@@ -411,32 +414,87 @@ public class PageFile {
             } else {
                 LOG.debug(toString() + ", Recovering page file...");
                 nextTxid.set(redoRecoveryUpdates());
-                needsFreePageRecovery = true;
+                trackingFreeDuringRecovery.set(new SequenceSet());
             }
 
             if (writeFile.length() < PAGE_FILE_HEADER_SIZE) {
-                writeFile.setLength(PAGE_FILE_HEADER_SIZE);
+                throw new IllegalStateException("File " + file + " is corrupt, length of "
+                    + writeFile.length() + " is less than page file header size of " + PAGE_FILE_HEADER_SIZE);
             }
             nextFreePageId.set((writeFile.length() - PAGE_FILE_HEADER_SIZE) / pageSize);
-
-            if (needsFreePageRecovery) {
-                // Scan all to find the free pages after nextFreePageId is set
-                freeList = new SequenceSet();
-                for (Iterator<Page> i = tx().iterator(true); i.hasNext(); ) {
-                    Page page = i.next();
-                    if (page.getType() == Page.PAGE_FREE_TYPE) {
-                        freeList.add(page.getPageId());
-                    }
-                }
-            }
 
             metaData.setCleanShutdown(false);
             storeMetaData();
             getFreeFile().delete();
             startWriter();
+            if (trackingFreeDuringRecovery.get() != null) {
+                asyncFreePageRecovery(nextFreePageId.get());
+            }
         } else {
             throw new IllegalStateException("Cannot load the page file when it is already loaded.");
         }
+    }
+
+    private void asyncFreePageRecovery(final long lastRecoveryPage) {
+        Thread thread = new Thread("KahaDB Index Free Page Recovery") {
+            @Override
+            public void run() {
+                try {
+                    recoverFreePages(lastRecoveryPage);
+                } catch (Throwable e) {
+                    if (loaded.get()) {
+                        LOG.warn("Error recovering index free page list", e);
+                    }
+                }
+            }
+        };
+        thread.setPriority(Thread.NORM_PRIORITY);
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private void recoverFreePages(final long lastRecoveryPage) throws Exception {
+        LOG.info(toString() + ". Recovering pageFile free list due to prior unclean shutdown..");
+        SequenceSet newFreePages = new SequenceSet();
+        // need new pageFile instance to get unshared readFile
+        PageFile recoveryPageFile = new PageFile(directory, name);
+        recoveryPageFile.loadForRecovery(nextFreePageId.get());
+        try {
+            for (Iterator<Page> i = new Transaction(recoveryPageFile).iterator(true); i.hasNext(); ) {
+                Page page = i.next();
+
+                if (page.getPageId() >= lastRecoveryPage) {
+                    break;
+                }
+
+                if (page.getType() == Page.PAGE_FREE_TYPE) {
+                    newFreePages.add(page.getPageId());
+                }
+            }
+        } finally {
+            recoveryPageFile.readFile.close();
+        }
+
+        LOG.info(toString() + ". Recovered pageFile free list of size: " + newFreePages.rangeSize());
+        if (!newFreePages.isEmpty()) {
+
+            // allow flush (with index lock held) to merge eventually
+            recoveredFreeList.lazySet(newFreePages);
+        } else {
+            // If there is no free pages, set trackingFreeDuringRecovery to allow the broker to have a clean shutdown
+            trackingFreeDuringRecovery.set(null);
+        }
+    }
+
+    private void loadForRecovery(long nextFreePageIdSnap) throws Exception {
+        loaded.set(true);
+        enablePageCaching = false;
+        File file = getMainPageFile();
+        readFile = new RecoverableRandomAccessFile(file, "r");
+        loadMetaData();
+        pageSize = metaData.getPageSize();
+        enableRecoveryFile = false;
+        nextFreePageId.set(nextFreePageIdSnap);
     }
 
 
@@ -464,7 +522,12 @@ public class PageFile {
             }
 
             metaData.setLastTxId(nextTxid.get() - 1);
-            metaData.setCleanShutdown(true);
+            if (trackingFreeDuringRecovery.get() != null) {
+                // async recovery incomplete, will have to try again
+                metaData.setCleanShutdown(false);
+            } else {
+                metaData.setCleanShutdown(true);
+            }
             storeMetaData();
 
             if (readFile != null) {
@@ -493,6 +556,10 @@ public class PageFile {
         return loaded.get();
     }
 
+    public boolean isCleanShutdown() {
+        return metaData != null && metaData.isCleanShutdown();
+    }
+
     public void allowIOResumption() {
         loaded.set(true);
     }
@@ -506,6 +573,18 @@ public class PageFile {
 
         if (enabledWriteThread && stopWriter.get()) {
             throw new IOException("Page file already stopped: checkpointing is not allowed");
+        }
+
+        SequenceSet recovered = recoveredFreeList.get();
+        if (recovered != null) {
+            recoveredFreeList.lazySet(null);
+            SequenceSet inUse = trackingFreeDuringRecovery.get();
+            recovered.remove(inUse);
+            freeList.merge(recovered);
+
+            // all set for clean shutdown
+            trackingFreeDuringRecovery.set(null);
+            inUse.clear();
         }
 
         // Setup a latch that gets notified when all buffered writes hits the disk.
@@ -753,6 +832,9 @@ public class PageFile {
         return toOffset(nextFreePageId.get());
     }
 
+    public boolean isFreePage(long pageId) {
+        return freeList.contains(pageId);
+    }
     /**
      * @return the number of pages allocated in the PageFile
      */
@@ -889,6 +971,11 @@ public class PageFile {
     public void freePage(long pageId) {
         freeList.add(pageId);
         removeFromCache(pageId);
+
+        SequenceSet trackFreeDuringRecovery = trackingFreeDuringRecovery.get();
+        if (trackFreeDuringRecovery != null) {
+            trackFreeDuringRecovery.add(pageId);
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -1066,18 +1153,12 @@ public class PageFile {
 
                 for (PageWrite w : batch) {
                     try {
-                        checksum.update(w.getDiskBound(), 0, pageSize);
+                        checksum.update(w.getDiskBound(tmpFilesForRemoval), 0, pageSize);
                     } catch (Throwable t) {
                         throw IOExceptionSupport.create("Cannot create recovery file. Reason: " + t, t);
                     }
                     recoveryFile.writeLong(w.page.getPageId());
-                    recoveryFile.write(w.getDiskBound(), 0, pageSize);
-                }
-
-                // Can we shrink the recovery buffer??
-                if (recoveryPageCount > recoveryFileMaxPageCount) {
-                    int t = Math.max(recoveryFileMinPageCount, batch.size());
-                    recoveryFile.setLength(recoveryFileSizeForPages(t));
+                    recoveryFile.write(w.getDiskBound(tmpFilesForRemoval), 0, pageSize);
                 }
 
                 // Record the page writes in the recovery buffer.
@@ -1098,7 +1179,7 @@ public class PageFile {
 
             for (PageWrite w : batch) {
                 writeFile.seek(toOffset(w.page.getPageId()));
-                writeFile.write(w.getDiskBound(), 0, pageSize);
+                writeFile.write(w.getDiskBound(tmpFilesForRemoval), 0, pageSize);
                 w.done();
             }
 
@@ -1119,7 +1200,8 @@ public class PageFile {
                     // the write cache.
                     if (w.isDone()) {
                         writes.remove(w.page.getPageId());
-                        if (w.tmpFile != null && tmpFilesForRemoval.contains(w.tmpFile)) {
+                        if (w.tmpFile != null && tmpFilesForRemoval.containsKey(w.tmpFile)) {
+                            tmpFilesForRemoval.get(w.tmpFile).close();
                             if (!w.tmpFile.delete()) {
                                 throw new IOException("Can't delete temporary KahaDB transaction file:" + w.tmpFile);
                             }
@@ -1135,12 +1217,16 @@ public class PageFile {
         }
     }
 
-    public void removeTmpFile(File file) {
-        tmpFilesForRemoval.add(file);
+    public void removeTmpFile(File file, RandomAccessFile randomAccessFile) throws IOException {
+        if (!tmpFilesForRemoval.containsKey(file)) {
+            tmpFilesForRemoval.put(file, randomAccessFile);
+        } else {
+            randomAccessFile.close();
+        }
     }
 
     private long recoveryFileSizeForPages(int pageCount) {
-        return RECOVERY_FILE_HEADER_SIZE + ((pageSize + 8) * pageCount);
+        return RECOVERY_FILE_HEADER_SIZE + ((pageSize + 8L) * pageCount);
     }
 
     private void releaseCheckpointWaiter() {
@@ -1166,8 +1252,6 @@ public class PageFile {
         if (recoveryFile.length() == 0) {
             // Write an empty header..
             recoveryFile.write(new byte[RECOVERY_FILE_HEADER_SIZE]);
-            // Preallocate the minium size for better performance.
-            recoveryFile.setLength(recoveryFileSizeForPages(recoveryFileMinPageCount));
             return 0;
         }
 

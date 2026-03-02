@@ -38,14 +38,14 @@ import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTopic;
 import org.apache.activemq.jaas.GroupPrincipal;
 import org.apache.activemq.util.Wait;
+import org.apache.directory.api.ldap.model.name.Dn;
+import org.apache.directory.api.ldap.model.name.Rdn;
+import org.apache.directory.api.ldap.model.ldif.LdifEntry;
+import org.apache.directory.api.ldap.model.ldif.LdifReader;
+import org.apache.directory.api.ldap.model.message.ModifyRequest;
+import org.apache.directory.api.ldap.model.message.ModifyRequestImpl;
 import org.apache.directory.ldap.client.api.LdapConnection;
 import org.apache.directory.server.core.integ.AbstractLdapTestUnit;
-import org.apache.directory.shared.ldap.model.ldif.LdifEntry;
-import org.apache.directory.shared.ldap.model.ldif.LdifReader;
-import org.apache.directory.shared.ldap.model.message.ModifyRequest;
-import org.apache.directory.shared.ldap.model.message.ModifyRequestImpl;
-import org.apache.directory.shared.ldap.model.name.Dn;
-import org.apache.directory.shared.ldap.model.name.Rdn;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -312,7 +312,7 @@ public abstract class AbstractCachedLDAPAuthorizationMapLegacyTest extends Abstr
         getLdapServer().stop();
 
         // wait for the context to be closed
-        // as we can't rely on ldar server isStarted()
+        // as we can't rely on ldap server isStarted()
         Wait.waitFor(new Wait.Condition() {
             @Override
             public boolean isSatisified() throws Exception {
@@ -322,7 +322,7 @@ public abstract class AbstractCachedLDAPAuthorizationMapLegacyTest extends Abstr
                     return map.context == null;
                 }
             }
-        });
+        }, 5*60*1000);
 
         failedACLs = map.getReadACLs(new ActiveMQQueue("TEST.FOO"));
         assertEquals("set size: " + failedACLs, 2, failedACLs.size());
@@ -347,7 +347,7 @@ public abstract class AbstractCachedLDAPAuthorizationMapLegacyTest extends Abstr
             public boolean isSatisified() throws Exception {
                 return map.getReadACLs(new ActiveMQQueue("FAILED")).size() == 2;
             }
-        }));
+        }, 5*60*1000));
     }
 
     protected SimpleCachedLDAPAuthorizationMap createMap() {

@@ -28,8 +28,8 @@ import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-import javax.jms.InvalidDestinationException;
-import javax.jms.JMSException;
+import jakarta.jms.InvalidDestinationException;
+import jakarta.jms.JMSException;
 
 import org.apache.activemq.advisory.AdvisorySupport;
 import org.apache.activemq.broker.ConnectionContext;
@@ -289,7 +289,6 @@ public class TopicRegion extends AbstractRegion {
 
             // Now perhaps there other durable subscriptions (via wild card)
             // that would match this destination..
-            durableSubscriptions.values();
             for (DurableTopicSubscription sub : durableSubscriptions.values()) {
                 // Skip over subscriptions that we already added..
                 if (dupChecker.contains(sub)) {
@@ -369,7 +368,7 @@ public class TopicRegion extends AbstractRegion {
             answer.init();
             return answer;
         } catch (Exception e) {
-            LOG.error("Failed to create TopicSubscription ", e);
+            LOG.debug("Failed to create TopicSubscription ", e);
             JMSException jmsEx = new JMSException("Couldn't create TopicSubscription");
             jmsEx.setLinkedException(e);
             throw jmsEx;

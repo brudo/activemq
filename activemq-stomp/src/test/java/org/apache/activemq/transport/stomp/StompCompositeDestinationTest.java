@@ -22,12 +22,12 @@ import static org.junit.Assert.assertTrue;
 
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 import javax.management.ObjectName;
 
 import org.apache.activemq.ActiveMQConnection;
@@ -39,9 +39,12 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.junit.experimental.categories.Category;
+
 /**
  * Tests for support of composite destination support over STOMP
  */
+@Category(ParallelTest.class)
 public class StompCompositeDestinationTest extends StompTestSupport {
 
     private static final Logger LOG = LoggerFactory.getLogger(StompCompositeDestinationTest.class);
@@ -222,14 +225,22 @@ public class StompCompositeDestinationTest extends StompTestSupport {
             }
         }, TimeUnit.SECONDS.toMillis(30), TimeUnit.MILLISECONDS.toMillis(150)));
 
-        QueueViewMBean viewOfA = getProxyToQueue(destinationA);
-        QueueViewMBean viewOfB = getProxyToQueue(destinationB);
+        final QueueViewMBean viewOfA = getProxyToQueue(destinationA);
+        final QueueViewMBean viewOfB = getProxyToQueue(destinationB);
 
         assertNotNull(viewOfA);
         assertNotNull(viewOfB);
 
-        assertEquals(1, viewOfA.getQueueSize());
-        assertEquals(1, viewOfB.getQueueSize());
+        assertTrue("Queues should each have 1 message", Wait.waitFor(new Wait.Condition() {
+            @Override
+            public boolean isSatisified() throws Exception {
+                try {
+                    return viewOfA.getQueueSize() == 1 && viewOfB.getQueueSize() == 1;
+                } catch (Exception ignored) {
+                    return false;
+                }
+            }
+        }, TimeUnit.SECONDS.toMillis(30), TimeUnit.MILLISECONDS.toMillis(150)));
 
         stompConnection.disconnect();
     }

@@ -23,10 +23,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
-import javax.jms.Connection;
-import javax.jms.DeliveryMode;
-import javax.jms.QueueBrowser;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.QueueBrowser;
+import jakarta.jms.Session;
 import javax.management.MBeanServerConnection;
 import javax.management.MBeanServerInvocationHandler;
 import javax.management.ObjectName;
@@ -45,11 +45,19 @@ import org.apache.activemq.broker.jmx.QueueViewMBean;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.transport.stomp.StompConnection;
 import org.apache.activemq.util.DefaultTestAppender;
-import org.apache.log4j.Appender;
-import org.apache.log4j.spi.LoggingEvent;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.Property;
+import org.apache.logging.log4j.core.filter.AbstractFilter;
+import org.apache.logging.log4j.core.layout.MessageLayout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class SecurityJMXTest extends TestCase {
 
     private static final Logger LOG = LoggerFactory.getLogger(SecurityJMXTest.class);
@@ -70,18 +78,19 @@ public class SecurityJMXTest extends TestCase {
         final AtomicBoolean gotExpected = new AtomicBoolean(false);
         final AtomicReference<Object> stackTrace = new AtomicReference<Object>();
 
-        final Appender appender = new DefaultTestAppender() {
-            public void doAppend(LoggingEvent event) {
-                String message =  event.getMessage().toString();
+        final Appender appender = new AbstractAppender("testAppender", new AbstractFilter() {}, new MessageLayout(), false, new Property[0]) {
+            @Override
+            public void append(LogEvent event) {
+                String message =  event.getMessage().getFormattedMessage();
                 if (message.contains("Async error occurred")) {
                     gotExpected.set(true);
-                    stackTrace.set(event.getThrowableInformation());
+                    stackTrace.set(event.getThrown());
                 }
             }
         };
 
-        final org.apache.log4j.Logger toVerify = org.apache.log4j.Logger.getLogger(TransportConnection.class.getName() + ".Service");
-
+        appender.start();
+        org.apache.logging.log4j.core.Logger toVerify = (org.apache.logging.log4j.core.Logger)LogManager.getLogger(TransportConnection.class.getName() + ".Service");
         toVerify.addAppender(appender);
 
         try {

@@ -21,10 +21,10 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
-import javax.jms.Connection;
-import javax.jms.Message;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.Message;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 import javax.management.ObjectName;
 import javax.management.openmbean.CompositeData;
 import org.apache.activemq.ActiveMQConnectionFactory;
@@ -67,7 +67,6 @@ public class DurableSubscriptionOfflineBrowseRemoveTest extends DurableSubscript
         testParameters.add(new Object[]{TestSupport.PersistenceAdapterChoice.JDBC, Boolean.TRUE});
         testParameters.add(new Object[]{TestSupport.PersistenceAdapterChoice.JDBC, Boolean.FALSE});
 
-        // leveldb needs some work on finding index from green messageId
         return testParameters;
     }
 

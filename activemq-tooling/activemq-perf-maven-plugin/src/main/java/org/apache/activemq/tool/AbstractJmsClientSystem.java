@@ -26,9 +26,9 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 
-import javax.jms.ConnectionFactory;
-import javax.jms.ConnectionMetaData;
-import javax.jms.JMSException;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.ConnectionMetaData;
+import jakarta.jms.JMSException;
 
 import org.apache.activemq.tool.properties.AbstractObjectProperties;
 import org.apache.activemq.tool.properties.JmsClientProperties;
@@ -237,7 +237,7 @@ public abstract class AbstractJmsClientSystem extends AbstractObjectProperties {
     protected ConnectionFactory loadJmsFactory(String spiClass, Properties factorySettings) throws JMSException {
         try {
             Class<?> spi = Class.forName(spiClass);
-            SPIConnectionFactory spiFactory = (SPIConnectionFactory)spi.newInstance();
+            SPIConnectionFactory spiFactory = SPIConnectionFactory.class.cast(spi.getConstructor().newInstance());
             ConnectionFactory jmsFactory = spiFactory.createConnectionFactory(factorySettings);
             LOG.info("Created: " + jmsFactory.getClass().getName() + " using SPIConnectionFactory: " + spiFactory.getClass().getName());
             return jmsFactory;

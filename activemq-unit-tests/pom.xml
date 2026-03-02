@@ -22,12 +22,16 @@
   <parent>
     <groupId>org.apache.activemq</groupId>
     <artifactId>activemq-parent</artifactId>
-    <version>5.16.0-SNAPSHOT</version>
+    <version>6.3.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>activemq-unit-tests</artifactId>
   <name>ActiveMQ :: Unit Tests</name>
   <description>The ActiveMQ Message Broker and Client Unit Tests</description>
+
+  <properties>
+    <surefire.version>3.5.3</surefire.version>
+  </properties>
 
   <dependencies>
 
@@ -48,10 +52,6 @@
     </dependency>
     <dependency>
       <groupId>org.apache.activemq</groupId>
-      <artifactId>activemq-leveldb-store</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.activemq</groupId>
       <artifactId>activemq-console</artifactId>
     </dependency>
     <dependency>
@@ -64,24 +64,15 @@
     </dependency>
     <dependency>
       <groupId>org.apache.activemq</groupId>
-      <artifactId>activemq-partition</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.activemq</groupId>
       <artifactId>activemq-runtime-config</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.apache.geronimo.specs</groupId>
-      <artifactId>geronimo-jms_1.1_spec</artifactId>
+      <groupId>jakarta.jms</groupId>
+      <artifactId>jakarta.jms-api</artifactId>
     </dependency>
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>${project.groupId}</groupId>
-      <artifactId>activeio-core</artifactId>
-      <optional>true</optional>
     </dependency>
     <dependency>
       <groupId>org.fusesource.mqtt-client</groupId>
@@ -97,7 +88,7 @@
     <!-- =============================== -->
     <dependency>
       <groupId>org.osgi</groupId>
-      <artifactId>org.osgi.core</artifactId>
+      <artifactId>osgi.core</artifactId>
       <scope>provided</scope>
       <optional>true</optional>
     </dependency>
@@ -107,17 +98,13 @@
       <optional>true</optional>
     </dependency>
     <dependency>
-      <groupId>org.apache.geronimo.specs</groupId>
-      <artifactId>geronimo-jta_1.0.1B_spec</artifactId>
+      <groupId>jakarta.transaction</groupId>
+      <artifactId>jakarta.transaction-api</artifactId>
       <optional>true</optional>
     </dependency>
     <dependency>
-      <groupId>org.apache.geronimo.specs</groupId>
-      <artifactId>geronimo-j2ee-management_1.1_spec</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.geronimo.specs</groupId>
-      <artifactId>geronimo-annotation_1.0_spec</artifactId>
+      <groupId>jakarta.annotation</groupId>
+      <artifactId>jakarta.annotation-api</artifactId>
       <optional>true</optional>
     </dependency>
     <dependency>
@@ -142,18 +129,20 @@
       <artifactId>spring-context</artifactId>
     </dependency>
     <dependency>
+      <groupId>com.h2database</groupId>
+      <artifactId>h2</artifactId>
+      <scope>test</scope>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
       <groupId>org.apache.derby</groupId>
       <artifactId>derby</artifactId>
       <optional>true</optional>
     </dependency>
     <dependency>
-      <groupId>xalan</groupId>
-      <artifactId>xalan</artifactId>
+      <groupId>org.apache.derby</groupId>
+      <artifactId>derbytools</artifactId>
       <optional>true</optional>
-    </dependency>
-    <dependency>
-      <groupId>commons-net</groupId>
-      <artifactId>commons-net</artifactId>
     </dependency>
 
     <!-- =============================== -->
@@ -187,13 +176,18 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-log4j12</artifactId>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-api</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>log4j</groupId>
-      <artifactId>log4j</artifactId>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-slf4j2-impl</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -212,7 +206,7 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>javax.jmdns</groupId>
+      <groupId>org.jmdns</groupId>
       <artifactId>jmdns</artifactId>
       <optional>true</optional>
     </dependency>
@@ -222,7 +216,7 @@
     </dependency>
     <dependency>
       <groupId>org.jasypt</groupId>
-      <artifactId>jasypt-spring31</artifactId>
+      <artifactId>jasypt-spring4</artifactId>
       <version>${jasypt-version}</version>
       <optional>true</optional>
     </dependency>
@@ -233,21 +227,6 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>commons-primitives</groupId>
-      <artifactId>commons-primitives</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>axion</groupId>
-      <artifactId>axion</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>regexp</groupId>
-      <artifactId>regexp</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
       <groupId>org.apache.commons</groupId>
       <artifactId>commons-dbcp2</artifactId>
       <optional>true</optional>
@@ -255,16 +234,17 @@
     </dependency>
 
     <!--  Joram JMS conformance tests -->
+    <!-- AMQ-9239 FIXME: port to jakarta -->
     <dependency>
-      <groupId>org.fusesource.joram-jms-tests</groupId>
-      <artifactId>joram-jms-tests</artifactId>
-      <version>1.0</version>
+      <groupId>org.apache.activemq.tooling</groupId>
+      <artifactId>activemq-joram-jms-tests</artifactId>
+      <version>${project.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <!-- using it for Jetty's JNDI context to work /w Joram tests. -->
-      <groupId>org.eclipse.jetty.aggregate</groupId>
-      <artifactId>jetty-all</artifactId>
+      <groupId>org.eclipse.jetty</groupId>
+      <artifactId>jetty-jndi</artifactId>
       <scope>test</scope>
     </dependency>
 
@@ -274,24 +254,18 @@
       <artifactId>apacheds-core-integ</artifactId>
       <version>${directory-version}</version>
       <scope>test</scope>
-      <exclusions>
-        <exclusion>
-          <groupId>bouncycastle</groupId>
-          <artifactId>bcprov-jdk15</artifactId>
-        </exclusion>
-      </exclusions>
-    </dependency>
-    <dependency>
-      <groupId>org.bouncycastle</groupId>
-      <artifactId>bcprov-jdk15</artifactId>
-      <version>1.46</version>
-      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.apache.directory.server</groupId>
       <artifactId>apacheds-server-integ</artifactId>
       <version>${directory-version}</version>
       <scope>test</scope>
+      <exclusions>
+        <exclusion>
+          <groupId>log4j</groupId>
+          <artifactId>log4j</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.jmock</groupId>
@@ -306,38 +280,12 @@
     <dependency>
       <groupId>org.easymock</groupId>
       <artifactId>easymock</artifactId>
-      <version>3.2</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.ftpserver</groupId>
-      <artifactId>ftpserver-core</artifactId>
-      <version>${ftpserver-version}</version>
+      <version>3.6</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.mockito</groupId>
       <artifactId>mockito-core</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.powermock</groupId>
-      <artifactId>powermock-core</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.powermock</groupId>
-      <artifactId>powermock-module-junit4</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.powermock</groupId>
-      <artifactId>powermock-api-mockito</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.powermock</groupId>
-      <artifactId>powermock-api-mockito-common</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -358,9 +306,9 @@
             <link>http://junit.sourceforge.net/javadoc/</link>
           </links>
           <stylesheetfile>${basedir}/../etc/css/stylesheet.css</stylesheetfile>
-          <linksource>true</linksource>
           <maxmemory>256m</maxmemory>
           <source>${source-version}</source>
+          <noindex>true</noindex>
           <groups>
             <group>
               <title>JMS Client</title>
@@ -369,10 +317,6 @@
             <group>
               <title>JMS Client support classes for working with BLOBs and JNDI</title>
               <packages>org.apache.activemq.blob:org.apache.activemq.jndi</packages>
-            </group>
-            <group>
-              <title>Enterprise Integration Pattern support via Camel</title>
-              <packages>org.apache.activemq.camel:org.apache.activemq.camel.*</packages>
             </group>
             <group>
               <title>Spring support</title>
@@ -457,31 +401,117 @@
         </configuration>
       </plugin>
       <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <executions>
+          <execution>
+            <goals>
+              <goal>properties</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
+        <version>${surefire.version}</version>
         <configuration>
           <forkCount>1</forkCount>
-          <reuseForks>false</reuseForks>
-          <forkedProcessTimeoutInSeconds>1200</forkedProcessTimeoutInSeconds>
+          <enableProcessChecker>all</enableProcessChecker>
+          <forkedProcessTimeoutInSeconds>900</forkedProcessTimeoutInSeconds>     <!-- max time tests may run -->
+          <forkedProcessExitTimeoutInSeconds>30</forkedProcessExitTimeoutInSeconds> <!-- max time JVM may hang after tests -->
           <runOrder>alphabetical</runOrder>
-          <excludes>
-            <!-- temporarily exclude failing tests so that CI works; fix asap and reenable -->
-            <exclude>**/AMQ4092Test.java</exclude>
-            <exclude>**/AMQ4607Test.java</exclude>
-            <exclude>**/QueueSubscriptionTest.java</exclude>
-            <exclude>**/RoundRobinDispatchPolicyTest.java</exclude>
-            <exclude>**/SimpleDispatchPolicyTest.java</exclude>
-          </excludes>
+          <reportFormat>plain</reportFormat>
+          <failIfNoTests>false</failIfNoTests>
+          <argLine>-javaagent:${org.mockito:mockito-core:jar}</argLine>
+          <excludedGroups>org.apache.activemq.test.annotations.ParallelTest</excludedGroups>
           <systemPropertyVariables>
+            <org.apache.activemq.default.directory.prefix>${project.build.directory}/</org.apache.activemq.default.directory.prefix>
             <java.net.preferIPv4Stack>true</java.net.preferIPv4Stack>
-            <org.apache.activemq.default.directory.prefix>target/</org.apache.activemq.default.directory.prefix>
             <org.apache.activemq.AutoFailTestSupport.disableSystemExit>true</org.apache.activemq.AutoFailTestSupport.disableSystemExit>
             <org.apache.activemq.broker.jmx.createConnector>false</org.apache.activemq.broker.jmx.createConnector>
           </systemPropertyVariables>
+          <consoleOutputReporter>
+            <disable>true</disable>
+          </consoleOutputReporter>
+          <statelessTestsetInfoReporter
+            implementation="org.apache.maven.plugin.surefire.extensions.junit5.JUnit5StatelessTestsetInfoTreeReporter">
+            <printStacktraceOnError>true</printStacktraceOnError>
+            <printStacktraceOnFailure>true</printStacktraceOnFailure>
+            <printStdoutOnError>true</printStdoutOnError>
+            <printStdoutOnFailure>true</printStdoutOnFailure>
+            <printStderrOnError>true</printStderrOnError>
+            <printStderrOnFailure>true</printStderrOnFailure>
+          </statelessTestsetInfoReporter>
           <includes>
             <include>**/*Test.*</include>
           </includes>
+          <excludes>
+            <!-- temporarily exclude failing tests so that CI works; fix asap and reenable -->
+            <exclude>**/AMQ4092Test.java</exclude>
+            <exclude>**/AMQ4351Test.java</exclude>
+            <exclude>**/AMQ4607Test.java</exclude>
+            <exclude>**/AMQ4952Test.java</exclude>
+            <exclude>**/AMQ6432Test.java</exclude>
+            <exclude>**/DurableSubscriptionInflightMessageSizeTest.java</exclude>
+            <exclude>**/JDBCIOExceptionHandlerTest.java</exclude>
+            <exclude>**/OfflineDurableSubscriberTimeoutTest.java</exclude>
+            <exclude>**/QueueSubscriptionTest.java</exclude>
+            <exclude>**/RoundRobinDispatchPolicyTest.java</exclude>
+            <exclude>**/SimpleDispatchPolicyTest.java</exclude>
+            <exclude>**/JobSchedulerBrokerShutdownTest.java</exclude>
+            <exclude>**/ProxyConnectorTest.java</exclude>
+            <exclude>**/DuplexAdvisoryRaceTest.java</exclude>
+            <exclude>**/JDBCPersistenceAdapterExpiredMessageTest.java</exclude>
+            <exclude>**/JDBCCleanupLimitedPoolTest.java</exclude>
+            <exclude>**/PercentDiskUsageLimitTest.java</exclude>
+            <exclude>**/TwoBrokerMulticastQueueTest.java</exclude>
+            <exclude>**/RecoveryStatsBrokerTest.java</exclude>
+            <exclude>**/ClientIdFilterDispatchPolicyTest.java</exclude>
+            <exclude>**/StartAndConcurrentStopBrokerTest.java</exclude>
+            <exclude>**/BlobTransferPolicyUriTest.java</exclude>
+          </excludes>
         </configuration>
+        <executions>
+          <execution>
+            <id>parallel</id>
+            <phase>test</phase>
+            <goals>
+              <goal>test</goal>
+            </goals>
+            <configuration>
+              <!-- drop the default excludedGroups -->
+              <excludedGroups combine.self="override"/>
+              <groups>org.apache.activemq.test.annotations.ParallelTest</groups>
+              <forkCount>2C</forkCount>
+              <enableProcessChecker>all</enableProcessChecker>
+              <forkedProcessTimeoutInSeconds>900</forkedProcessTimeoutInSeconds>     <!-- max time tests may run -->
+              <forkedProcessExitTimeoutInSeconds>30</forkedProcessExitTimeoutInSeconds> <!-- max time JVM may hang after tests -->
+              <failIfNoTests>false</failIfNoTests>
+              <argLine>-javaagent:${org.mockito:mockito-core:jar}</argLine>
+              <systemPropertyVariables>
+                <org.apache.activemq.default.directory.prefix>${project.build.directory}/parallel-tests-${surefire.forkNumber}/</org.apache.activemq.default.directory.prefix>
+                <!-- when running tests in parallel in the CI (quite slow) we need to bump the wireformat negotiation timeout (5s by default) -->
+                <org.apache.activemq.transport.wireFormatNegotiationTimeout>30000</org.apache.activemq.transport.wireFormatNegotiationTimeout>
+              </systemPropertyVariables>
+              <excludes combine.children="append"/>
+            </configuration>
+          </execution>
+        </executions>
+        <dependencies>
+          <dependency>
+            <groupId>org.apache.maven.surefire</groupId>
+            <artifactId>surefire-junit47</artifactId>
+            <version>${surefire.version}</version>
+          </dependency>
+          <dependency>
+            <groupId>me.fabriciorby</groupId>
+            <artifactId>maven-surefire-junit5-tree-reporter</artifactId>
+            <version>1.5.1</version>
+          </dependency>
+        </dependencies>
       </plugin>
+
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-clean-plugin</artifactId>
@@ -504,12 +534,12 @@
             <id>package</id>
             <phase>package</phase>
             <configuration>
-              <tasks>
+              <target>
                 <echo>Deleting unwanted resources from the test-jar</echo>
                 <delete dir="${project.build.directory}/test-classes" verbose="true">
                   <include name="*.*" />
                 </delete>
-              </tasks>
+              </target>
             </configuration>
             <goals>
               <goal>run</goal>
@@ -544,30 +574,6 @@
     </plugins>
   </build>
   <profiles>
-    <profile>
-      <id>activemq.tests-all</id>
-      <activation>
-        <property>
-          <name>activemq.tests</name>
-          <value>all</value>
-        </property>
-      </activation>
-      <build>
-        <plugins>
-          <plugin>
-            <artifactId>maven-surefire-plugin</artifactId>
-            <configuration>
-              <excludes combine.children="append">
-                <!-- These are performance tests and take too long to run -->
-                <exclude>**/perf/*</exclude>
-                <!-- These are load tests and take too long to run -->
-                <exclude>**/load/*</exclude>
-              </excludes>
-            </configuration>
-          </plugin>
-        </plugins>
-      </build>
-    </profile>
     <profile>
       <id>activemq.tests-sanity</id>
       <activation>
@@ -633,9 +639,9 @@
     <profile>
       <id>activemq.exclude-broken-tests</id>
       <activation>
-        <activeByDefault>true</activeByDefault>
         <property>
           <name>activemq.tests</name>
+          <value>excludeBroken</value>
         </property>
       </activation>
       <build>
@@ -665,8 +671,6 @@
                 <exclude>**/SSHTunnelNetworkReconnectTest.*</exclude>
                 <!-- http://issues.apache.org/activemq/browse/AMQ-1027 -->
                 <exclude>**/FailoverConsumerTest.*</exclude>
-                <!-- The NIO implemenation is not working properly on OS X.. -->
-                <exclude>**/nio/**</exclude>
                 <exclude>**/NioQueueSubscriptionTest.*/</exclude>
                 <!-- A test used for memory profiling only. -->
                 <exclude>**/NetworkConnectionsCleanedupTest.*/**</exclude>
@@ -682,11 +686,8 @@
                 <!-- breaks hudson: disable till we get a chance to give it the time that it needs - http://hudson.zones.apache.org/hudson/job/ActiveMQ/org.apache.activemq$activemq-core/199/testReport/org.apache.activemq.network/BrokerNetworkWithStuckMessagesTest/testBrokerNetworkWithStuckMessages/ -->
                 <exclude>**/BrokerNetworkWithStuckMessagesTest.*</exclude>
                 <exclude>**/DoSTest.*</exclude>
-
-                <!-- journal over journal is odd, but there may be some audit missing in leveldb, to investigate -->
                 <exclude>**/StoreQueueCursorJournalNoDuplicateTest.*</exclude>
                 <exclude>**/ThreeBrokerVirtualTopicNetworkAMQPATest.*</exclude>
-                <exclude>**/LevelDBXARecoveryBrokerTest.*</exclude>
               </excludes>
             </configuration>
           </plugin>
@@ -696,7 +697,10 @@
     <profile>
       <id>activemq.tests-quick</id>
       <activation>
-        <activeByDefault>true</activeByDefault>
+        <property>
+          <name>activemq.tests</name>
+          <value>quick</value>
+        </property>
       </activation>
       <build>
         <plugins>
@@ -770,6 +774,7 @@
                 <exclude>org/apache/activemq/broker/jmx/MBeanTest.*</exclude>
                 <exclude>org/apache/activemq/broker/jmx/PurgeTest.*</exclude>
                 <exclude>org/apache/activemq/broker/mKahaDBXARecoveryBrokerTest.*</exclude>
+                <exclude>org/apache/activemq/broker/KahaDBXARecoveryBrokerTest.*</exclude>
                 <exclude>org/apache/activemq/broker/policy/AbortSlowConsumerTest.*</exclude>
                 <exclude>org/apache/activemq/broker/region/DestinationGCTest.*</exclude>
                 <exclude>org/apache/activemq/broker/region/DestinationRemoveRestartTest.*</exclude>
@@ -781,6 +786,8 @@
                 <exclude>org/apache/activemq/broker/region/cursors/NegativeQueueTest.*</exclude>
                 <exclude>org/apache/activemq/broker/region/cursors/StoreBasedCursorTest.*</exclude>
                 <exclude>org/apache/activemq/broker/region/cursors/StoreQueueCursorJDBCNoDuplicateTest.*</exclude>
+                <exclude>org/apache/activemq/broker/region/QueuePurgeTest.*</exclude>
+                <exclude>org/apache/activemq/broker/scheduler/JmsSchedulerTest.*</exclude>
                 <exclude>org/apache/activemq/broker/scheduler/JmsCronSchedulerTest.*</exclude>
                 <exclude>org/apache/activemq/broker/scheduler/JmsSchedulerTest.*</exclude>
                 <exclude>org/apache/activemq/broker/scheduler/JobSchedulerManagementTest.*</exclude>
@@ -873,20 +880,6 @@
                 <exclude>org/apache/activemq/bugs/TempStoreDataCleanupTest.*</exclude>
                 <exclude>org/apache/activemq/bugs/VMTransportClosureTest.*</exclude>
                 <exclude>org/apache/activemq/bugs/amq1095/MessageSelectorTest.*</exclude>
-                <exclude>org/apache/activemq/camel/AMQ2611Test.*</exclude>
-                <exclude>org/apache/activemq/camel/CamelDestinationExclusiveConsumerTest.*</exclude>
-                <exclude>org/apache/activemq/camel/CamelRedeliveryTest.*</exclude>
-                <exclude>org/apache/activemq/camel/CamelVMTransportRoutingTest.*</exclude>
-                <exclude>org/apache/activemq/camel/DlqTest.*</exclude>
-                <exclude>org/apache/activemq/camel/JmsJdbcXATest.*</exclude>
-                <exclude>org/apache/activemq/camel/SetHeaderTest.*</exclude>
-                <exclude>org/apache/activemq/camel/TransactedConsumeTest.*</exclude>
-                <exclude>org/apache/activemq/camel/component/ActiveMQJmsHeaderRouteTest.*</exclude>
-                <exclude>org/apache/activemq/camel/component/ActiveMQRouteTest.*</exclude>
-                <exclude>org/apache/activemq/camel/component/AutoExposeQueuesInCamelTest.*</exclude>
-                <exclude>org/apache/activemq/camel/component/InvokeRequestReplyUsingJmsReplyToHeaderTest.*</exclude>
-                <exclude>org/apache/activemq/camel/component/JmsSimpleRequestReplyTest.*</exclude>
-                <exclude>org/apache/activemq/camel/component/JournalRouteTest.*</exclude>
                 <exclude>org/apache/activemq/command/MessageCompressionTest.*</exclude>
                 <exclude>org/apache/activemq/config/BrokerXmlConfigFromJNDITest.*</exclude>
                 <exclude>org/apache/activemq/config/ConfigTest.*</exclude>
@@ -960,7 +953,6 @@
                 <exclude>org/apache/activemq/transport/SoWriteTimeoutTest.*</exclude>
                 <exclude>org/apache/activemq/transport/TopicClusterTest.*</exclude>
                 <exclude>org/apache/activemq/transport/discovery/DiscoveryNetworkReconnectTest.*</exclude>
-                <exclude>org/apache/activemq/transport/discovery/DiscoveryTransportBrokerTest.*</exclude>
                 <exclude>org/apache/activemq/transport/discovery/DiscoveryTransportNoBrokerTest.*</exclude>
                 <exclude>org/apache/activemq/transport/discovery/DiscoveryUriTest.*</exclude>
                 <exclude>org/apache/activemq/transport/discovery/MasterSlaveDiscoveryTest.*</exclude>
@@ -1012,7 +1004,6 @@
                 <exclude>org/apache/activemq/transport/vm/VMTransportBrokerNameTest.*</exclude>
                 <exclude>org/apache/activemq/transport/vm/VMTransportWaitForTest.*</exclude>
                 <exclude>org/apache/activemq/transport/vm/VmTransportNetworkBrokerTest.*</exclude>
-                <exclude>org/apache/activemq/transport/xmpp/XmppTest.*</exclude>
                 <exclude>org/apache/activemq/usage/StoreUsageTest.*</exclude>
                 <exclude>org/apache/activemq/usecases/AMQ2927Test.*</exclude>
                 <exclude>org/apache/activemq/usecases/AMQStackOverFlowTest.*</exclude>
@@ -1121,6 +1112,11 @@
                 <exclude>org/apache/activemq/store/kahadb/disk/util/DataByteArrayInputStreamTest.*</exclude>
                 <exclude>org/apache/activemq/bugs/AMQ5266StarvedConsumerTest.*</exclude>
                 <exclude>org/apache/activemq/bugs/AMQ5266Test.*</exclude>
+
+                <!--Broken tests -->
+                <exclude>**/NetworkFailoverTest.*/**</exclude>
+                <!-- This test only works on machines which have ssh properly configured -->
+                <exclude>**/SSHTunnelNetworkReconnectTest.*</exclude>
               </excludes>
             </configuration>
           </plugin>
@@ -1141,26 +1137,34 @@
                       <configuration>
                           <excludes combine.children="append">
                               <exclude>**/QueueMasterSlaveSingleUrlTest.*</exclude>
-                              <exclude>**/mLevelDBXARecoveryBrokerTest.*</exclude>
-                              <exclude>**/StoreQueueCursorLevelDBNoDuplicateTest.*</exclude>
-                              <exclude>**/AMQ2149LevelDBTest.*</exclude>
-                              <exclude>**/SparseAckReplayAfterStoreCleanupLevelDBStoreTest.*</exclude>
-                              <exclude>**/LevelDBStoreBrokerTest.*</exclude>
-                              <exclude>**/LevelDBXARecoveryBrokerTest.*</exclude>
-                              <exclude>**/LevelDBDurableTopicTest.*</exclude>
-                              <exclude>**/LevelDBStoreQueueTest.*</exclude>
-                              <exclude>**/LevelDBNegativeQueueTest.*</exclude>
-                              <exclude>**/LevelDBStoreBrokerTest.*</exclude>
-                              <exclude>**/LevelDBStorePerDestinationTest.*</exclude>
-                              <exclude>**/LevelDBDurableSubscriptionTest.*</exclude>
-                              <exclude>**/QueueBrowsingLevelDBTest.*</exclude>
-                              <exclude>**/SingleBrokerVirtualDestinationsWithWildcardLevelDBTest.*</exclude>
-                              <exclude>**/ThreeBrokerVirtualTopicNetworkLevelDBTest.*</exclude>
                           </excludes>
                       </configuration>
                   </plugin>
               </plugins>
           </build>
+      </profile>
+      <profile>
+        <id>activemq.tests.mac.excludes</id>
+        <activation>
+          <os>
+            <family>mac</family>
+          </os>
+        </activation>
+        <build>
+          <plugins>
+            <plugin>
+              <artifactId>maven-surefire-plugin</artifactId>
+              <configuration>
+                <excludes combine.children="append">
+                  <!-- Multicast and UDP based tests are unreliable on macOS CI (no proper multicast interfaces) -->
+                  <exclude>org/apache/activemq/transport/peer/PeerTransportTest.*</exclude>
+                  <exclude>org/apache/activemq/transport/multicast/MulticastTransportTest.*</exclude>
+                  <exclude>org/apache/activemq/network/MulticastNetworkTest.*</exclude>
+                </excludes>
+              </configuration>
+            </plugin>
+          </plugins>
+        </build>
       </profile>
       <profile>
           <id>activemq.tests.aix.excludes</id>
@@ -1179,72 +1183,12 @@
                               <exclude>**/QueueMasterSlaveSingleUrlTest.*</exclude>
                               <exclude>**/AMQ1866.*</exclude>
                               <exclude>**/AMQ2149Test.*</exclude>
-                              <exclude>**/AMQ2149LevelDBTest.*</exclude>
                               <exclude>**/AMQ2584Test.*</exclude>
                               <exclude>**/ExpiredMessagesTest.*</exclude>
-                              <exclude>**/LevelDBDurableSubscriptionTest.*</exclude>
-                              <exclude>**/LevelDBXARecoveryBrokerTest.*</exclude>
                               <exclude>**/ManagedDurableSubscriptionTest.*</exclude>
-                              <exclude>**/SparseAckReplayAfterStoreCleanupLevelDBStoreTest.*</exclude>
                               <exclude>**/ThreeBrokerVirtualTopicNetworkAMQPATest.*</exclude>
                               <exclude>**/ConcurrentProducerDurableConsumerTest.*</exclude>  <!-- AIX only -->
                               <exclude>**/ConcurrentProducerQueueConsumerTest.*</exclude>    <!-- AIX only -->
-                              <exclude>**/mLevelDBXARecoveryBrokerTest.*</exclude>
-                              <exclude>**/StoreQueueCursorLevelDBNoDuplicateTest.*</exclude>
-                              <exclude>**/LevelDBStoreBrokerTest.*</exclude>
-                              <exclude>**/LevelDBDurableTopicTest.*</exclude>
-                              <exclude>**/LevelDBStoreQueueTest.*</exclude>
-                              <exclude>**/LevelDBNegativeQueueTest.*</exclude>
-                              <exclude>**/LevelDBStoreBrokerTest.*</exclude>
-                              <exclude>**/LevelDBStorePerDestinationTest.*</exclude>
-                              <exclude>**/QueueBrowsingLevelDBTest.*</exclude>
-                              <exclude>**/SingleBrokerVirtualDestinationsWithWildcardLevelDBTest.*</exclude>
-                              <exclude>**/ThreeBrokerVirtualTopicNetworkLevelDBTest.*</exclude>
-                          </excludes>
-                      </configuration>
-                  </plugin>
-              </plugins>
-          </build>
-      </profile>
-      <profile>
-          <id>activemq.tests.solaris.excludes</id>
-          <activation>
-              <property>
-                  <name>os.name</name>
-                  <value>SunOS</value>
-              </property>
-          </activation>
-          <build>
-              <plugins>
-                  <plugin>
-                      <artifactId>maven-surefire-plugin</artifactId>
-                      <configuration>
-                          <excludes combine.children="append">
-                              <exclude>**/QueueMasterSlaveSingleUrlTest.*</exclude>
-                              <exclude>**/AMQ2149Test.*</exclude>
-                              <exclude>**/AMQ2149LevelDBTest.*</exclude>
-                              <exclude>**/AMQ2584Test.*</exclude>
-                              <exclude>**/ExpiredMessagesTest.*</exclude>
-                              <exclude>**/LevelDBDurableSubscriptionTest.*</exclude>
-                              <exclude>**/LevelDBXARecoveryBrokerTest.*</exclude>
-                              <exclude>**/ManagedDurableSubscriptionTest.*</exclude>
-                              <exclude>**/SparseAckReplayAfterStoreCleanupLevelDBStoreTest.*</exclude>
-                              <exclude>**/ThreeBrokerVirtualTopicNetworkAMQPATest.*</exclude>
-                              <exclude>**/mLevelDBXARecoveryBrokerTest.*</exclude>
-                              <exclude>**/StoreQueueCursorLevelDBNoDuplicateTest.*</exclude>
-                              <exclude>**/LevelDBStoreBrokerTest.*</exclude>
-                              <exclude>**/LevelDBDurableTopicTest.*</exclude>
-                              <exclude>**/LevelDBStoreQueueTest.*</exclude>
-                              <exclude>**/LevelDBNegativeQueueTest.*</exclude>
-                              <exclude>**/LevelDBStoreBrokerTest.*</exclude>
-                              <exclude>**/LevelDBStorePerDestinationTest.*</exclude>
-                              <exclude>**/QueueBrowsingLevelDBTest.*</exclude>
-                              <exclude>**/SingleBrokerVirtualDestinationsWithWildcardLevelDBTest.*</exclude>
-                              <exclude>**/ThreeBrokerVirtualTopicNetworkLevelDBTest.*</exclude>
-                              <!-- These are performance tests and take too long to run -->
-                              <exclude>**/perf/*</exclude>
-                              <!-- These are load tests and take too long to run -->
-                              <exclude>**/load/*</exclude>
                           </excludes>
                       </configuration>
                   </plugin>
@@ -1266,25 +1210,10 @@
                           <excludes combine.children="append">
                               <exclude>**/QueueMasterSlaveSingleUrlTest.*</exclude>
                               <exclude>**/AMQ2149Test.*</exclude>
-                              <exclude>**/AMQ2149LevelDBTest.*</exclude>
                               <exclude>**/AMQ2584Test.*</exclude>
                               <exclude>**/ExpiredMessagesTest.*</exclude>
-                              <exclude>**/LevelDBDurableSubscriptionTest.*</exclude>
-                              <exclude>**/LevelDBXARecoveryBrokerTest.*</exclude>
                               <exclude>**/ManagedDurableSubscriptionTest.*</exclude>
-                              <exclude>**/SparseAckReplayAfterStoreCleanupLevelDBStoreTest.*</exclude>
                               <exclude>**/ThreeBrokerVirtualTopicNetworkAMQPATest.*</exclude>
-                              <exclude>**/mLevelDBXARecoveryBrokerTest.*</exclude>
-                              <exclude>**/StoreQueueCursorLevelDBNoDuplicateTest.*</exclude>
-                              <exclude>**/LevelDBStoreBrokerTest.*</exclude>
-                              <exclude>**/LevelDBDurableTopicTest.*</exclude>
-                              <exclude>**/LevelDBStoreQueueTest.*</exclude>
-                              <exclude>**/LevelDBNegativeQueueTest.*</exclude>
-                              <exclude>**/LevelDBStoreBrokerTest.*</exclude>
-                              <exclude>**/LevelDBStorePerDestinationTest.*</exclude>
-                              <exclude>**/QueueBrowsingLevelDBTest.*</exclude>
-                              <exclude>**/SingleBrokerVirtualDestinationsWithWildcardLevelDBTest.*</exclude>
-                              <exclude>**/ThreeBrokerVirtualTopicNetworkLevelDBTest.*</exclude>
                               <!-- These are performance tests and take too long to run -->
                               <exclude>**/perf/*</exclude>
                               <!-- These are load tests and take too long to run -->
@@ -1294,6 +1223,34 @@
                   </plugin>
               </plugins>
           </build>
+      </profile>
+      <profile>
+        <id>jdk21-plus</id>
+        <activation>
+          <jdk>[21,)</jdk>
+        </activation>
+        <build>
+          <plugins>
+            <plugin>
+              <groupId>org.codehaus.mojo</groupId>
+              <artifactId>build-helper-maven-plugin</artifactId>
+              <executions>
+                <execution>
+                  <id>add-jdk21-test-source</id>
+                  <phase>generate-test-sources</phase>
+                  <goals>
+                    <goal>add-test-source</goal>
+                  </goals>
+                  <configuration>
+                    <sources>
+                      <source>src/test/java21</source>
+                    </sources>
+                  </configuration>
+                </execution>
+              </executions>
+            </plugin>
+          </plugins>
+        </build>
       </profile>
   </profiles>
 </project>

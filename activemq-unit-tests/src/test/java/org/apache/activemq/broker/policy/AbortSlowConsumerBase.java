@@ -19,8 +19,8 @@ package org.apache.activemq.broker.policy;
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.jms.ExceptionListener;
-import javax.jms.JMSException;
+import jakarta.jms.ExceptionListener;
+import jakarta.jms.JMSException;
 
 import org.apache.activemq.JmsMultipleClientsTestSupport;
 import org.apache.activemq.broker.BrokerService;
@@ -41,7 +41,6 @@ public class AbortSlowConsumerBase extends JmsMultipleClientsTestSupport impleme
     @Before
     public void setUp() throws Exception {
         exceptions.clear();
-        topic = true;
         underTest = createSlowConsumerStrategy();
         super.setUp();
         createDestination();

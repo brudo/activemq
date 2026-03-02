@@ -28,12 +28,15 @@ import org.apache.activemq.transport.RequestTimedOutIOException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.jms.BytesMessage;
-import javax.jms.JMSException;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.BytesMessage;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class AMQ6240Test extends EmbeddedBrokerTestSupport {
 
     static final Logger LOG = LoggerFactory.getLogger(AMQ6240Test.class);

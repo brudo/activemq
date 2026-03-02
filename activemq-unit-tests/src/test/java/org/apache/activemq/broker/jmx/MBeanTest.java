@@ -26,18 +26,18 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import javax.jms.BytesMessage;
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageListener;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.Topic;
-import javax.jms.TopicSubscriber;
+import jakarta.jms.BytesMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageListener;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.Topic;
+import jakarta.jms.TopicSubscriber;
 import javax.management.MBeanServer;
 import javax.management.MBeanServerInvocationHandler;
 import javax.management.MalformedObjectNameException;
@@ -46,14 +46,13 @@ import javax.management.ObjectName;
 import javax.management.openmbean.CompositeData;
 import javax.management.openmbean.TabularData;
 
-import junit.textui.TestRunner;
-
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.ActiveMQPrefetchPolicy;
 import org.apache.activemq.ActiveMQSession;
 import org.apache.activemq.BlobMessage;
 import org.apache.activemq.EmbeddedBrokerTestSupport;
+import org.apache.activemq.RedeliveryPolicy;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.region.BaseDestination;
 import org.apache.activemq.broker.region.policy.PolicyEntry;
@@ -62,17 +61,23 @@ import org.apache.activemq.broker.region.policy.SharedDeadLetterStrategy;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTempQueue;
+import org.apache.activemq.test.annotations.ParallelTest;
 import org.apache.activemq.util.JMXSupport;
 import org.apache.activemq.util.URISupport;
 import org.apache.activemq.util.Wait;
+import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import junit.textui.TestRunner;
+
 
 /**
  * A test case of the various MBeans in ActiveMQ. If you want to look at the
  * various MBeans after the test has been run then run this test case as a
  * command line application.
  */
+@Category(ParallelTest.class)
 public class MBeanTest extends EmbeddedBrokerTestSupport {
 
     private static final Logger LOG = LoggerFactory.getLogger(MBeanTest.class);
@@ -82,6 +87,7 @@ public class MBeanTest extends EmbeddedBrokerTestSupport {
     protected MBeanServer mbeanServer;
     protected String domain = "org.apache.activemq";
     protected String clientID = "foo";
+    protected String offlineClientID = "OFFLINE";
 
     protected Connection connection;
     protected boolean transacted;
@@ -116,8 +122,10 @@ public class MBeanTest extends EmbeddedBrokerTestSupport {
         // messages on a queue
         assertSendViaMBean();
         assertSendCsnvViaMBean();
+        assertSendTextMessageWithCustomDelimitedPropsViaMBean();
         assertQueueBrowseWorks();
         assertCreateAndDestroyDurableSubscriptions();
+        assertCreateAndDestroyOfflineDurableSubscriptions();
         assertConsumerCounts();
         assertProducerCounts();
     }
@@ -178,6 +186,56 @@ public class MBeanTest extends EmbeddedBrokerTestSupport {
         assertTrue("use cache", queueNew.isUseCache());
         assertTrue("cache enabled", queueNew.isCacheEnabled());
         assertEquals("no forwards", 0, queueNew.getForwardCount());
+    }
+
+    public void testMoveFromDLQImmediateDLQ() throws Exception {
+
+        RedeliveryPolicy redeliveryPolicy = new RedeliveryPolicy();
+        redeliveryPolicy.setMaximumRedeliveries(0);
+        ((ActiveMQConnectionFactory)connectionFactory).setRedeliveryPolicy(redeliveryPolicy);
+        Connection connection = connectionFactory.createConnection();
+
+        // populate
+        useConnection(connection);
+
+        Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+        Destination dest = session.createQueue(getDestinationString());
+        MessageConsumer consumer = session.createConsumer(dest);
+        consumer.setMessageListener(new MessageListener() {
+            @Override
+            public void onMessage(Message message) {
+                try {
+                    System.out.println("Received: " + message + " on " + message.getJMSDestination());
+                } catch (JMSException e) {
+                    e.printStackTrace();
+                }
+                throw new RuntimeException("Horrible exception");
+            }});
+
+
+        ObjectName queueViewMBeanName = assertRegisteredObjectName(domain + ":type=Broker,brokerName=localhost,destinationType=Queue,destinationName=" + getDestinationString());
+        QueueViewMBean queue = MBeanServerInvocationHandler.newProxyInstance(mbeanServer, queueViewMBeanName, QueueViewMBean.class, true);
+
+        ObjectName dlqQueueViewMBeanName = assertRegisteredObjectName(domain + ":type=Broker,brokerName=localhost,destinationType=Queue,destinationName=" + SharedDeadLetterStrategy.DEFAULT_DEAD_LETTER_QUEUE_NAME );
+        QueueViewMBean dlq = MBeanServerInvocationHandler.newProxyInstance(mbeanServer, dlqQueueViewMBeanName, QueueViewMBean.class, true);
+
+        assertTrue("messages on dlq", Wait.waitFor(new Wait.Condition() {
+            @Override
+            public boolean isSatisified() throws Exception {
+                LOG.info("Dlq size: " + dlq.getQueueSize() + ", qSize: " + queue.getQueueSize());
+                return MESSAGE_COUNT == dlq.getQueueSize();
+            }
+        }));
+
+        dlq.retryMessages();
+
+        assertTrue("messages on dlq after retry", Wait.waitFor(new Wait.Condition() {
+            @Override
+            public boolean isSatisified() throws Exception {
+                LOG.info("Dlq size: " + dlq.getQueueSize() + ", qSize: " + queue.getQueueSize());
+                return MESSAGE_COUNT == dlq.getQueueSize();
+            }
+        }));
     }
 
     //Show broken behaviour https://issues.apache.org/jira/browse/AMQ-5752"
@@ -401,15 +459,19 @@ public class MBeanTest extends EmbeddedBrokerTestSupport {
 
         queueViewMBeanName = assertRegisteredObjectName(domain + ":type=Broker,brokerName=localhost,destinationType=Queue,destinationName=" + newDestination);
 
-        queue = MBeanServerInvocationHandler.newProxyInstance(mbeanServer, queueViewMBeanName, QueueViewMBean.class, true);
+        QueueViewMBean queueNew = MBeanServerInvocationHandler.newProxyInstance(mbeanServer, queueViewMBeanName, QueueViewMBean.class, true);
         int movedSize = MESSAGE_COUNT-3;
-        assertEquals("Unexpected number of messages ",movedSize,queue.getQueueSize());
+        assertEquals("Unexpected number of messages ",movedSize,queueNew.getQueueSize());
 
         // now lets remove them by selector
-        queue.removeMatchingMessages("counter > 2");
+        queueNew.removeMatchingMessages("counter > 2");
 
-        assertEquals("Should have no more messages in the queue: " + queueViewMBeanName, 0, queue.getQueueSize());
-        assertEquals("dest has no memory usage", 0, queue.getMemoryPercentUsage());
+        assertEquals("Should have no more messages in the queue: " + queueViewMBeanName, 0, queueNew.getQueueSize());
+        assertEquals("dest has no memory usage", 0, queueNew.getMemoryPercentUsage());
+        assertEquals("dest has 0 memory usage", 0, queueNew.getMemoryUsageByteCount());
+
+        queue.purge();
+        assertEquals("dest has 0 memory usage", 0, queue.getMemoryUsageByteCount());
     }
 
     public void testCopyMessagesBySelector() throws Exception {
@@ -427,17 +489,47 @@ public class MBeanTest extends EmbeddedBrokerTestSupport {
 
         queueViewMBeanName = assertRegisteredObjectName(domain + ":type=Broker,brokerName=localhost,destinationType=Queue,destinationName=" + newDestination);
 
-        queue = MBeanServerInvocationHandler.newProxyInstance(mbeanServer, queueViewMBeanName, QueueViewMBean.class, true);
+        QueueViewMBean queueTwo = MBeanServerInvocationHandler.newProxyInstance(mbeanServer, queueViewMBeanName, QueueViewMBean.class, true);
 
-        LOG.info("Queue: " + queueViewMBeanName + " now has: " + queue.getQueueSize() + " message(s)");
-        assertEquals("Expected messages in a queue: " + queueViewMBeanName, MESSAGE_COUNT-3, queue.getQueueSize());
+        LOG.info("Queue: " + queueViewMBeanName + " now has: " + queueTwo.getQueueSize() + " message(s)");
+        assertEquals("Expected messages in a queue: " + queueViewMBeanName, MESSAGE_COUNT-3, queueTwo.getQueueSize());
         // now lets remove them by selector
-        queue.removeMatchingMessages("counter > 2");
+        queueTwo.removeMatchingMessages("counter > 2");
 
-        assertEquals("Should have no more messages in the queue: " + queueViewMBeanName, 0, queue.getQueueSize());
-        assertEquals("dest has no memory usage", 0, queue.getMemoryPercentUsage());
+        assertEquals("Should have no more messages in the queue: " + queueViewMBeanName, 0, queueTwo.getQueueSize());
+        assertEquals("dest has no memory usage", 0, queueTwo.getMemoryPercentUsage());
+        assertEquals("dest has 0 memory usage", 0, queueTwo.getMemoryUsageByteCount());
+
+        queue.purge();
+        assertEquals("dest has 0 memory usage", 0, queue.getMemoryUsageByteCount());
     }
 
+    public void testSelectorBrowseUsage() throws Exception {
+        connection = connectionFactory.createConnection();
+        useConnection(connection);
+
+        ObjectName queueViewMBeanName = assertRegisteredObjectName(domain + ":type=Broker,brokerName=localhost,destinationType=Queue,destinationName=" + getDestinationString());
+
+        final String someSelectorExp = "JMSType = '22'";
+        QueueViewMBean queue = MBeanServerInvocationHandler.newProxyInstance(mbeanServer, queueViewMBeanName, QueueViewMBean.class, true);
+        queue.browse(someSelectorExp);
+        queue.purge();
+        assertEquals("dest has 0 memory usage", 0, queue.getMemoryUsageByteCount());
+
+        connection.close();
+        connection = connectionFactory.createConnection();
+        useConnection(connection);
+        queue.browseMessages(someSelectorExp);
+        queue.purge();
+        assertEquals("dest has 0 memory usage", 0, queue.getMemoryUsageByteCount());
+
+        connection.close();
+        connection = connectionFactory.createConnection();
+        useConnection(connection);
+        queue.browseAsTable(someSelectorExp);
+        queue.purge();
+        assertEquals("dest has 0 memory usage", 0, queue.getMemoryUsageByteCount());
+    }
 
     public void testCopyPurgeCopyBack() throws Exception {
         connection = connectionFactory.createConnection();
@@ -643,6 +735,42 @@ public class MBeanTest extends EmbeddedBrokerTestSupport {
         browseAndVerifyTypes(proxy, true);
     }
 
+    protected void assertSendTextMessageWithCustomDelimitedPropsViaMBean() throws Exception {
+        String queueName = getDestinationString() + ".SendMBBean";
+
+        ObjectName brokerName = assertRegisteredObjectName(domain + ":type=Broker,brokerName=localhost");
+        echo("Create QueueView MBean...");
+        BrokerViewMBean broker = MBeanServerInvocationHandler.newProxyInstance(mbeanServer, brokerName, BrokerViewMBean.class, true);
+        broker.addQueue(queueName);
+
+        ObjectName queueViewMBeanName = assertRegisteredObjectName(domain + ":type=Broker,brokerName=localhost,destinationType=Queue,destinationName=" + queueName);
+
+        echo("Create QueueView MBean...");
+        QueueViewMBean proxy = MBeanServerInvocationHandler.newProxyInstance(mbeanServer, queueViewMBeanName, QueueViewMBean.class, true);
+
+        proxy.purge();
+
+        int count = 5;
+
+        String delimiter = ";";
+        for (int i = 0; i < count; i++) {
+            String props = String.join(delimiter,
+                    "body=message:" + i,
+                    "JMSCorrelationID=MyCorrId",
+                    "JMSDeliveryMode=1",
+                    "JMSXGroupID=MyGroupID",
+                    "JMSXGroupSeq=1234",
+                    "JMSPriority=" + (i + 1),
+                    "JMSType=MyType",
+                    "MyHeader=" + i,
+                    "MyStringHeader=StringHeader" + i);
+
+            proxy.sendTextMessageWithProperties(props, delimiter);
+        }
+
+        browseAndVerifyTypes(proxy, true);
+    }
+
     protected void assertComplexData(int messageIndex, CompositeData cdata, String name, Object expected) {
         Object value = cdata.get(name);
         assertEquals("Message " + messageIndex + " CData field: " + name, expected, value);
@@ -724,6 +852,31 @@ public class MBeanTest extends EmbeddedBrokerTestSupport {
         // now lets try destroy it
         broker.destroyDurableSubscriber(clientID, "subscriber1");
         assertEquals("Durable subscriber count", 1, broker.getInactiveDurableTopicSubscribers().length);
+    }
+
+    protected void assertCreateAndDestroyOfflineDurableSubscriptions() throws Exception {
+        // lets create a new topic
+        ObjectName brokerName = assertRegisteredObjectName(domain + ":type=Broker,brokerName=localhost");
+        echo("Create QueueView MBean...");
+        BrokerViewMBean broker = MBeanServerInvocationHandler.newProxyInstance(mbeanServer, brokerName, BrokerViewMBean.class, true);
+
+        broker.addTopic(getDestinationString());
+
+        assertEquals("Durable subscriber count", 0, broker.getDurableTopicSubscribers().length);
+
+        String topicName = getDestinationString();
+        String selector = null;
+        ObjectName name1 = broker.createDurableSubscriber(offlineClientID, "subscriber3", topicName, selector);
+        broker.createDurableSubscriber(offlineClientID, "subscriber4", topicName, selector);
+        assertEquals("Durable subscriber count", 3, broker.getInactiveDurableTopicSubscribers().length);
+
+        assertNotNull("Should have created an mbean name for the durable subscriber!", name1);
+
+        LOG.info("Created durable subscriber with name: " + name1);
+
+        // now lets try destroy it
+        broker.destroyDurableSubscriber(offlineClientID, "subscriber3");
+        assertEquals("Durable subscriber count", 2, broker.getInactiveDurableTopicSubscribers().length);
     }
 
     protected void assertConsumerCounts() throws Exception {

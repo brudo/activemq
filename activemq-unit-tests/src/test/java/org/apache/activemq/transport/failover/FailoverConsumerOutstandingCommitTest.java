@@ -28,14 +28,14 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageListener;
-import javax.jms.MessageProducer;
-import javax.jms.Queue;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageListener;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.ActiveMQConnectionFactory;
@@ -71,6 +71,8 @@ public class FailoverConsumerOutstandingCommitTest {
     public void startBroker(boolean deleteAllMessagesOnStartup) throws Exception {
         broker = createBroker(deleteAllMessagesOnStartup);
         broker.start();
+        // Get the actual bound URI after broker starts (important for ephemeral ports)
+        url = broker.getTransportConnectors().get(0).getPublishableConnectString();
     }
 
     public BrokerService createBroker(boolean deleteAllMessagesOnStartup) throws Exception {
@@ -90,7 +92,7 @@ public class FailoverConsumerOutstandingCommitTest {
         policyMap.setDefaultEntry(defaultEntry);
         broker.setDestinationPolicy(policyMap);
 
-        url = broker.getTransportConnectors().get(0).getConnectUri().toString();
+        // Do not set url here - need to get it after broker starts when using ephemeral ports
 
         return broker;
     }
@@ -126,6 +128,9 @@ public class FailoverConsumerOutstandingCommitTest {
                 }
         });
         broker.start();
+
+        // Get the actual bound URI after broker starts (important for ephemeral ports)
+        url = broker.getTransportConnectors().get(0).getPublishableConnectString();
 
         ActiveMQConnectionFactory cf = new ActiveMQConnectionFactory("failover:(" + url + ")");
         cf.setWatchTopicAdvisories(watchTopicAdvisories);
@@ -167,7 +172,7 @@ public class FailoverConsumerOutstandingCommitTest {
                 LOG.info("producer started");
                 try {
                     produceMessage(producerSession, destination, prefetch * 2);
-                } catch (javax.jms.IllegalStateException SessionClosedExpectedOnShutdown) {
+                } catch (jakarta.jms.IllegalStateException SessionClosedExpectedOnShutdown) {
                 } catch (JMSException e) {
                     e.printStackTrace();
                     fail("unexpceted ex on producer: " + e);
@@ -180,6 +185,9 @@ public class FailoverConsumerOutstandingCommitTest {
         broker.waitUntilStopped();
         broker = createBroker(false, url);
         broker.start();
+
+        // Get the actual bound URI after broker starts (important for ephemeral ports)
+        url = broker.getTransportConnectors().get(0).getPublishableConnectString();
 
         assertTrue("consumer added through failover", commitDoneLatch.await(20, TimeUnit.SECONDS));
         assertTrue("another message was recieved after failover", messagesReceived.await(20, TimeUnit.SECONDS));
@@ -228,6 +236,9 @@ public class FailoverConsumerOutstandingCommitTest {
         } });
         broker.start();
 
+        // Get the actual bound URI after broker starts (important for ephemeral ports)
+        url = broker.getTransportConnectors().get(0).getPublishableConnectString();
+
         ActiveMQConnectionFactory cf = new ActiveMQConnectionFactory("failover:(" + url + ")");
         cf.setWatchTopicAdvisories(watchTopicAdvisories);
         cf.setDispatchAsync(false);
@@ -274,7 +285,7 @@ public class FailoverConsumerOutstandingCommitTest {
                 LOG.info("producer started");
                 try {
                     produceMessage(producerSession, destination, prefetch * 2);
-                } catch (javax.jms.IllegalStateException SessionClosedExpectedOnShutdown) {
+                } catch (jakarta.jms.IllegalStateException SessionClosedExpectedOnShutdown) {
                 } catch (JMSException e) {
                     e.printStackTrace();
                     fail("unexpceted ex on producer: " + e);
@@ -287,6 +298,9 @@ public class FailoverConsumerOutstandingCommitTest {
         broker.waitUntilStopped();
         broker = createBroker(false, url);
         broker.start();
+
+        // Get the actual bound URI after broker starts (important for ephemeral ports)
+        url = broker.getTransportConnectors().get(0).getPublishableConnectString();
 
         assertTrue("commit done through failover", commitDoneLatch.await(20, TimeUnit.SECONDS));
         assertTrue("commit failed", gotCommitException.get());
@@ -307,6 +321,9 @@ public class FailoverConsumerOutstandingCommitTest {
     public void testRollbackFailoverConsumerTx() throws Exception {
         broker = createBroker(true);
         broker.start();
+
+        // Get the actual bound URI after broker starts (important for ephemeral ports)
+        url = broker.getTransportConnectors().get(0).getPublishableConnectString();
 
         ActiveMQConnectionFactory cf = new ActiveMQConnectionFactory("failover:(" + url + ")");
         cf.setConsumerFailoverRedeliveryWaitPeriod(10000);
@@ -332,6 +349,9 @@ public class FailoverConsumerOutstandingCommitTest {
         broker.waitUntilStopped();
         broker = createBroker(false, url);
         broker.start();
+
+        // Get the actual bound URI after broker starts (important for ephemeral ports)
+        url = broker.getTransportConnectors().get(0).getPublishableConnectString();
 
         consumerSession.rollback();
 

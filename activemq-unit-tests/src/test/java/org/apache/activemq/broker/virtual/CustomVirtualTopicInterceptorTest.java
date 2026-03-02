@@ -16,11 +16,11 @@
  */
 package org.apache.activemq.broker.virtual;
 
-import javax.jms.Connection;
-import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 
 import org.apache.activemq.EmbeddedBrokerTestSupport;
 import org.apache.activemq.broker.BrokerService;
@@ -33,9 +33,12 @@ import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTopic;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 /**
  * Test for ticket AMQ-6058, shouldDispatch prefix check
  */
+@Category(ParallelTest.class)
 public class CustomVirtualTopicInterceptorTest extends EmbeddedBrokerTestSupport{
 
 	private static final Logger LOG = LoggerFactory.getLogger(CustomVirtualTopicInterceptorTest.class);

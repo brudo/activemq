@@ -19,11 +19,13 @@ package org.apache.activemq.util;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.jms.*;
+import jakarta.jms.*;
 import java.io.*;
 import java.net.URL;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import static jakarta.jms.Message.DEFAULT_PRIORITY;
 
 public class ProducerThread extends Thread {
 
@@ -40,6 +42,8 @@ public class ProducerThread extends Thread {
     long msgTTL = 0L;
     String msgGroupID=null;
     int transactionBatchSize;
+    int priority = DEFAULT_PRIORITY;
+    boolean disableMessageTimestamp = false;
 
     int transactions = 0;
     AtomicInteger sentCount = new AtomicInteger(0);
@@ -64,6 +68,8 @@ public class ProducerThread extends Thread {
             producer = session.createProducer(destination);
             producer.setDeliveryMode(persistent ? DeliveryMode.PERSISTENT : DeliveryMode.NON_PERSISTENT);
             producer.setTimeToLive(msgTTL);
+            producer.setPriority(priority);
+            producer.setDisableMessageTimestamp(disableMessageTimestamp);
             initPayLoad();
             running = true;
 
@@ -305,5 +311,13 @@ public class ProducerThread extends Thread {
 
     public void resetCounters(){
         this.sentCount.set(0);
+    }
+
+    public void setMessagePriority(int priority) {
+        this.priority = priority;
+    }
+
+    public void setDisableMessageTimestamp(boolean disableMessageTimestamp) {
+        this.disableMessageTimestamp = disableMessageTimestamp;
     }
 }

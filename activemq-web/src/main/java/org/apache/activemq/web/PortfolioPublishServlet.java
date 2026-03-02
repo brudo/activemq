@@ -21,13 +21,13 @@ import java.io.PrintWriter;
 import java.util.Hashtable;
 import java.util.Map;
 
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.Session;
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.Session;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * A servlet which will publish dummy market data prices
@@ -51,11 +51,11 @@ public class PortfolioPublishServlet extends MessageServletSupport {
         } else {
             Integer total = (Integer)request.getSession(true).getAttribute("total");
             if (total == null) {
-                total = Integer.valueOf(0);
+                total = 0;
             }
 
             int count = getNumberOfMessages(request);
-            total = Integer.valueOf(total.intValue() + count);
+            total = total + count;
             request.getSession().setAttribute("total", total);
 
             try {
@@ -102,14 +102,14 @@ public class PortfolioPublishServlet extends MessageServletSupport {
     protected String createStockText(String stock) {
         Double value = LAST_PRICES.get(stock);
         if (value == null) {
-            value = new Double(Math.random() * 100);
+            value = Math.random() * 100;
         }
 
         // lets mutate the value by some percentage
-        double oldPrice = value.doubleValue();
-        value = new Double(mutatePrice(oldPrice));
+        double oldPrice = value;
+        value = mutatePrice(oldPrice);
         LAST_PRICES.put(stock, value);
-        double price = value.doubleValue();
+        double price = value;
 
         double offer = price * 1.001;
 

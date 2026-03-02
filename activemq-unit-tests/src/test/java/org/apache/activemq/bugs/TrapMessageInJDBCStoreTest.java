@@ -22,14 +22,14 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
-import javax.jms.Connection;
-import javax.jms.DeliveryMode;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 import junit.framework.TestCase;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerService;
@@ -41,7 +41,8 @@ import org.apache.activemq.store.jdbc.TransactionContext;
 import org.apache.activemq.util.IOHelper;
 import org.apache.activemq.util.LeaseLockerIOExceptionHandler;
 import org.apache.derby.jdbc.EmbeddedDataSource;
-import org.apache.log4j.Level;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -109,7 +110,7 @@ public class TrapMessageInJDBCStoreTest extends TestCase {
 
     public void testDBCommitException() throws Exception {
 
-        org.apache.log4j.Logger serviceLogger = org.apache.log4j.Logger.getLogger(TransportConnection.class.getName() + ".Service");
+        org.apache.logging.log4j.core.Logger serviceLogger = org.apache.logging.log4j.core.Logger.class.cast(LogManager.getLogger(TransportConnection.class.getName() + ".Service"));
         serviceLogger.setLevel (Level.TRACE);
 
         broker = this.createBroker(false);
@@ -277,7 +278,7 @@ public class TrapMessageInJDBCStoreTest extends TestCase {
         public TestTransactionContext(
                 JDBCPersistenceAdapter jdbcPersistenceAdapter)
                 throws IOException {
-            super(jdbcPersistenceAdapter);
+            super(jdbcPersistenceAdapter, -1, -1);
         }
 
         public void executeBatch() throws SQLException {

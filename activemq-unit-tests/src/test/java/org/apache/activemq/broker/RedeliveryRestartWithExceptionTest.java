@@ -19,14 +19,14 @@ package org.apache.activemq.broker;
 import java.io.File;
 import java.io.IOException;
 import java.util.Set;
-import javax.jms.ConnectionFactory;
-import javax.jms.DeliveryMode;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.TestSupport;
@@ -47,6 +47,7 @@ import org.apache.activemq.store.TransactionStore;
 import org.apache.activemq.store.kahadb.KahaDBPersistenceAdapter;
 import org.apache.activemq.transport.tcp.TcpTransport;
 import org.apache.activemq.usage.SystemUsage;
+import org.apache.activemq.util.Wait;
 import org.junit.After;
 import org.junit.Before;
 import org.slf4j.Logger;
@@ -241,6 +242,16 @@ public class RedeliveryRestartWithExceptionTest extends TestSupport {
 
         connection.getTransport().narrow(TcpTransport.class).getTransportListener().onException(new IOException("Die"));
 
+        // Wait for the broker to fully process the connection drop and return
+        // unacked messages to the queue. The onException triggers async cleanup
+        // via executeAsync(), so without this wait the new consumer may receive
+        // fresh messages (6-10) instead of the redelivered ones (1-5).
+        final ActiveMQQueue dest = new ActiveMQQueue(queueName);
+        assertTrue("unacked messages returned to queue", Wait.waitFor(() -> {
+            final org.apache.activemq.broker.region.Destination d = broker.getDestination(dest);
+            return d != null && d.getDestinationStatistics().getInflight().getCount() == 0;
+        }, 10000, 100));
+
         connection = (ActiveMQConnection) connectionFactory.createConnection();
         connection.start();
 
@@ -283,7 +294,7 @@ public class RedeliveryRestartWithExceptionTest extends TestSupport {
         return broker;
     }
 
-    private void populateDestination(final int nbMessages, final Destination destination, javax.jms.Connection connection, boolean persistent) throws JMSException {
+    private void populateDestination(final int nbMessages, final Destination destination, jakarta.jms.Connection connection, boolean persistent) throws JMSException {
         Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
         MessageProducer producer = session.createProducer(destination);
         producer.setDeliveryMode(persistent ? DeliveryMode.PERSISTENT : DeliveryMode.NON_PERSISTENT);

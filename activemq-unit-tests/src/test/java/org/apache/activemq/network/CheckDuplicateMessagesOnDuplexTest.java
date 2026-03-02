@@ -24,13 +24,13 @@ import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.jms.Connection;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 import javax.net.ServerSocketFactory;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerService;
@@ -39,7 +39,6 @@ import org.apache.activemq.broker.jmx.ManagementContext;
 import org.apache.activemq.command.Response;
 import org.apache.activemq.store.PersistenceAdapter;
 import org.apache.activemq.store.kahadb.KahaDBPersistenceAdapter;
-import org.apache.activemq.store.leveldb.LevelDBPersistenceAdapter;
 import org.apache.activemq.transport.Transport;
 import org.apache.activemq.transport.TransportFilter;
 import org.apache.activemq.transport.TransportServer;
@@ -75,7 +74,6 @@ public class CheckDuplicateMessagesOnDuplexTest {
     private Connection remoteConnection;
     private Connection localConnection;
     private DebugTransportFilter debugTransportFilter;
-    private boolean useLevelDB = false;
 
     public CheckDuplicateMessagesOnDuplexTest() {
     }
@@ -282,11 +280,7 @@ public class CheckDuplicateMessagesOnDuplexTest {
     }
 
     private PersistenceAdapter persistanceAdapterFactory(String path) {
-        if (useLevelDB) {
-            return persistanceAdapterFactory_LevelDB(path);
-        } else {
-            return persistanceAdapterFactory_KahaDB(path);
-        }
+        return persistanceAdapterFactory_KahaDB(path);
     }
 
     private PersistenceAdapter persistanceAdapterFactory_KahaDB(String path) {
@@ -296,12 +290,6 @@ public class CheckDuplicateMessagesOnDuplexTest {
         kahaDBPersistenceAdapter.setCheckForCorruptJournalFiles(true);
         kahaDBPersistenceAdapter.setChecksumJournalFiles(true);
         return kahaDBPersistenceAdapter;
-    }
-
-    private PersistenceAdapter persistanceAdapterFactory_LevelDB(String path) {
-        LevelDBPersistenceAdapter levelDBPersistenceAdapter = new LevelDBPersistenceAdapter();
-        levelDBPersistenceAdapter.setDirectory(new File(path));
-        return levelDBPersistenceAdapter;
     }
 
     private class DebugTransportFactory extends NIOTransportFactory {

@@ -30,10 +30,12 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-import javax.jms.*;
+import jakarta.jms.*;
 
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 
 @RunWith( FrameworkRunner.class )
@@ -41,6 +43,7 @@ import static org.junit.Assert.fail;
 @ApplyLdifFiles(
         "org/apache/activemq/security/activemq-apacheds-legacy.ldif"
 )
+@Category(ParallelTest.class)
 public class CachedLDAPSecurityLegacyTest extends AbstractLdapTestUnit {
 
     public BrokerService broker;

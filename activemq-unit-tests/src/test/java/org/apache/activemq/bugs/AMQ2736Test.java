@@ -16,9 +16,9 @@
  */
 package org.apache.activemq.bugs;
 
-import javax.jms.Connection;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.command.ActiveMQQueue;
@@ -27,11 +27,14 @@ import org.apache.activemq.store.kahadb.KahaDBStore;
 import org.apache.activemq.util.DefaultIOExceptionHandler;
 import org.junit.After;
 import org.junit.Test;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 
+@Category(ParallelTest.class)
 public class AMQ2736Test {
     BrokerService broker;
 

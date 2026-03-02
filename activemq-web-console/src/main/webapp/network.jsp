@@ -14,8 +14,6 @@
     See the License for the specific language governing permissions and
     limitations under the License.
 --%>
-<%-- Workaround for https://ops4j1.jira.com/browse/PAXWEB-1070 --%>
-<%@include file="WEB-INF/jspf/headertags.jspf" %>
 <html>
 <c:set var="pageTitle" value="Network Bridges"/>
 
@@ -25,7 +23,7 @@
 
 <%@include file="decorators/header.jsp" %>
 
-<div style="margin-top: 5em">
+<div class="section-container">
 <h2>Network Bridges</h2>
 
 <table id="bridges" class="sortable autostripe">

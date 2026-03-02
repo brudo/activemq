@@ -18,20 +18,21 @@ package org.apache.activemq.bugs.embedded;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.Destination;
-import javax.jms.Message;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.Destination;
+import jakarta.jms.Message;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerService;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class EmbeddedActiveMQ
 {
  
-        private static Logger logger = Logger.getLogger(EmbeddedActiveMQ.class);
+        private static Logger logger = LoggerFactory.getLogger(EmbeddedActiveMQ.class);
  
         public static void main(String[] args)
         {

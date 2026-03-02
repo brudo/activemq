@@ -21,9 +21,9 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 
-import javax.jms.JMSException;
-import javax.jms.TransactionInProgressException;
-import javax.jms.TransactionRolledBackException;
+import jakarta.jms.JMSException;
+import jakarta.jms.TransactionInProgressException;
+import jakarta.jms.TransactionRolledBackException;
 import javax.transaction.xa.XAException;
 import javax.transaction.xa.XAResource;
 import javax.transaction.xa.Xid;
@@ -56,10 +56,10 @@ import org.slf4j.LoggerFactory;
  * JMS provider may choose to implement this functionality from scratch. <p/>
  *
  *
- * @see javax.jms.Session
- * @see javax.jms.QueueSession
- * @see javax.jms.TopicSession
- * @see javax.jms.XASession
+ * @see jakarta.jms.Session
+ * @see jakarta.jms.QueueSession
+ * @see jakarta.jms.TopicSession
+ * @see jakarta.jms.XASession
  */
 public class TransactionContext implements XAResource {
 
@@ -109,6 +109,10 @@ public class TransactionContext implements XAResource {
 
     public void setRollbackOnly(boolean val) {
         rollbackOnly = val;
+    }
+
+    public boolean isRollbackOnly() {
+        return rollbackOnly;
     }
 
     public boolean isInLocalTransaction() {
@@ -225,7 +229,7 @@ public class TransactionContext implements XAResource {
 
     /**
      * Start a local transaction.
-     * @throws javax.jms.JMSException on internal error
+     * @throws jakarta.jms.JMSException on internal error
      */
     public void begin() throws JMSException {
 
@@ -257,7 +261,7 @@ public class TransactionContext implements XAResource {
      *
      * @throws JMSException if the JMS provider fails to roll back the
      *                 transaction due to some internal error.
-     * @throws javax.jms.IllegalStateException if the method is not called by a
+     * @throws jakarta.jms.IllegalStateException if the method is not called by a
      *                 transacted session.
      */
     public void rollback() throws JMSException {
@@ -293,7 +297,7 @@ public class TransactionContext implements XAResource {
      *
      * @throws JMSException if the JMS provider fails to commit the transaction
      *                 due to some internal error.
-     * @throws javax.jms.IllegalStateException if the method is not called by a
+     * @throws jakarta.jms.IllegalStateException if the method is not called by a
      *                 transacted session.
      */
     public void commit() throws JMSException {
@@ -545,7 +549,11 @@ public class TransactionContext implements XAResource {
             // No risk for concurrent updates as we own the list now
             if (l != null) {
                 for (TransactionContext ctx : l) {
-                    ctx.afterRollback();
+                    try {
+                        ctx.afterRollback();
+                    } catch (Exception ignored) {
+                        LOG.debug("ignoring exception from after rollback on ended transaction: {}", ignored, ignored);
+                    }
                 }                  
             }
         } catch (JMSException e) {
@@ -787,16 +795,20 @@ public class TransactionContext implements XAResource {
      * @param e JMSException to convert
      * @return XAException wrapping original exception or its message
      */
-    private XAException toXAException(JMSException e) {
+    public static XAException toXAException(JMSException e) {
         if (e.getCause() != null && e.getCause() instanceof XAException) {
             XAException original = (XAException)e.getCause();
             XAException xae = new XAException(original.getMessage());
-            xae.errorCode = original.errorCode;
-            if (xae.errorCode == XA_OK) {
+            if (original != null) {
+                xae.errorCode = original.errorCode;
+            }
+            if (original != null && xae != null && xae.errorCode == XA_OK) {
                 // detail not unmarshalled see: org.apache.activemq.openwire.v1.BaseDataStreamMarshaller.createThrowable
                 xae.errorCode = parseFromMessageOr(original.getMessage(), XAException.XAER_RMERR);
             }
-            xae.initCause(original);
+            if (original != null) {
+                xae.initCause(original);
+            }
             return xae;
         }
 
@@ -806,7 +818,7 @@ public class TransactionContext implements XAResource {
         return xae;
     }
 
-    private int parseFromMessageOr(String message, int fallbackCode) {
+    private static int parseFromMessageOr(String message, int fallbackCode) {
         final String marker = "xaErrorCode:";
         final int index = message.lastIndexOf(marker);
         if (index > -1) {

@@ -34,12 +34,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.Connection;
-import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 import javax.sql.DataSource;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
@@ -418,6 +418,7 @@ public class AMQ4952Test {
         policy.setQueue(">");
         policy.setEnableAudit(enableCursorAudit);
         policy.setExpireMessagesPeriod(0);
+        policy.setSendDuplicateFromStoreToDLQ(true);
 
         // set replay with no consumers
         ConditionalNetworkBridgeFilterFactory conditionalNetworkBridgeFilterFactory = new ConditionalNetworkBridgeFilterFactory();

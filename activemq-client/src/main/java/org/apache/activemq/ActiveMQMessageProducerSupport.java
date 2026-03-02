@@ -16,12 +16,16 @@
  */
 package org.apache.activemq;
 
-import javax.jms.DeliveryMode;
-import javax.jms.Destination;
-import javax.jms.IllegalStateException;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageProducer;
+import java.util.Set;
+
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Destination;
+import jakarta.jms.IllegalStateException;
+import jakarta.jms.IllegalStateRuntimeException;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageFormatRuntimeException;
+import jakarta.jms.MessageProducer;
 
 /**
  * A useful base class for implementing a {@link MessageProducer}
@@ -43,6 +47,31 @@ public abstract class ActiveMQMessageProducerSupport implements MessageProducer,
     }
 
     /**
+     * Gets the delivery delay associated with this <CODE>MessageProducer</CODE>.
+     *
+     * @return this producer's <CODE>DeliveryDely/ <CODE>
+     * @throws JMSException if the JMS provider fails to close the producer due to
+     *                      some internal error.
+     * @since 2.0
+     */
+    @Override
+    public void setDeliveryDelay(long deliveryDelay) throws JMSException {
+        throw new UnsupportedOperationException("setDeliveryDelay() is not supported");
+    }
+
+    /**
+     * Gets the delivery delay value for this <CODE>MessageProducer</CODE>.
+     *
+     * @return the delivery delay for this messageProducer
+     * @throws jakarta.jms.JMSException if the JMS provider fails to determine if deliver delay is
+     *                      disabled due to some internal error.
+     */
+    @Override
+    public long getDeliveryDelay() throws JMSException {
+        throw new UnsupportedOperationException("getDeliveryDelay() is not supported");
+    }
+    
+    /**
      * Sets whether message IDs are disabled.
      * <P>
      * Since message IDs take some effort to create and increase a message's
@@ -57,20 +86,20 @@ public abstract class ActiveMQMessageProducerSupport implements MessageProducer,
      * <P>
      * Message IDs are enabled by default.
      *
-     * @param value indicates if message IDs are disabled
-     * @throws javax.jms.JMSException if the JMS provider fails to close the producer due to
+     * @param disableMessageID indicates if message IDs are disabled
+     * @throws jakarta.jms.JMSException if the JMS provider fails to close the producer due to
      *                      some internal error.
      */
-    public void setDisableMessageID(boolean value) throws JMSException {
+    public void setDisableMessageID(boolean disableMessageID) throws JMSException {
         checkClosed();
-        this.disableMessageID = value;
+        this.disableMessageID = disableMessageID;
     }
 
     /**
      * Gets an indication of whether message IDs are disabled.
      *
      * @return an indication of whether message IDs are disabled
-     * @throws javax.jms.JMSException if the JMS provider fails to determine if message IDs are
+     * @throws jakarta.jms.JMSException if the JMS provider fails to determine if message IDs are
      *                      disabled due to some internal error.
      */
     public boolean getDisableMessageID() throws JMSException {
@@ -93,20 +122,20 @@ public abstract class ActiveMQMessageProducerSupport implements MessageProducer,
      * <P>
      * Message timestamps are enabled by default.
      *
-     * @param value indicates if message timestamps are disabled
-     * @throws javax.jms.JMSException if the JMS provider fails to close the producer due to
+     * @param disableMessageTimestamp indicates if message timestamps are disabled
+     * @throws jakarta.jms.JMSException if the JMS provider fails to close the producer due to
      *                      some internal error.
      */
-    public void setDisableMessageTimestamp(boolean value) throws JMSException {
+    public void setDisableMessageTimestamp(boolean disableMessageTimestamp) throws JMSException {
         checkClosed();
-        this.disableMessageTimestamp = value;
+        this.disableMessageTimestamp = disableMessageTimestamp;
     }
 
     /**
      * Gets an indication of whether message timestamps are disabled.
      *
      * @return an indication of whether message timestamps are disabled
-     * @throws javax.jms.JMSException if the JMS provider fails to close the producer due to
+     * @throws jakarta.jms.JMSException if the JMS provider fails to close the producer due to
      *                      some internal error.
      */
     public boolean getDisableMessageTimestamp() throws JMSException {
@@ -122,16 +151,16 @@ public abstract class ActiveMQMessageProducerSupport implements MessageProducer,
      * @param newDeliveryMode the message delivery mode for this message producer; legal
      *                        values are <code>DeliveryMode.NON_PERSISTENT</code> and
      *                        <code>DeliveryMode.PERSISTENT</code>
-     * @throws javax.jms.JMSException if the JMS provider fails to set the delivery mode due to
+     * @throws jakarta.jms.JMSException if the JMS provider fails to set the delivery mode due to
      *                      some internal error.
-     * @see javax.jms.MessageProducer#getDeliveryMode
-     * @see javax.jms.DeliveryMode#NON_PERSISTENT
-     * @see javax.jms.DeliveryMode#PERSISTENT
-     * @see javax.jms.Message#DEFAULT_DELIVERY_MODE
+     * @see jakarta.jms.MessageProducer#getDeliveryMode
+     * @see jakarta.jms.DeliveryMode#NON_PERSISTENT
+     * @see jakarta.jms.DeliveryMode#PERSISTENT
+     * @see jakarta.jms.Message#DEFAULT_DELIVERY_MODE
      */
     public void setDeliveryMode(int newDeliveryMode) throws JMSException {
         if (newDeliveryMode != DeliveryMode.PERSISTENT && newDeliveryMode != DeliveryMode.NON_PERSISTENT) {
-            throw new javax.jms.IllegalStateException("unknown delivery mode: " + newDeliveryMode);
+            throw new jakarta.jms.IllegalStateException("unknown delivery mode: " + newDeliveryMode);
         }
         checkClosed();
         this.defaultDeliveryMode = newDeliveryMode;
@@ -141,7 +170,7 @@ public abstract class ActiveMQMessageProducerSupport implements MessageProducer,
      * Gets the producer's default delivery mode.
      *
      * @return the message delivery mode for this message producer
-     * @throws javax.jms.JMSException if the JMS provider fails to close the producer due to
+     * @throws jakarta.jms.JMSException if the JMS provider fails to close the producer due to
      *                      some internal error.
      */
     public int getDeliveryMode() throws JMSException {
@@ -159,10 +188,10 @@ public abstract class ActiveMQMessageProducerSupport implements MessageProducer,
      *
      * @param newDefaultPriority the message priority for this message producer; must be a
      *                           value between 0 and 9
-     * @throws javax.jms.JMSException if the JMS provider fails to set the delivery mode due to
+     * @throws jakarta.jms.JMSException if the JMS provider fails to set the delivery mode due to
      *                      some internal error.
-     * @see javax.jms.MessageProducer#getPriority
-     * @see javax.jms.Message#DEFAULT_PRIORITY
+     * @see jakarta.jms.MessageProducer#getPriority
+     * @see jakarta.jms.Message#DEFAULT_PRIORITY
      */
     public void setPriority(int newDefaultPriority) throws JMSException {
         if (newDefaultPriority < 0 || newDefaultPriority > 9) {
@@ -176,9 +205,9 @@ public abstract class ActiveMQMessageProducerSupport implements MessageProducer,
      * Gets the producer's default priority.
      *
      * @return the message priority for this message producer
-     * @throws javax.jms.JMSException if the JMS provider fails to close the producer due to
+     * @throws jakarta.jms.JMSException if the JMS provider fails to close the producer due to
      *                      some internal error.
-     * @see javax.jms.MessageProducer#setPriority
+     * @see jakarta.jms.MessageProducer#setPriority
      */
     public int getPriority() throws JMSException {
         checkClosed();
@@ -192,10 +221,10 @@ public abstract class ActiveMQMessageProducerSupport implements MessageProducer,
      * Time to live is set to zero by default.
      *
      * @param timeToLive the message time to live in milliseconds; zero is unlimited
-     * @throws javax.jms.JMSException if the JMS provider fails to set the time to live due to
+     * @throws jakarta.jms.JMSException if the JMS provider fails to set the time to live due to
      *                      some internal error.
-     * @see javax.jms.MessageProducer#getTimeToLive
-     * @see javax.jms.Message#DEFAULT_TIME_TO_LIVE
+     * @see jakarta.jms.MessageProducer#getTimeToLive
+     * @see jakarta.jms.Message#DEFAULT_TIME_TO_LIVE
      */
     public void setTimeToLive(long timeToLive) throws JMSException {
         if (timeToLive < 0L) {
@@ -210,9 +239,9 @@ public abstract class ActiveMQMessageProducerSupport implements MessageProducer,
      * that a produced message should be retained by the message system.
      *
      * @return the message time to live in milliseconds; zero is unlimited
-     * @throws javax.jms.JMSException if the JMS provider fails to get the time to live due to
+     * @throws jakarta.jms.JMSException if the JMS provider fails to get the time to live due to
      *                      some internal error.
-     * @see javax.jms.MessageProducer#setTimeToLive
+     * @see jakarta.jms.MessageProducer#setTimeToLive
      */
     public long getTimeToLive() throws JMSException {
         checkClosed();
@@ -224,17 +253,17 @@ public abstract class ActiveMQMessageProducerSupport implements MessageProducer,
      * delivery mode, priority, and time to live.
      *
      * @param message the message to send
-     * @throws javax.jms.JMSException                if the JMS provider fails to send the message due to some
+     * @throws jakarta.jms.JMSException                if the JMS provider fails to send the message due to some
      *                                     internal error.
-     * @throws javax.jms.MessageFormatException      if an invalid message is specified.
-     * @throws javax.jms.InvalidDestinationException if a client uses this method with a <CODE>
+     * @throws jakarta.jms.MessageFormatException      if an invalid message is specified.
+     * @throws jakarta.jms.InvalidDestinationException if a client uses this method with a <CODE>
      *                                     MessageProducer</CODE> with an invalid destination.
      * @throws UnsupportedOperationException
      *                                     if a client uses this method with a <CODE>
      *                                     MessageProducer</CODE> that did not specify a
      *                                     destination at creation time.
-     * @see javax.jms.Session#createProducer
-     * @see javax.jms.MessageProducer
+     * @see jakarta.jms.Session#createProducer
+     * @see jakarta.jms.MessageProducer
      * @since 1.1
      */
     public void send(Message message) throws JMSException {
@@ -253,16 +282,16 @@ public abstract class ActiveMQMessageProducerSupport implements MessageProducer,
      * @param deliveryMode the delivery mode to use
      * @param priority     the priority for this message
      * @param timeToLive   the message's lifetime (in milliseconds)
-     * @throws javax.jms.JMSException                if the JMS provider fails to send the message due to some
+     * @throws jakarta.jms.JMSException                if the JMS provider fails to send the message due to some
      *                                     internal error.
-     * @throws javax.jms.MessageFormatException      if an invalid message is specified.
-     * @throws javax.jms.InvalidDestinationException if a client uses this method with a <CODE>
+     * @throws jakarta.jms.MessageFormatException      if an invalid message is specified.
+     * @throws jakarta.jms.InvalidDestinationException if a client uses this method with a <CODE>
      *                                     MessageProducer</CODE> with an invalid destination.
      * @throws UnsupportedOperationException
      *                                     if a client uses this method with a <CODE>
      *                                     MessageProducer</CODE> that did not specify a
      *                                     destination at creation time.
-     * @see javax.jms.Session#createProducer
+     * @see jakarta.jms.Session#createProducer
      * @since 1.1
      */
     public void send(Message message, int deliveryMode, int priority, long timeToLive) throws JMSException {
@@ -285,16 +314,16 @@ public abstract class ActiveMQMessageProducerSupport implements MessageProducer,
      *
      * @param destination the destination to send this message to
      * @param message     the message to send
-     * @throws javax.jms.JMSException                if the JMS provider fails to send the message due to some
+     * @throws jakarta.jms.JMSException                if the JMS provider fails to send the message due to some
      *                                     internal error.
-     * @throws javax.jms.MessageFormatException      if an invalid message is specified.
-     * @throws javax.jms.InvalidDestinationException if a client uses this method with an invalid destination.
+     * @throws jakarta.jms.MessageFormatException      if an invalid message is specified.
+     * @throws jakarta.jms.InvalidDestinationException if a client uses this method with an invalid destination.
      * @throws UnsupportedOperationException
      *                                     if a client uses this method with a <CODE>
      *                                     MessageProducer</CODE> that specified a destination at
      *                                     creation time.
-     * @see javax.jms.Session#createProducer
-     * @see javax.jms.MessageProducer
+     * @see jakarta.jms.Session#createProducer
+     * @see jakarta.jms.MessageProducer
      */
     public void send(Destination destination, Message message) throws JMSException {
         this.send(destination,
@@ -320,4 +349,46 @@ public abstract class ActiveMQMessageProducerSupport implements MessageProducer,
     public void setSendTimeout(int sendTimeout) {
         this.sendTimeout = sendTimeout;
     }
+
+    // See JMS 2.0 spec sections 3.5.1 and 3.8.1.1
+    public static final Set<String> JMS_PROPERTY_NAMES_DISALLOWED = Set.of("JMSDeliveryMode", "JMSPriority", "JMSMessageID", "JMSTimestamp", "JMSCorrelationID", "JMSType", "NULL", "TRUE", "FALSE", "NOT", "AND", "OR", "BETWEEN", "LIKE", "IN", "IS", "ESCAPE");
+
+    public static void validateValidPropertyName(String propertyName) throws IllegalStateRuntimeException {
+        if(propertyName == null || propertyName.length() == 0) {
+            throw new IllegalArgumentException("Invalid JMS property name must not be null or empty");
+        }
+
+        if(JMS_PROPERTY_NAMES_DISALLOWED.contains(propertyName)) {
+            throw new IllegalArgumentException("Invalid JMS property: " + propertyName + " name is in disallowed list");
+        }
+
+        char first = propertyName.charAt(0);
+        if(!(Character.isJavaIdentifierStart(first))) {
+            throw new IllegalArgumentException("Invalid JMS property: " + propertyName + " name starts with invalid character: " + first);
+        }
+
+        for (int i=1; i < propertyName.length(); i++) {
+            char c = propertyName.charAt(i);
+            if (!(Character.isJavaIdentifierPart(c))) {
+                throw new IllegalArgumentException("Invalid JMS property: " + propertyName + " name contains invalid character: " + c);
+            }
+        }
+    }
+
+    public static void validateValidPropertyValue(String propertyName, Object propertyValue) throws IllegalStateRuntimeException {
+        boolean invalid = true;
+
+        if(propertyValue == null || propertyValue instanceof String ||
+           propertyValue instanceof Integer || propertyValue instanceof Short ||
+           propertyValue instanceof Float || propertyValue instanceof Long ||
+           propertyValue instanceof Boolean || propertyValue instanceof Byte ||
+           propertyValue instanceof Character || propertyValue instanceof Double) {
+           invalid = false;
+        }
+
+        if(invalid) {
+            throw new MessageFormatRuntimeException("Invalid JMS property: " + propertyName + " value class: " + propertyValue.getClass().getName() + " is not permitted by specification");
+        }
+    }
+
 }

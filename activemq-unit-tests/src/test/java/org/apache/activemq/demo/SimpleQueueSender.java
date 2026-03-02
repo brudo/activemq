@@ -28,14 +28,14 @@ package org.apache.activemq.demo;
 
 // START SNIPPET: demo
 
-import javax.jms.JMSException;
-import javax.jms.Queue;
-import javax.jms.QueueConnection;
-import javax.jms.QueueConnectionFactory;
-import javax.jms.QueueSender;
-import javax.jms.QueueSession;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.JMSException;
+import jakarta.jms.Queue;
+import jakarta.jms.QueueConnection;
+import jakarta.jms.QueueConnectionFactory;
+import jakarta.jms.QueueSender;
+import jakarta.jms.QueueSession;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 import javax.naming.Context;
 import javax.naming.InitialContext;
 import javax.naming.NamingException;
@@ -74,7 +74,7 @@ public final class SimpleQueueSender {
         queueName = args[0];
         LOG.info("Queue name is " + queueName);
         if (args.length == 2) {
-            numMsgs = (new Integer(args[1])).intValue();
+            numMsgs = (Integer.valueOf(args[1]));
         } else {
             numMsgs = 1;
         }

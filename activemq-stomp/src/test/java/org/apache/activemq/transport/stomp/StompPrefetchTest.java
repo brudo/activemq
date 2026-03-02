@@ -22,7 +22,7 @@ import static org.junit.Assert.assertTrue;
 import java.util.HashMap;
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.Destination;
+import jakarta.jms.Destination;
 
 import org.apache.activemq.broker.region.Subscription;
 import org.apache.activemq.broker.region.policy.PolicyEntry;
@@ -35,6 +35,9 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.junit.experimental.categories.Category;
+
+@Category(ParallelTest.class)
 public class StompPrefetchTest extends StompTestSupport {
 
     private static final Logger LOG = LoggerFactory.getLogger(StompPrefetchTest.class);

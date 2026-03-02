@@ -35,19 +35,21 @@ public class SslTransportBrokerTest extends TransportBrokerTestSupport {
 
     @Override
     protected URI getBindURI() throws URISyntaxException {
-        return new URI("ssl://localhost:0?soWriteTimeout=20000");
+        return new URI(super.getBindURI().toString() + "?soWriteTimeout=20000");
     }
 
     protected void setUp() throws Exception {
         System.setProperty("javax.net.ssl.trustStore", TRUST_KEYSTORE);
         System.setProperty("javax.net.ssl.trustStorePassword", PASSWORD);
-        System.setProperty("javax.net.ssl.trustStoreType", KEYSTORE_TYPE);        
+        System.setProperty("javax.net.ssl.trustStoreType", KEYSTORE_TYPE);
         System.setProperty("javax.net.ssl.keyStore", SERVER_KEYSTORE);
         System.setProperty("javax.net.ssl.keyStorePassword", PASSWORD);
-        System.setProperty("javax.net.ssl.keyStoreType", KEYSTORE_TYPE);        
-        //System.setProperty("javax.net.debug", "ssl,handshake,data,trustmanager");        
+        System.setProperty("javax.net.ssl.keyStoreType", KEYSTORE_TYPE);
+        //System.setProperty("javax.net.debug", "ssl,handshake,data,trustmanager");
 
-        maxWait = 10000;
+        // Reduced from 10 seconds to 5 seconds - SSL handshakes are typically fast,
+        // and a shorter timeout reduces overall test time and potential race conditions during tearDown
+        maxWait = 5000;
         super.setUp();
     }
 

@@ -26,6 +26,7 @@ import java.util.UUID;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
@@ -33,6 +34,7 @@ import org.mockito.stubbing.Answer;
 /**
  * Tests for conversion capabilities of LegacyFrameTranslator
  */
+@Category(ParallelTest.class)
 public class LegacyFrameTranslatorTest {
 
     private ProtocolConverter converter;
@@ -47,9 +49,8 @@ public class LegacyFrameTranslatorTest {
 
             @Override
             public ActiveMQDestination answer(InvocationOnMock invocation) throws Throwable {
-
-                String name = invocation.getArgumentAt(0, String.class);
-                boolean topic = invocation.getArgumentAt(1, Boolean.class);
+                String name = invocation.getArgument(0, String.class);
+                boolean topic = invocation.getArgument(1, Boolean.class);
 
                 name = "temp-" + (topic ? "topic://" : "queue://X:") + UUID.randomUUID().toString();
 

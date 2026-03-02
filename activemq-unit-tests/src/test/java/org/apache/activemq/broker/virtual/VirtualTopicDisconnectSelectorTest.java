@@ -18,15 +18,15 @@ package org.apache.activemq.broker.virtual;
 
 import java.net.URI;
 
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageListener;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageListener;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 import org.apache.activemq.EmbeddedBrokerTestSupport;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.command.ActiveMQQueue;
@@ -36,11 +36,14 @@ import org.apache.activemq.spring.ConsumerBean;
 import org.apache.activemq.xbean.XBeanBrokerFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  * Test case for  https://issues.apache.org/jira/browse/AMQ-3004
  */
 
+@Category(ParallelTest.class)
 public class VirtualTopicDisconnectSelectorTest extends EmbeddedBrokerTestSupport {
 
     private static final Logger LOG = LoggerFactory.getLogger(VirtualTopicDisconnectSelectorTest.class);
@@ -143,7 +146,10 @@ public class VirtualTopicDisconnectSelectorTest extends EmbeddedBrokerTestSuppor
 
 
     protected void assertMessagesArrived(ConsumerBean messageList, int expected, long timeout) {
-        messageList.assertMessagesArrived(expected,timeout);
+        messageList.waitForMessagesToArrive(expected,timeout);
+        assertTrue("got at least expected num messages, " +
+                        "may be the odd duplicate on clientAck and disconnect outside a tx on separate thread",
+                messageList.getMessages().size() >= expected);
 
         messageList.flushMessages();
 

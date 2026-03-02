@@ -25,7 +25,7 @@ import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.net.URL;
 
-import javax.jms.JMSException;
+import jakarta.jms.JMSException;
 
 import org.apache.activemq.command.ActiveMQBlobMessage;
 
@@ -115,13 +115,20 @@ public class FileSystemBlobStrategy implements BlobUploadStrategy, BlobDownloadS
      * @throws IOException
      */
     protected File getFile(ActiveMQBlobMessage message) throws JMSException, IOException {
-    	if (message.getURL() != null) {
-    		try {
-				return new File(message.getURL().toURI());
-			} catch (URISyntaxException e) {
-                                IOException ioe = new IOException("Unable to open file for message " + message);
-                                ioe.initCause(e);
-			}
+        if (message.getURL() != null) {
+            // Do some checks on the received URL protocol
+            String protocol = message.getURL().getProtocol();
+            if (!"file".contentEquals(protocol)) {
+                throw new IOException("The message URL protocol is incorrect");
+            }
+
+            try {
+                return new File(message.getURL().toURI());
+            } catch (URISyntaxException e) {
+                IOException ioe = new IOException("Unable to open file for message " + message);
+                ioe.initCause(e);
+                throw ioe;
+            }
     	}
         //replace all : with _ to make windows more happy
         String fileName = message.getJMSMessageID().replaceAll(":", "_");

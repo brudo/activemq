@@ -28,12 +28,12 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.jms.BytesMessage;
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.BytesMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
@@ -44,7 +44,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.Assert.*;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class MKahaDBStoreLimitTest {
 
     private static final Logger LOG = LoggerFactory.getLogger(MKahaDBStoreLimitTest.class);
@@ -177,7 +180,7 @@ public class MKahaDBStoreLimitTest {
 
         FilteredKahaDBPersistenceAdapter filtered = new FilteredKahaDBPersistenceAdapter();
         StoreUsage storeUsage = new StoreUsage();
-        storeUsage.setLimit(40*1024);
+        storeUsage.setLimit(44*1024);
 
         filtered.setUsage(storeUsage);
         filtered.setDestination(queueA);

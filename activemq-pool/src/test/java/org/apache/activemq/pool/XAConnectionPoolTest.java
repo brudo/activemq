@@ -16,30 +16,35 @@
  */
 package org.apache.activemq.pool;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.util.Hashtable;
 import java.util.Vector;
 
-import javax.jms.QueueConnection;
-import javax.jms.QueueConnectionFactory;
-import javax.jms.QueueSender;
-import javax.jms.QueueSession;
-import javax.jms.Session;
-import javax.jms.TopicConnection;
-import javax.jms.TopicConnectionFactory;
-import javax.jms.TopicPublisher;
-import javax.jms.TopicSession;
+import jakarta.jms.QueueConnection;
+import jakarta.jms.QueueConnectionFactory;
+import jakarta.jms.QueueSender;
+import jakarta.jms.QueueSession;
+import jakarta.jms.Session;
+import jakarta.jms.TopicConnection;
+import jakarta.jms.TopicConnectionFactory;
+import jakarta.jms.TopicPublisher;
+import jakarta.jms.TopicSession;
 import javax.naming.spi.ObjectFactory;
-import javax.transaction.HeuristicMixedException;
-import javax.transaction.HeuristicRollbackException;
-import javax.transaction.InvalidTransactionException;
-import javax.transaction.NotSupportedException;
-import javax.transaction.RollbackException;
-import javax.transaction.Status;
-import javax.transaction.Synchronization;
-import javax.transaction.SystemException;
-import javax.transaction.Transaction;
-import javax.transaction.TransactionManager;
+import jakarta.transaction.HeuristicMixedException;
+import jakarta.transaction.HeuristicRollbackException;
+import jakarta.transaction.InvalidTransactionException;
+import jakarta.transaction.NotSupportedException;
+import jakarta.transaction.RollbackException;
+import jakarta.transaction.Status;
+import jakarta.transaction.Synchronization;
+import jakarta.transaction.SystemException;
+import jakarta.transaction.Transaction;
+import jakarta.transaction.TransactionManager;
+import javax.transaction.xa.XAException;
 import javax.transaction.xa.XAResource;
+import javax.transaction.xa.Xid;
 
 import org.apache.activemq.ActiveMQXAConnectionFactory;
 import org.apache.activemq.command.ActiveMQTopic;
@@ -53,8 +58,9 @@ public class XAConnectionPoolTest extends TestSupport {
         final Vector<Synchronization> syncs = new Vector<Synchronization>();
         ActiveMQTopic topic = new ActiveMQTopic("test");
         XaPooledConnectionFactory pcf = new XaPooledConnectionFactory();
-        pcf.setConnectionFactory(new ActiveMQXAConnectionFactory("vm://test?broker.persistent=false"));
+        pcf.setConnectionFactory(new ActiveMQXAConnectionFactory("vm://xaConnectionPoolTest?broker.persistent=false"));
 
+        final Xid xid = createXid();
         // simple TM that is in a tx and will track syncs
         pcf.setTransactionManager(new TransactionManager() {
             @Override
@@ -85,7 +91,12 @@ public class XAConnectionPoolTest extends TestSupport {
 
                     @Override
                     public boolean enlistResource(XAResource xaRes) throws IllegalStateException, RollbackException, SystemException {
-                        return false;
+                        try {
+                            xaRes.start(xid, 0);
+                        } catch (XAException e) {
+                            throw new SystemException(e.getMessage());
+                        }
+                        return true;
                     }
 
                     @Override
@@ -146,13 +157,39 @@ public class XAConnectionPoolTest extends TestSupport {
             sync.afterCompletion(1);
         }
         connection.close();
+        pcf.stop();
+    }
+
+    static long txGenerator = 22;
+    public Xid createXid() throws IOException {
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        DataOutputStream os = new DataOutputStream(baos);
+        os.writeLong(++txGenerator);
+        os.close();
+        final byte[] bs = baos.toByteArray();
+
+        return new Xid() {
+
+            public int getFormatId() {
+                return 86;
+            }
+
+            public byte[] getGlobalTransactionId() {
+                return bs;
+            }
+
+            public byte[] getBranchQualifier() {
+                return bs;
+            }
+        };
     }
 
     public void testAckModeOfPoolNonXAWithTM() throws Exception {
         final Vector<Synchronization> syncs = new Vector<Synchronization>();
         ActiveMQTopic topic = new ActiveMQTopic("test");
         XaPooledConnectionFactory pcf = new XaPooledConnectionFactory();
-        pcf.setConnectionFactory(new ActiveMQXAConnectionFactory("vm://test?broker.persistent=false&jms.xaAckMode=" + Session.CLIENT_ACKNOWLEDGE));
+        pcf.setConnectionFactory(new ActiveMQXAConnectionFactory("vm://xaConnectionPoolTest?broker.persistent=false&jms.xaAckMode=" + Session.CLIENT_ACKNOWLEDGE));
 
         // simple TM that is in a tx and will track syncs
         pcf.setTransactionManager(new TransactionManager() {
@@ -244,52 +281,67 @@ public class XAConnectionPoolTest extends TestSupport {
             sync.afterCompletion(1);
         }
         connection.close();
+        pcf.stop();
     }
 
     public void testInstanceOf() throws Exception {
-        XaPooledConnectionFactory pcf = new XaPooledConnectionFactory();
-        assertTrue(pcf instanceof QueueConnectionFactory);
-        assertTrue(pcf instanceof TopicConnectionFactory);
+        final XaPooledConnectionFactory pcf = new XaPooledConnectionFactory();
+        try {
+            assertTrue(pcf instanceof QueueConnectionFactory);
+            assertTrue(pcf instanceof TopicConnectionFactory);
+        } finally {
+            pcf.stop();
+        }
     }
 
     public void testBindable() throws Exception {
-        XaPooledConnectionFactory pcf = new XaPooledConnectionFactory();
-        assertTrue(pcf instanceof ObjectFactory);
-        assertTrue(((ObjectFactory) pcf).getObjectInstance(null, null, null, null) instanceof XaPooledConnectionFactory);
-        assertTrue(pcf.isTmFromJndi());
+        final XaPooledConnectionFactory pcf = new XaPooledConnectionFactory();
+        try {
+            assertTrue(pcf instanceof ObjectFactory);
+            assertTrue(((ObjectFactory) pcf).getObjectInstance(null, null, null, null) instanceof XaPooledConnectionFactory);
+            assertTrue(pcf.isTmFromJndi());
+        } finally {
+            pcf.stop();
+        }
     }
 
     public void testBindableEnvOverrides() throws Exception {
-        XaPooledConnectionFactory pcf = new XaPooledConnectionFactory();
-        assertTrue(pcf instanceof ObjectFactory);
-        Hashtable<String, String> environment = new Hashtable<String, String>();
-        environment.put("tmFromJndi", String.valueOf(Boolean.FALSE));
-        assertTrue(((ObjectFactory) pcf).getObjectInstance(null, null, null, environment) instanceof XaPooledConnectionFactory);
-        assertFalse(pcf.isTmFromJndi());
+        final XaPooledConnectionFactory pcf = new XaPooledConnectionFactory();
+        try {
+            assertTrue(pcf instanceof ObjectFactory);
+            final Hashtable<String, String> environment = new Hashtable<>();
+            environment.put("tmFromJndi", String.valueOf(Boolean.FALSE));
+            assertTrue(((ObjectFactory) pcf).getObjectInstance(null, null, null, environment) instanceof XaPooledConnectionFactory);
+            assertFalse(pcf.isTmFromJndi());
+        } finally {
+            pcf.stop();
+        }
     }
 
     public void testSenderAndPublisherDest() throws Exception {
-        XaPooledConnectionFactory pcf = new XaPooledConnectionFactory();
-        pcf.setConnectionFactory(new ActiveMQXAConnectionFactory("vm://test?broker.persistent=false"));
+        final XaPooledConnectionFactory pcf = new XaPooledConnectionFactory();
+        try {
+            pcf.setConnectionFactory(new ActiveMQXAConnectionFactory("vm://xaConnectionPoolTest?broker.persistent=false"));
 
-        QueueConnection connection = pcf.createQueueConnection();
-        QueueSession session = connection.createQueueSession(false, Session.AUTO_ACKNOWLEDGE);
-        QueueSender sender = session.createSender(session.createQueue("AA"));
-        assertNotNull(sender.getQueue().getQueueName());
+            try (final QueueConnection connection = pcf.createQueueConnection()) {
+                final QueueSession session = connection.createQueueSession(false, Session.AUTO_ACKNOWLEDGE);
+                final QueueSender sender = session.createSender(session.createQueue("AA"));
+                assertNotNull(sender.getQueue().getQueueName());
+            }
 
-        connection.close();
-
-        TopicConnection topicConnection = pcf.createTopicConnection();
-        TopicSession topicSession = topicConnection.createTopicSession(false, Session.AUTO_ACKNOWLEDGE);
-        TopicPublisher topicPublisher = topicSession.createPublisher(topicSession.createTopic("AA"));
-        assertNotNull(topicPublisher.getTopic().getTopicName());
-
-        topicConnection.close();
+            try (final TopicConnection topicConnection = pcf.createTopicConnection()) {
+                final TopicSession topicSession = topicConnection.createTopicSession(false, Session.AUTO_ACKNOWLEDGE);
+                final TopicPublisher topicPublisher = topicSession.createPublisher(topicSession.createTopic("AA"));
+                assertNotNull(topicPublisher.getTopic().getTopicName());
+            }
+        } finally {
+            pcf.stop();
+        }
     }
 
     public void testSessionArgsIgnoredWithTm() throws Exception {
         XaPooledConnectionFactory pcf = new XaPooledConnectionFactory();
-        pcf.setConnectionFactory(new ActiveMQXAConnectionFactory("vm://test?broker.persistent=false"));
+        pcf.setConnectionFactory(new ActiveMQXAConnectionFactory("vm://xaConnectionPoolTest?broker.persistent=false"));
         // simple TM that with no tx
         pcf.setTransactionManager(new TransactionManager() {
             @Override
@@ -338,10 +390,11 @@ public class XAConnectionPoolTest extends TestSupport {
             }
         });
 
-        QueueConnection connection = pcf.createQueueConnection();
+        final QueueConnection connection = pcf.createQueueConnection();
         // like ee tck
         assertNotNull("can create session(false, 0)", connection.createQueueSession(false, 0));
 
         connection.close();
+        pcf.stop();
     }
 }

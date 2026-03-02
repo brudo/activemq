@@ -16,7 +16,7 @@
  */
 package org.apache.activemq.broker.policy;
 
-import javax.jms.ConnectionFactory;
+import jakarta.jms.ConnectionFactory;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.region.policy.AbortSlowAckConsumerStrategy;
@@ -26,10 +26,22 @@ import org.apache.activemq.broker.region.policy.PolicyMap;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
+import java.util.Arrays;
+import java.util.Collection;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
+
 @RunWith(value = Parameterized.class)
+@Category(ParallelTest.class)
 public class AbortSlowAckConsumer2Test extends AbortSlowConsumer2Test {
 
     protected long maxTimeSinceLastAck = 5 * 1000;
+
+
+    @Parameterized.Parameters(name = "isTopic({0})")
+    public static Collection<Object[]> getTestParameters() {
+        return Arrays.asList(new Object[][]{{Boolean.TRUE}, {Boolean.FALSE}});
+    }
 
     public AbortSlowAckConsumer2Test(Boolean topic) {
         super(topic);

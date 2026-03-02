@@ -16,25 +16,17 @@
  */
 package org.apache.activemq;
 
-import java.io.IOException;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.DeliveryMode;
-import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
-
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.TransportConnector;
 import org.apache.activemq.broker.region.Queue;
-import org.apache.activemq.broker.region.Topic;
 import org.apache.activemq.broker.region.policy.PolicyEntry;
 import org.apache.activemq.broker.region.policy.PolicyMap;
 import org.apache.activemq.broker.region.policy.VMPendingQueueMessageStoragePolicy;
@@ -42,11 +34,19 @@ import org.apache.activemq.broker.region.policy.VMPendingSubscriberMessageStorag
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.transport.tcp.TcpTransport;
 import org.apache.activemq.util.DefaultTestAppender;
-import org.apache.log4j.Appender;
-import org.apache.log4j.Level;
-import org.apache.log4j.spi.LoggingEvent;
+import org.apache.activemq.util.Wait;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.LogEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class ProducerFlowControlTest extends JmsTestSupport {
     static final Logger LOG = LoggerFactory.getLogger(ProducerFlowControlTest.class);
@@ -257,18 +257,28 @@ public class ProducerFlowControlTest extends JmsTestSupport {
 
     public void testDisableWarning() throws Exception {
         final AtomicInteger warnings = new AtomicInteger();
+        final AtomicInteger debugs = new AtomicInteger();
+
         Appender appender = new DefaultTestAppender() {
             @Override
-            public void doAppend(LoggingEvent event) {
-                if (event.getLevel().equals(Level.INFO) && event.getMessage().toString().contains("Usage Manager Memory Limit")) {
-                    LOG.info("received  log message: " + event.getMessage());
+            public void append(LogEvent event) {
+                if (event.getLevel().equals(Level.WARN) && event.getMessage().getFormattedMessage().contains("Usage Manager Memory Limit")) {
+                    LOG.info("received warn log message: " + event.getMessage());
                     warnings.incrementAndGet();
                 }
+                if (event.getLevel().equals(Level.DEBUG) && event.getMessage().getFormattedMessage().contains("Usage Manager Memory Limit")) {
+                    LOG.info("received debug log message: " + event.getMessage());
+                    debugs.incrementAndGet();
+                }
+
             }
         };
-        org.apache.log4j.Logger log4jLogger =
-                org.apache.log4j.Logger.getLogger(Queue.class);
+        appender.start();
+
+        org.apache.logging.log4j.core.Logger log4jLogger = (org.apache.logging.log4j.core.Logger)LogManager.getLogger(Queue.class);
         log4jLogger.addAppender(appender);
+        log4jLogger.setLevel(Level.DEBUG);
+
         try {
             ConnectionFactory factory = createConnectionFactory();
             connection = (ActiveMQConnection)factory.createConnection();
@@ -276,6 +286,9 @@ public class ProducerFlowControlTest extends JmsTestSupport {
             connection.start();
 
             fillQueue(queueB);
+            // Wait for the warning to be logged - there's a small delay between
+            // the producer being blocked and the Log4j appender processing the event
+            assertTrue("Warning should be logged", Wait.waitFor(() -> warnings.get() >= 1, TimeUnit.SECONDS.toMillis(5), 100));
             assertEquals(1, warnings.get());
 
             broker.getDestinationPolicy().getDefaultEntry().setBlockedProducerWarningInterval(0);
@@ -287,6 +300,7 @@ public class ProducerFlowControlTest extends JmsTestSupport {
             connection.start();
             fillQueue(new ActiveMQQueue("SomeOtherQueueToPickUpNewPolicy"));
             assertEquals(0, warnings.get());
+            assertTrue(debugs.get() > 1);
 
         } finally {
             log4jLogger.removeAppender(appender);

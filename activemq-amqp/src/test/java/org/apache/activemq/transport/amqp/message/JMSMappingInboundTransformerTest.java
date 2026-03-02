@@ -30,13 +30,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import javax.jms.Destination;
-import javax.jms.MapMessage;
-import javax.jms.Queue;
-import javax.jms.TemporaryQueue;
-import javax.jms.TemporaryTopic;
-import javax.jms.TextMessage;
-import javax.jms.Topic;
+import jakarta.jms.Destination;
+import jakarta.jms.MapMessage;
+import jakarta.jms.Queue;
+import jakarta.jms.TemporaryQueue;
+import jakarta.jms.TemporaryTopic;
+import jakarta.jms.TextMessage;
+import jakarta.jms.Topic;
 
 import org.apache.activemq.command.ActiveMQBytesMessage;
 import org.apache.activemq.command.ActiveMQMapMessage;
@@ -44,6 +44,7 @@ import org.apache.activemq.command.ActiveMQMessage;
 import org.apache.activemq.command.ActiveMQObjectMessage;
 import org.apache.activemq.command.ActiveMQStreamMessage;
 import org.apache.activemq.command.ActiveMQTextMessage;
+import org.apache.activemq.transport.amqp.ParallelTest;
 import org.apache.qpid.proton.Proton;
 import org.apache.qpid.proton.amqp.Binary;
 import org.apache.qpid.proton.amqp.Symbol;
@@ -53,7 +54,9 @@ import org.apache.qpid.proton.amqp.messaging.Data;
 import org.apache.qpid.proton.amqp.messaging.MessageAnnotations;
 import org.apache.qpid.proton.message.Message;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class JMSMappingInboundTransformerTest {
 
     //----- Null Body Section ------------------------------------------------//
@@ -72,7 +75,7 @@ public class JMSMappingInboundTransformerTest {
         message.setContentType(AmqpMessageSupport.OCTET_STREAM_CONTENT_TYPE);
 
         EncodedMessage em = encodeMessage(message);
-        javax.jms.Message jmsMessage = transformer.transform(em);
+        jakarta.jms.Message jmsMessage = transformer.transform(em);
 
         assertNotNull("Message should not be null", jmsMessage);
         assertEquals("Unexpected message class type", ActiveMQBytesMessage.class, jmsMessage.getClass());
@@ -91,7 +94,7 @@ public class JMSMappingInboundTransformerTest {
         Message message = Message.Factory.create();
 
         EncodedMessage em = encodeMessage(message);
-        javax.jms.Message jmsMessage = transformer.transform(em);
+        jakarta.jms.Message jmsMessage = transformer.transform(em);
 
         assertNotNull("Message should not be null", jmsMessage);
         assertEquals("Unexpected message class type", ActiveMQBytesMessage.class, jmsMessage.getClass());
@@ -112,7 +115,7 @@ public class JMSMappingInboundTransformerTest {
         message.setContentType(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE);
 
         EncodedMessage em = encodeMessage(message);
-        javax.jms.Message jmsMessage = transformer.transform(em);
+        jakarta.jms.Message jmsMessage = transformer.transform(em);
 
         assertNotNull("Message should not be null", jmsMessage);
         assertEquals("Unexpected message class type", ActiveMQObjectMessage.class, jmsMessage.getClass());
@@ -126,7 +129,7 @@ public class JMSMappingInboundTransformerTest {
         message.setContentType("text/plain");
 
         EncodedMessage em = encodeMessage(message);
-        javax.jms.Message jmsMessage = transformer.transform(em);
+        jakarta.jms.Message jmsMessage = transformer.transform(em);
 
         assertNotNull("Message should not be null", jmsMessage);
         assertEquals("Unexpected message class type", ActiveMQTextMessage.class, jmsMessage.getClass());
@@ -146,7 +149,7 @@ public class JMSMappingInboundTransformerTest {
         message.setContentType("unknown-content-type");
 
         EncodedMessage em = encodeMessage(message);
-        javax.jms.Message jmsMessage = transformer.transform(em);
+        jakarta.jms.Message jmsMessage = transformer.transform(em);
 
         assertNotNull("Message should not be null", jmsMessage);
         assertEquals("Unexpected message class type", ActiveMQMessage.class, jmsMessage.getClass());
@@ -171,7 +174,7 @@ public class JMSMappingInboundTransformerTest {
         EncodedMessage em = encodeMessage(message);
 
         JMSMappingInboundTransformer transformer = new JMSMappingInboundTransformer();
-        javax.jms.Message jmsMessage = transformer.transform(em);
+        jakarta.jms.Message jmsMessage = transformer.transform(em);
 
         assertNotNull("Message should not be null", jmsMessage);
         assertEquals("Unexpected message class type", ActiveMQBytesMessage.class, jmsMessage.getClass());
@@ -193,7 +196,7 @@ public class JMSMappingInboundTransformerTest {
         EncodedMessage em = encodeMessage(message);
 
         JMSMappingInboundTransformer transformer = new JMSMappingInboundTransformer();
-        javax.jms.Message jmsMessage = transformer.transform(em);
+        jakarta.jms.Message jmsMessage = transformer.transform(em);
 
         assertNotNull("Message should not be null", jmsMessage);
         assertEquals("Unexpected message class type", ActiveMQBytesMessage.class, jmsMessage.getClass());
@@ -217,7 +220,7 @@ public class JMSMappingInboundTransformerTest {
         EncodedMessage em = encodeMessage(message);
 
         JMSMappingInboundTransformer transformer = new JMSMappingInboundTransformer();
-        javax.jms.Message jmsMessage = transformer.transform(em);
+        jakarta.jms.Message jmsMessage = transformer.transform(em);
 
         assertNotNull("Message should not be null", jmsMessage);
         assertEquals("Unexpected message class type", ActiveMQBytesMessage.class, jmsMessage.getClass());
@@ -240,7 +243,7 @@ public class JMSMappingInboundTransformerTest {
         EncodedMessage em = encodeMessage(message);
 
         JMSMappingInboundTransformer transformer = new JMSMappingInboundTransformer();
-        javax.jms.Message jmsMessage = transformer.transform(em);
+        jakarta.jms.Message jmsMessage = transformer.transform(em);
 
         assertNotNull("Message should not be null", jmsMessage);
         assertEquals("Unexpected message class type", ActiveMQObjectMessage.class, jmsMessage.getClass());
@@ -343,7 +346,7 @@ public class JMSMappingInboundTransformerTest {
         EncodedMessage em = encodeMessage(message);
 
         JMSMappingInboundTransformer transformer = new JMSMappingInboundTransformer();
-        javax.jms.Message jmsMessage = transformer.transform(em);
+        jakarta.jms.Message jmsMessage = transformer.transform(em);
 
         assertNotNull("Message should not be null", jmsMessage);
         if (StandardCharsets.UTF_8.equals(expectedCharset)) {
@@ -369,7 +372,7 @@ public class JMSMappingInboundTransformerTest {
         EncodedMessage em = encodeMessage(message);
 
         JMSMappingInboundTransformer transformer = new JMSMappingInboundTransformer();
-        javax.jms.Message jmsMessage = transformer.transform(em);
+        jakarta.jms.Message jmsMessage = transformer.transform(em);
 
         assertNotNull("Message should not be null", jmsMessage);
         assertEquals("Unexpected message class type", ActiveMQTextMessage.class, jmsMessage.getClass());
@@ -389,7 +392,7 @@ public class JMSMappingInboundTransformerTest {
         EncodedMessage em = encodeMessage(message);
 
         JMSMappingInboundTransformer transformer = new JMSMappingInboundTransformer();
-        javax.jms.Message jmsMessage = transformer.transform(em);
+        jakarta.jms.Message jmsMessage = transformer.transform(em);
 
         assertNotNull("Message should not be null", jmsMessage);
         assertEquals("Unexpected message class type", ActiveMQTextMessage.class, jmsMessage.getClass());
@@ -411,7 +414,7 @@ public class JMSMappingInboundTransformerTest {
         message.setContentType(AmqpMessageSupport.SERIALIZED_JAVA_OBJECT_CONTENT_TYPE);
 
         EncodedMessage em = encodeMessage(message);
-        javax.jms.Message jmsMessage = transformer.transform(em);
+        jakarta.jms.Message jmsMessage = transformer.transform(em);
 
         assertNotNull("Message should not be null", jmsMessage);
         assertEquals("Unexpected message class type", ActiveMQObjectMessage.class, jmsMessage.getClass());
@@ -432,7 +435,7 @@ public class JMSMappingInboundTransformerTest {
         EncodedMessage em = encodeMessage(message);
 
         JMSMappingInboundTransformer transformer = new JMSMappingInboundTransformer();
-        javax.jms.Message jmsMessage = transformer.transform(em);
+        jakarta.jms.Message jmsMessage = transformer.transform(em);
 
         assertNotNull("Message should not be null", jmsMessage);
         assertEquals("Unexpected message class type", ActiveMQMapMessage.class, jmsMessage.getClass());
@@ -460,7 +463,7 @@ public class JMSMappingInboundTransformerTest {
         EncodedMessage em = encodeMessage(message);
 
         JMSMappingInboundTransformer transformer = new JMSMappingInboundTransformer();
-        javax.jms.Message jmsMessage = transformer.transform(em);
+        jakarta.jms.Message jmsMessage = transformer.transform(em);
 
         assertNotNull("Message should not be null", jmsMessage);
         assertEquals("Unexpected message class type", ActiveMQMapMessage.class, jmsMessage.getClass());
@@ -486,7 +489,7 @@ public class JMSMappingInboundTransformerTest {
         EncodedMessage em = encodeMessage(message);
 
         JMSMappingInboundTransformer transformer = new JMSMappingInboundTransformer();
-        javax.jms.Message jmsMessage = transformer.transform(em);
+        jakarta.jms.Message jmsMessage = transformer.transform(em);
 
         assertNotNull("Message should not be null", jmsMessage);
         assertEquals("Unexpected message class type", ActiveMQStreamMessage.class, jmsMessage.getClass());
@@ -507,7 +510,7 @@ public class JMSMappingInboundTransformerTest {
         EncodedMessage em = encodeMessage(message);
 
         JMSMappingInboundTransformer transformer = new JMSMappingInboundTransformer();
-        javax.jms.Message jmsMessage = transformer.transform(em);
+        jakarta.jms.Message jmsMessage = transformer.transform(em);
 
         assertNotNull("Message should not be null", jmsMessage);
         assertEquals("Unexpected message class type", ActiveMQStreamMessage.class, jmsMessage.getClass());
@@ -528,7 +531,7 @@ public class JMSMappingInboundTransformerTest {
         EncodedMessage em = encodeMessage(message);
 
         JMSMappingInboundTransformer transformer = new JMSMappingInboundTransformer();
-        javax.jms.Message jmsMessage = transformer.transform(em);
+        jakarta.jms.Message jmsMessage = transformer.transform(em);
 
         assertNotNull("Message should not be null", jmsMessage);
         assertEquals("Unexpected message class type", ActiveMQBytesMessage.class, jmsMessage.getClass());
@@ -550,7 +553,7 @@ public class JMSMappingInboundTransformerTest {
 
         JMSMappingInboundTransformer transformer = new JMSMappingInboundTransformer();
 
-        javax.jms.Message jmsMessage = transformer.transform(em);
+        jakarta.jms.Message jmsMessage = transformer.transform(em);
 
         assertNotNull("Message should not be null", jmsMessage);
         assertEquals("Unexpected message class type", ActiveMQBytesMessage.class, jmsMessage.getClass());
@@ -565,7 +568,7 @@ public class JMSMappingInboundTransformerTest {
         EncodedMessage em = encodeMessage(message);
 
         JMSMappingInboundTransformer transformer = new JMSMappingInboundTransformer();
-        javax.jms.Message jmsMessage = transformer.transform(em);
+        jakarta.jms.Message jmsMessage = transformer.transform(em);
 
         assertTrue("Expected TextMessage", jmsMessage instanceof TextMessage);
         assertEquals("Unexpected message class type", ActiveMQTextMessage.class, jmsMessage.getClass());
@@ -619,7 +622,7 @@ public class JMSMappingInboundTransformerTest {
 
         EncodedMessage em = encodeMessage(amqp);
 
-        javax.jms.Message jmsMessage = transformer.transform(em);
+        jakarta.jms.Message jmsMessage = transformer.transform(em);
         assertTrue("Expected TextMessage", jmsMessage instanceof TextMessage);
     }
 
@@ -666,7 +669,7 @@ public class JMSMappingInboundTransformerTest {
 
         EncodedMessage em = encodeMessage(amqp);
 
-        javax.jms.Message jmsMessage = transformer.transform(em);
+        jakarta.jms.Message jmsMessage = transformer.transform(em);
         assertTrue("Expected TextMessage", jmsMessage instanceof TextMessage);
     }
 

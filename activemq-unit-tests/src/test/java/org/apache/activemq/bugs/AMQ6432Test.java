@@ -22,24 +22,27 @@ import org.apache.activemq.broker.jmx.QueueViewMBean;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.store.kahadb.KahaDBPersistenceAdapter;
 import org.apache.activemq.store.kahadb.MessageDatabase;
-import org.apache.activemq.util.DefaultTestAppender;
 import org.apache.activemq.util.Wait;
-import org.apache.log4j.Appender;
-import org.apache.log4j.Level;
-import org.apache.log4j.spi.LoggingEvent;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.Property;
+import org.apache.logging.log4j.core.filter.AbstractFilter;
+import org.apache.logging.log4j.core.layout.MessageLayout;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.jms.BytesMessage;
-import javax.jms.Connection;
-import javax.jms.DeliveryMode;
-import javax.jms.Destination;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.BytesMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Destination;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 import javax.management.ObjectName;
 import java.io.File;
 import java.io.FilenameFilter;
@@ -85,22 +88,26 @@ public class AMQ6432Test {
     @Test
     public void testTransactedStoreUsageSuspendResume() throws Exception {
 
-        org.apache.log4j.Logger log4jLogger =
-                org.apache.log4j.Logger.getLogger(MessageDatabase.class);
         final AtomicBoolean failed = new AtomicBoolean(false);
 
         final File journalDataDir = ((KahaDBPersistenceAdapter) broker.getPersistenceAdapter()).getStore().getJournal().getDirectory();
 
-        Appender appender = new DefaultTestAppender() {
+        
+        final var logger = org.apache.logging.log4j.core.Logger.class.cast(LogManager.getLogger(MessageDatabase.class));
+        final var appender = new AbstractAppender("testAppender", new AbstractFilter() {}, new MessageLayout(), false, new Property[0]) {
             @Override
-            public void doAppend(LoggingEvent event) {
-                if (event.getLevel().equals(Level.WARN) && event.getMessage().toString().startsWith("Failed to load next journal")) {
-                    LOG.info("received unexpected log message: " + event.getMessage());
+            public void append(LogEvent event) {
+                if (event.getLevel().equals(Level.WARN) && event.getMessage().getFormattedMessage().startsWith("Failed to load next journal")) {
+                    LOG.info("received unexpected log message: " + event.getMessage().getFormattedMessage());
                     failed.set(true);
                 }
             }
         };
-        log4jLogger.addAppender(appender);
+        appender.start();
+
+        logger.get().addAppender(appender, Level.DEBUG, new AbstractFilter() {});
+        logger.addAppender(appender);
+
         try {
 
             ExecutorService sendExecutor = Executors.newSingleThreadExecutor();
@@ -139,7 +146,7 @@ public class AMQ6432Test {
             }));
 
         } finally {
-            log4jLogger.removeAppender(appender);
+            logger.removeAppender(appender);
         }
         assertFalse("failed on unexpected log event", failed.get());
 

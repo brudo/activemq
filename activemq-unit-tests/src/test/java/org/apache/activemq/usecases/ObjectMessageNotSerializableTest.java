@@ -20,10 +20,10 @@ import java.util.Vector;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import javax.jms.Connection;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 
 import junit.framework.Test;
 
@@ -37,8 +37,13 @@ import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTopic;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 
+
+
+@Category(ParallelTest.class)
 public class ObjectMessageNotSerializableTest extends CombinationTestSupport {
 
     private static final Logger LOG = LoggerFactory.getLogger(ObjectMessageNotSerializableTest.class);
@@ -56,13 +61,14 @@ public class ObjectMessageNotSerializableTest extends CombinationTestSupport {
     }
 	
 	protected void setUp() throws Exception {
+        System.setProperty("org.apache.activemq.SERIALIZABLE_PACKAGES", "org.apache.activemq.usecases,java.util,java.lang");
         exceptions.clear();
         broker = createBroker();
     }
 	
-	public void testSendNotSerializeableObjectMessage() throws Exception {
+	public void testSendNotSerializableObjectMessage() throws Exception {
 
-        final  ActiveMQDestination destination = new ActiveMQQueue("testQ");
+        final ActiveMQDestination destination = new ActiveMQQueue("testQ");
         final MyObject obj = new MyObject("A message");
 
         final CountDownLatch consumerStarted = new CountDownLatch(1);
@@ -129,7 +135,7 @@ public class ObjectMessageNotSerializableTest extends CombinationTestSupport {
         assertTrue("no unexpected exceptions: " + exceptions, exceptions.isEmpty());
 	}
 
-    public void testSendNotSerializeableObjectMessageOverTcp() throws Exception {
+    public void testSendNotSerializableObjectMessageOverTcp() throws Exception {
         final  ActiveMQDestination destination = new ActiveMQTopic("testTopic");
         final MyObject obj = new MyObject("A message");
 

@@ -19,9 +19,12 @@ package org.apache.activemq.broker;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.StringTokenizer;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 
 import javax.management.ObjectName;
@@ -74,9 +77,13 @@ public class TransportConnector implements Connector, BrokerServiceAware {
     private int maximumProducersAllowedPerConnection = Integer.MAX_VALUE;
     private int maximumConsumersAllowedPerConnection  = Integer.MAX_VALUE;
     private PublishedAddressPolicy publishedAddressPolicy = new PublishedAddressPolicy();
-    private boolean allowLinkStealing;
+    private boolean allowLinkStealing = false;
+    private boolean warnOnRemoteClose = false;
+    private boolean displayStackTrace = false;
+    private boolean autoStart = true;
 
     LinkedList<String> peerBrokers = new LinkedList<String>();
+    private AtomicBoolean started = new AtomicBoolean(false);
 
     public TransportConnector() {
     }
@@ -123,7 +130,9 @@ public class TransportConnector implements Connector, BrokerServiceAware {
         rc.setMaximumConsumersAllowedPerConnection(getMaximumConsumersAllowedPerConnection());
         rc.setMaximumProducersAllowedPerConnection(getMaximumProducersAllowedPerConnection());
         rc.setPublishedAddressPolicy(getPublishedAddressPolicy());
-        rc.setAllowLinkStealing(isAllowLinkStealing());
+        rc.setAllowLinkStealing(allowLinkStealing);
+        rc.setWarnOnRemoteClose(isWarnOnRemoteClose());
+        rc.setAutoStart(isAutoStart());
         return rc;
     }
 
@@ -147,6 +156,7 @@ public class TransportConnector implements Connector, BrokerServiceAware {
         this.server = server;
     }
 
+    @Override
     public URI getUri() {
         if (uri == null) {
             try {
@@ -185,6 +195,15 @@ public class TransportConnector implements Connector, BrokerServiceAware {
         return statistics;
     }
 
+    /**
+     * Reset the statistics for this connector
+     */
+    @Override
+    public void resetStatistics() {
+        statistics.reset();
+        server.resetStatistics();
+    }
+
     public MessageAuthorizationPolicy getMessageAuthorizationPolicy() {
         return messageAuthorizationPolicy;
     }
@@ -208,6 +227,7 @@ public class TransportConnector implements Connector, BrokerServiceAware {
         getServer().setAcceptListener(new TransportAcceptListener() {
             @Override
             public void onAccept(final Transport transport) {
+                final String remoteHost = transport.getRemoteAddress();
                 try {
                     brokerService.getTaskRunnerFactory().execute(new Runnable() {
                         @Override
@@ -220,14 +240,12 @@ public class TransportConnector implements Connector, BrokerServiceAware {
                                     throw new BrokerStoppedException("Broker " + brokerService + " is being stopped");
                                 }
                             } catch (Exception e) {
-                                String remoteHost = transport.getRemoteAddress();
                                 ServiceSupport.dispose(transport);
                                 onAcceptError(e, remoteHost);
                             }
                         }
                     });
                 } catch (Exception e) {
-                    String remoteHost = transport.getRemoteAddress();
                     ServiceSupport.dispose(transport);
                     onAcceptError(e, remoteHost);
                 }
@@ -240,10 +258,10 @@ public class TransportConnector implements Connector, BrokerServiceAware {
 
             private void onAcceptError(Exception error, String remoteHost) {
                 if (brokerService != null && brokerService.isStopping()) {
-                    LOG.info("Could not accept connection during shutdown {} : {}", (remoteHost == null ? "" : "from " + remoteHost), error);
+                    LOG.info("Could not accept connection during shutdown {} : {} ({})", (remoteHost == null ? "" : "from " + remoteHost), error.getLocalizedMessage(), getRootCause(error).getMessage());
                 } else {
-                    LOG.error("Could not accept connection {} : {}", (remoteHost == null ? "" : "from " + remoteHost), error);
-                    LOG.debug("Reason: " + error, error);
+                    LOG.warn("Could not accept connection {}: {} ({})", (remoteHost == null ? "" : "from " + remoteHost), error.getMessage(), getRootCause(error).getMessage());
+                    LOG.debug("Reason: " + error.getMessage(), error);
                 }
             }
         });
@@ -260,7 +278,22 @@ public class TransportConnector implements Connector, BrokerServiceAware {
             this.statusDector.start();
         }
 
+        started.set(true);
         LOG.info("Connector {} started", getName());
+    }
+
+    public static Throwable getRootCause(final Throwable throwable) {
+        final List<Throwable> list = getThrowableList(throwable);
+        return list.isEmpty() ? null : list.get(list.size() - 1);
+    }
+
+    static List<Throwable> getThrowableList(Throwable throwable) {
+        final List<Throwable> list = new ArrayList<>();
+        while (throwable != null && !list.contains(throwable)) {
+            list.add(throwable);
+            throwable = throwable.getCause();
+        }
+        return list;
     }
 
     public String getPublishableConnectString() throws Exception {
@@ -269,6 +302,7 @@ public class TransportConnector implements Connector, BrokerServiceAware {
         return publishableConnectString;
     }
 
+    @Override
     public URI getPublishableConnectURI() throws Exception {
         return publishedAddressPolicy.getPublishableConnectURI(this);
     }
@@ -290,6 +324,7 @@ public class TransportConnector implements Connector, BrokerServiceAware {
             ss.stop(connection);
         }
         server = null;
+        started.set(false);
         ss.throwFirstException();
         LOG.info("Connector {} stopped", getName());
     }
@@ -342,6 +377,7 @@ public class TransportConnector implements Connector, BrokerServiceAware {
         this.discoveryAgent = discoveryAgent;
     }
 
+    @Override
     public URI getDiscoveryUri() {
         return discoveryUri;
     }
@@ -350,6 +386,7 @@ public class TransportConnector implements Connector, BrokerServiceAware {
         this.discoveryUri = discoveryUri;
     }
 
+    @Override
     public URI getConnectUri() throws IOException, URISyntaxException {
         if (server != null) {
             return server.getConnectURI();
@@ -455,8 +492,9 @@ public class TransportConnector implements Connector, BrokerServiceAware {
         if (filter != null) {
             filter = filter.trim();
             if (filter.length() > 0) {
+                result = false;
                 StringTokenizer tokenizer = new StringTokenizer(filter, ",");
-                while (result && tokenizer.hasMoreTokens()) {
+                while (!result && tokenizer.hasMoreTokens()) {
                     String token = tokenizer.nextToken();
                     result = isMatchesClusterFilter(brokerName, token);
                 }
@@ -467,7 +505,7 @@ public class TransportConnector implements Connector, BrokerServiceAware {
     }
 
     private boolean isMatchesClusterFilter(String brokerName, String match) {
-        boolean result = true;
+        boolean result = false;
         if (brokerName != null && match != null && brokerName.length() > 0 && match.length() > 0) {
             result = Pattern.matches(match, brokerName);
         }
@@ -485,6 +523,7 @@ public class TransportConnector implements Connector, BrokerServiceAware {
     /**
      * @return the enableStatusMonitor
      */
+    @Override
     public boolean isEnableStatusMonitor() {
         return enableStatusMonitor;
     }
@@ -576,6 +615,7 @@ public class TransportConnector implements Connector, BrokerServiceAware {
         this.updateClusterFilter = updateClusterFilter;
     }
 
+    @Deprecated(forRemoval = true)
     @Override
     public int connectionCount() {
         return connections.size();
@@ -586,10 +626,11 @@ public class TransportConnector implements Connector, BrokerServiceAware {
         return server.isAllowLinkStealing();
     }
 
-    public void setAllowLinkStealing (boolean allowLinkStealing) {
-        this.allowLinkStealing=allowLinkStealing;
+    public void setAllowLinkStealing(boolean allowLinkStealing) {
+        this.allowLinkStealing = allowLinkStealing;
     }
 
+    @Override
     public boolean isAuditNetworkProducers() {
         return auditNetworkProducers;
     }
@@ -603,6 +644,7 @@ public class TransportConnector implements Connector, BrokerServiceAware {
         this.auditNetworkProducers = auditNetworkProducers;
     }
 
+    @Override
     public int getMaximumProducersAllowedPerConnection() {
         return maximumProducersAllowedPerConnection;
     }
@@ -611,6 +653,7 @@ public class TransportConnector implements Connector, BrokerServiceAware {
         this.maximumProducersAllowedPerConnection = maximumProducersAllowedPerConnection;
     }
 
+    @Override
     public int getMaximumConsumersAllowedPerConnection() {
         return maximumConsumersAllowedPerConnection;
     }
@@ -637,5 +680,45 @@ public class TransportConnector implements Connector, BrokerServiceAware {
      */
     public void setPublishedAddressPolicy(PublishedAddressPolicy publishedAddressPolicy) {
         this.publishedAddressPolicy = publishedAddressPolicy;
+    }
+
+    public boolean isWarnOnRemoteClose() {
+        return warnOnRemoteClose;
+    }
+
+    public void setWarnOnRemoteClose(boolean warnOnRemoteClose) {
+        this.warnOnRemoteClose = warnOnRemoteClose;
+    }
+
+    public boolean isDisplayStackTrace() {
+        return displayStackTrace;
+    }
+
+    public void setDisplayStackTrace(boolean displayStackTrace) {
+        this.displayStackTrace = displayStackTrace;
+    }
+
+    @Override
+    public long getMaxConnectionExceededCount() {
+        return (server != null ? server.getMaxConnectionExceededCount() : 0l);
+    }
+
+    @Override
+    public boolean isStarted() {
+        return started.get();
+    }
+
+    public void setAutoStart(boolean autoStart) {
+        this.autoStart = autoStart;
+    }
+
+    @Override
+    public boolean isAutoStart() {
+        return autoStart;
+    }
+
+    @Override
+    public int getConnectionCount() {
+        return connections.size();
     }
 }

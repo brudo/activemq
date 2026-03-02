@@ -70,7 +70,7 @@
     </broker>
 
     <bean id="activemqConnectionFactory" class="org.apache.activemq.ActiveMQXAConnectionFactory">
-        <property name="brokerURL" value="tcp://localhost:61616?jms.dispatchAsync=false"/>
+        <property name="brokerURL" value="tcp://localhost:61616?jms.dispatchAsync=false&amp;jms.xaAckMode=1"/>
         <property name="userName" value="karaf" />
         <property name="password" value="karaf" />
 
@@ -81,7 +81,7 @@
     </bean>
 
     <!-- Define the activemq Camel component so we can integrate with the AMQ broker -->
-    <bean id="activemq" class="org.apache.activemq.camel.component.ActiveMQComponent"
+    <bean id="activemq" class="org.apache.camel.component.jms.JmsComponent"
           depends-on="pooledConnectionFactory">
         <property name="connectionFactory" ref="pooledConnectionFactory"/>
         <property name="cacheLevel" value="0"/>

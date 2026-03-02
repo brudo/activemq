@@ -16,7 +16,9 @@
  */
 package org.apache.activemq.broker;
 
-import javax.jms.DeliveryMode;
+import static org.junit.Assert.assertEquals;
+
+import jakarta.jms.DeliveryMode;
 
 import junit.framework.Test;
 
@@ -30,6 +32,9 @@ import org.apache.activemq.command.Message;
 import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.command.ProducerInfo;
 import org.apache.activemq.command.SessionInfo;
+import org.apache.activemq.util.Wait;
+
+
 
 public class MessageExpirationTest extends BrokerTestSupport {
 
@@ -48,9 +53,9 @@ public class MessageExpirationTest extends BrokerTestSupport {
     }
 
     public void initCombosForTestMessagesWaitingForUssageDecreaseExpire() {
-        addCombinationValues("deliveryMode", new Object[] {Integer.valueOf(DeliveryMode.NON_PERSISTENT), Integer.valueOf(DeliveryMode.PERSISTENT)});
-        addCombinationValues("destinationType", new Object[] {Byte.valueOf(ActiveMQDestination.TEMP_QUEUE_TYPE), Byte.valueOf(ActiveMQDestination.TEMP_TOPIC_TYPE),
-                                                              Byte.valueOf(ActiveMQDestination.QUEUE_TYPE), Byte.valueOf(ActiveMQDestination.TOPIC_TYPE)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT, DeliveryMode.PERSISTENT});
+        addCombinationValues("destinationType", new Object[] {ActiveMQDestination.TEMP_QUEUE_TYPE, ActiveMQDestination.TEMP_TOPIC_TYPE,
+                                                              ActiveMQDestination.QUEUE_TYPE, ActiveMQDestination.TOPIC_TYPE});
     }
 
     @Override
@@ -146,9 +151,9 @@ public class MessageExpirationTest extends BrokerTestSupport {
     }
 
     public void initCombosForTestMessagesInLongTransactionExpire() {
-        addCombinationValues("deliveryMode", new Object[] {Integer.valueOf(DeliveryMode.PERSISTENT), Integer.valueOf(DeliveryMode.NON_PERSISTENT)});
-        addCombinationValues("destinationType", new Object[] {Byte.valueOf(ActiveMQDestination.QUEUE_TYPE), Byte.valueOf(ActiveMQDestination.TOPIC_TYPE),
-                                                              Byte.valueOf(ActiveMQDestination.TEMP_QUEUE_TYPE), Byte.valueOf(ActiveMQDestination.TEMP_TOPIC_TYPE)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.PERSISTENT, DeliveryMode.NON_PERSISTENT});
+        addCombinationValues("destinationType", new Object[] {ActiveMQDestination.QUEUE_TYPE, ActiveMQDestination.TOPIC_TYPE,
+                                                              ActiveMQDestination.TEMP_QUEUE_TYPE, ActiveMQDestination.TEMP_TOPIC_TYPE});
     }
 
     public void testMessagesInLongTransactionExpire() throws Exception {
@@ -210,9 +215,9 @@ public class MessageExpirationTest extends BrokerTestSupport {
     }
 
     public void initCombosForTestMessagesInSubscriptionPendingListExpire() {
-        addCombinationValues("deliveryMode", new Object[] {Integer.valueOf(DeliveryMode.NON_PERSISTENT), Integer.valueOf(DeliveryMode.PERSISTENT)});
-        addCombinationValues("destinationType", new Object[] {Byte.valueOf(ActiveMQDestination.QUEUE_TYPE), Byte.valueOf(ActiveMQDestination.TOPIC_TYPE),
-                                                              Byte.valueOf(ActiveMQDestination.TEMP_QUEUE_TYPE), Byte.valueOf(ActiveMQDestination.TEMP_TOPIC_TYPE)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT, DeliveryMode.PERSISTENT});
+        addCombinationValues("destinationType", new Object[] {ActiveMQDestination.QUEUE_TYPE, ActiveMQDestination.TOPIC_TYPE,
+                                                              ActiveMQDestination.TEMP_QUEUE_TYPE, ActiveMQDestination.TEMP_TOPIC_TYPE});
     }
 
     public void testMessagesInSubscriptionPendingListExpire() throws Exception {
@@ -261,6 +266,11 @@ public class MessageExpirationTest extends BrokerTestSupport {
         assertNoMessagesLeft(connection);
 
         connection.send(closeConnectionInfo(connectionInfo));
+
+        if (!destination.isTemporary()) {
+            assertTrue(Wait.waitFor(
+                () -> broker.getDestination(destination).getMemoryUsage().getUsage() == 0, 1000, 100));
+        }
     }
 
     public static Test suite() {

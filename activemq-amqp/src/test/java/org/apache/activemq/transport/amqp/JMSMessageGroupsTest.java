@@ -20,13 +20,13 @@ import static org.junit.Assert.assertNotNull;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javax.jms.BytesMessage;
-import javax.jms.DeliveryMode;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Queue;
-import javax.jms.Session;
+import jakarta.jms.BytesMessage;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
 
 import org.junit.Test;
 import org.slf4j.Logger;
@@ -82,8 +82,7 @@ public class JMSMessageGroupsTest extends JMSClientTestSupport {
         byte[] buffer = new byte[MESSAGE_SIZE];
         for (count = 0; count < MESSAGE_SIZE; count++) {
             String s = String.valueOf(count % 10);
-            Character c = s.charAt(0);
-            int value = c.charValue();
+            int value = s.charAt(0);
             buffer[count] = (byte) value;
         }
 

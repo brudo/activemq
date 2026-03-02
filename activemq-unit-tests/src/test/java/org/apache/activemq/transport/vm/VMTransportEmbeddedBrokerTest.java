@@ -19,7 +19,7 @@ package org.apache.activemq.transport.vm;
 import java.net.URI;
 import java.net.URISyntaxException;
 
-import javax.jms.DeliveryMode;
+import jakarta.jms.DeliveryMode;
 
 import org.apache.activemq.broker.BrokerRegistry;
 import org.apache.activemq.broker.BrokerTestSupport;
@@ -33,12 +33,15 @@ import org.apache.activemq.command.SessionInfo;
 import org.apache.activemq.transport.Transport;
 import org.apache.activemq.transport.TransportFactory;
 import org.apache.activemq.util.IOExceptionSupport;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  * Used to see if the VM transport starts an embedded broker on demand.
  * 
  * 
  */
+@Category(ParallelTest.class)
 public class VMTransportEmbeddedBrokerTest extends BrokerTestSupport {
 
     public static void main(String[] args) {

@@ -19,27 +19,30 @@ package org.apache.activemq.bugs;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Queue;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.jmx.QueueViewMBean;
+import org.apache.activemq.test.annotations.ParallelTest;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+@Category(ParallelTest.class)
 public class AMQ3145Test {
     private static final Logger LOG = LoggerFactory.getLogger(AMQ3145Test.class);
     private final String MESSAGE_TEXT = new String(new byte[1024]);
@@ -58,7 +61,6 @@ public class AMQ3145Test {
     public void createBroker(boolean deleteAll) throws Exception {
         broker = new BrokerService();
         broker.setDeleteAllMessagesOnStartup(deleteAll);
-        broker.setDataDirectory("target/AMQ3145Test");
         broker.setUseJmx(true);
         broker.getManagementContext().setCreateConnector(false);
         broker.addConnector("tcp://localhost:0");
@@ -72,12 +74,16 @@ public class AMQ3145Test {
 
     @After
     public void tearDown() throws Exception {
-        if (consumer != null) {
-            consumer.close();
+        try {
+            if (consumer != null) {
+                consumer.close();
+            }
+            session.close();
+            connection.stop();
+            connection.close();
+        } catch (Exception e) {
+            //swallow any error so broker can still be stopped
         }
-        session.close();
-        connection.stop();
-        connection.close();
         broker.stop();
     }
 

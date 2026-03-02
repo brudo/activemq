@@ -16,17 +16,20 @@
  */
 package org.apache.activemq.config;
 
-import javax.jms.Connection;
-import javax.jms.InvalidSelectorException;
-import javax.jms.JMSException;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.InvalidSelectorException;
+import jakarta.jms.JMSException;
+import jakarta.jms.Session;
 
 import junit.framework.TestCase;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.ActiveMQMessageConsumer;
 import org.apache.activemq.command.ActiveMQQueue;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class ConfigUsingDestinationOptions extends TestCase {
     public void testValidSelectorConfig() throws JMSException {
         ActiveMQQueue queue = new ActiveMQQueue("TEST.FOO?consumer.selector=test=1");

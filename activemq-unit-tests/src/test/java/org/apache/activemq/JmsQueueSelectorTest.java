@@ -17,11 +17,14 @@
 
 package org.apache.activemq;
 
-import javax.jms.*;
+import jakarta.jms.*;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  * 
  */
+@Category(ParallelTest.class)
 public class JmsQueueSelectorTest extends JmsTopicSelectorTest {
     public void setUp() throws Exception {
         topic = false;
@@ -58,7 +61,7 @@ public class JmsQueueSelectorTest extends JmsTopicSelectorTest {
         // now we, should only receive 1 message, not two
         int remaining = 2;
 
-        javax.jms.Message recievedMsg = null;
+        jakarta.jms.Message recievedMsg = null;
 
         while (true) {
             recievedMsg = consumer.receive(1000);

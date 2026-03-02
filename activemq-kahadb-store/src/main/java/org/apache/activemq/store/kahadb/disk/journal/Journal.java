@@ -124,6 +124,14 @@ public class Journal {
         }
     }
 
+    public void setCleanupInterval(long cleanupInterval) {
+        this.cleanupInterval = cleanupInterval;
+    }
+
+    public long getCleanupInterval() {
+        return cleanupInterval;
+    }
+
     public enum PreallocationStrategy {
         SPARSE_FILE,
         OS_KERNEL_COPY,
@@ -230,8 +238,10 @@ public class Journal {
     protected PreallocationStrategy preallocationStrategy = PreallocationStrategy.SPARSE_FILE;
     private File osKernelCopyTemplateFile = null;
     private ByteBuffer preAllocateDirectBuffer = null;
+    private long cleanupInterval = DEFAULT_CLEANUP_INTERVAL;
 
     protected JournalDiskSyncStrategy journalDiskSyncStrategy = JournalDiskSyncStrategy.ALWAYS;
+    protected DataFileFactory dataFileFactory = new DefaultDataFileFactory();
 
     public interface DataFileRemovedListener {
         void fileRemoved(DataFile datafile);
@@ -263,7 +273,7 @@ public class Journal {
                     String n = file.getName();
                     String numStr = n.substring(filePrefix.length(), n.length()-fileSuffix.length());
                     int num = Integer.parseInt(numStr);
-                    DataFile dataFile = new DataFile(file, num);
+                    DataFile dataFile = dataFileFactory.create(file, num);
                     fileMap.put(dataFile.getDataFileId(), dataFile);
                     totalLength.addAndGet(dataFile.getLength());
                 } catch (NumberFormatException e) {
@@ -345,7 +355,7 @@ public class Journal {
             public void run() {
                 cleanup();
             }
-        }, DEFAULT_CLEANUP_INTERVAL, DEFAULT_CLEANUP_INTERVAL, TimeUnit.MILLISECONDS);
+        }, cleanupInterval, cleanupInterval, TimeUnit.MILLISECONDS);
 
         long end = System.currentTimeMillis();
         LOG.trace("Startup took: "+(end-start)+" ms");
@@ -501,30 +511,32 @@ public class Journal {
 
             while (true) {
                 int size = checkBatchRecord(bs, randomAccessFile);
-                if (size >= 0 && location.getOffset() + BATCH_CONTROL_RECORD_SIZE + size <= totalFileLength) {
-                    if (size == 0) {
-                        // eof batch record
-                        break;
-                    }
+                if (size > 0 && location.getOffset() + BATCH_CONTROL_RECORD_SIZE + size <= totalFileLength) {
                     location.setOffset(location.getOffset() + BATCH_CONTROL_RECORD_SIZE + size);
-                } else {
-
-                    // Perhaps it's just some corruption... scan through the
-                    // file to find the next valid batch record. We
-                    // may have subsequent valid batch records.
+                } else if (size == 0 && location.getOffset() + EOF_RECORD.length + size <= totalFileLength) {
+                    // eof batch record
+                    break;
+                } else  {
+                    // track corruption and skip if possible
+                    Sequence sequence = new Sequence(location.getOffset());
                     if (findNextBatchRecord(bs, randomAccessFile) >= 0) {
                         int nextOffset = Math.toIntExact(randomAccessFile.getFilePointer() - bs.remaining());
-                        Sequence sequence = new Sequence(location.getOffset(), nextOffset - 1);
-                        LOG.warn("Corrupt journal records found in '{}' between offsets: {}", dataFile.getFile(), sequence);
+                        sequence.setLast(nextOffset - 1);
                         dataFile.corruptedBlocks.add(sequence);
+                        LOG.warn("Corrupt journal records found in '{}' between offsets: {}", dataFile.getFile(), sequence);
                         location.setOffset(nextOffset);
                     } else {
+                        // corruption to eof, don't loose track of this corruption, don't truncate
+                        sequence.setLast(Math.toIntExact(randomAccessFile.getFilePointer()));
+                        dataFile.corruptedBlocks.add(sequence);
+                        LOG.warn("Corrupt journal records found in '{}' from offset: {} to EOF", dataFile.getFile(), sequence);
                         break;
                     }
                 }
             }
 
         } catch (IOException e) {
+            LOG.trace("exception on recovery check of: " + dataFile + ", at " + location, e);
         } finally {
             accessorPool.closeDataFileAccessor(reader);
         }
@@ -534,14 +546,6 @@ public class Journal {
         if (existingLen > dataFile.getLength()) {
             totalLength.addAndGet(dataFile.getLength() - existingLen);
         }
-
-        if (!dataFile.corruptedBlocks.isEmpty()) {
-            // Is the end of the data file corrupted?
-            if (dataFile.corruptedBlocks.getTail().getLast() + 1 == location.getOffset()) {
-                dataFile.setLength((int) dataFile.corruptedBlocks.removeLastSequence().getFirst());
-            }
-        }
-
         return location;
     }
 
@@ -567,10 +571,11 @@ public class Journal {
     }
 
     private int checkBatchRecord(ByteSequence bs, RandomAccessFile reader) throws IOException {
-
+        ensureAvailable(bs, reader, EOF_RECORD.length);
         if (bs.startsWith(EOF_RECORD)) {
             return 0; // eof
         }
+        ensureAvailable(bs, reader, BATCH_CONTROL_RECORD_SIZE);
         try (DataByteArrayInputStream controlIs = new DataByteArrayInputStream(bs)) {
 
             // Assert that it's a batch record.
@@ -623,6 +628,19 @@ public class Journal {
         }
     }
 
+    private void ensureAvailable(ByteSequence bs, RandomAccessFile reader, int required) throws IOException {
+        if (bs.remaining() < required) {
+            bs.reset();
+            int read = reader.read(bs.data, bs.length, bs.data.length - bs.length);
+            if (read < 0) {
+                if (bs.remaining() == 0) {
+                    throw new EOFException("request for " + required + " bytes reached EOF");
+                }
+            }
+            bs.setLength(bs.length + read);
+        }
+    }
+
     void addToTotalLength(int size) {
         totalLength.addAndGet(size);
     }
@@ -631,7 +649,7 @@ public class Journal {
         return totalLength.get();
     }
 
-    private void rotateWriteFile() throws IOException {
+    public void rotateWriteFile() throws IOException {
        synchronized (dataFileIdLock) {
             DataFile dataFile = nextDataFile;
             if (dataFile == null) {
@@ -670,7 +688,7 @@ public class Journal {
     private DataFile newDataFile() throws IOException {
         int nextNum = nextDataFileId++;
         File file = getFile(nextNum);
-        DataFile nextWriteFile = new DataFile(file, nextNum);
+        DataFile nextWriteFile = dataFileFactory.create(file, nextNum);
         preallocateEntireJournalDataFile(nextWriteFile.appendRandomAccessFile());
         return nextWriteFile;
     }
@@ -680,7 +698,7 @@ public class Journal {
         synchronized (dataFileIdLock) {
             int nextNum = nextDataFileId++;
             File file = getFile(nextNum);
-            DataFile reservedDataFile = new DataFile(file, nextNum);
+            DataFile reservedDataFile = dataFileFactory.create(file, nextNum);
             synchronized (currentDataFile) {
                 fileMap.put(reservedDataFile.getDataFileId(), reservedDataFile);
                 fileByFileMap.put(file, reservedDataFile);
@@ -701,7 +719,7 @@ public class Journal {
     }
 
     DataFile getDataFile(Location item) throws IOException {
-        Integer key = Integer.valueOf(item.getDataFileId());
+        Integer key = item.getDataFileId();
         DataFile dataFile = null;
         synchronized (currentDataFile) {
             dataFile = fileMap.get(key);
@@ -889,7 +907,7 @@ public class Journal {
                 if (dataFile == null) {
                     return null;
                 } else {
-                    cur.setDataFileId(dataFile.getDataFileId().intValue());
+                    cur.setDataFileId(dataFile.getDataFileId());
                     cur.setOffset(0);
                     if (limit != null && cur.compareTo(limit) >= 0) {
                         LOG.trace("reached limit: {} at: {}", limit, cur);
@@ -1028,7 +1046,7 @@ public class Journal {
 
     public DataFile getDataFileById(int dataFileId) {
         synchronized (currentDataFile) {
-            return fileMap.get(Integer.valueOf(dataFileId));
+            return fileMap.get(dataFileId);
         }
     }
 
@@ -1145,6 +1163,14 @@ public class Journal {
 
     public void setDataFileRemovedListener(DataFileRemovedListener dataFileRemovedListener) {
         this.dataFileRemovedListener = dataFileRemovedListener;
+    }
+
+    public void setDataFileFactory(DataFileFactory dataFileFactory) {
+        this.dataFileFactory = dataFileFactory;
+    }
+
+    public DataFileFactory getDataFileFactory() {
+        return  this.dataFileFactory;
     }
 
     public static class WriteCommand extends LinkedNode<WriteCommand> {

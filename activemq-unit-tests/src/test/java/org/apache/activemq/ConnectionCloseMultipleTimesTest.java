@@ -16,14 +16,17 @@
  */
 package org.apache.activemq;
 
-import javax.jms.JMSException;
-import javax.jms.Session;
+import jakarta.jms.JMSException;
+import jakarta.jms.Session;
 
 import junit.framework.TestCase;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  * 
  */
+@Category(ParallelTest.class)
 public class ConnectionCloseMultipleTimesTest extends TestCase {
 
     private ActiveMQConnection connection;
@@ -44,7 +47,7 @@ public class ConnectionCloseMultipleTimesTest extends TestCase {
     }
 
     /**
-     * @throws javax.jms.JMSException
+     * @throws jakarta.jms.JMSException
      */
     public void testCloseMultipleTimes() throws JMSException {
         connection.createSession(false, Session.AUTO_ACKNOWLEDGE);

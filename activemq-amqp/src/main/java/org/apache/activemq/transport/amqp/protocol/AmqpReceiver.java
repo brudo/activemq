@@ -20,8 +20,8 @@ import static org.apache.activemq.transport.amqp.AmqpSupport.toLong;
 
 import java.io.IOException;
 
-import javax.jms.Destination;
-import javax.jms.ResourceAllocationException;
+import jakarta.jms.Destination;
+import jakarta.jms.ResourceAllocationException;
 
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQMessage;
@@ -34,7 +34,6 @@ import org.apache.activemq.command.RemoveInfo;
 import org.apache.activemq.command.Response;
 import org.apache.activemq.command.TransactionId;
 import org.apache.activemq.transport.amqp.AmqpProtocolConverter;
-import org.apache.activemq.transport.amqp.ResponseHandler;
 import org.apache.activemq.transport.amqp.message.AMQPNativeInboundTransformer;
 import org.apache.activemq.transport.amqp.message.AMQPRawInboundTransformer;
 import org.apache.activemq.transport.amqp.message.EncodedMessage;

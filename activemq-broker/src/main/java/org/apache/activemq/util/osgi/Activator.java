@@ -22,6 +22,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -174,7 +175,7 @@ public class Activator implements BundleActivator, SynchronousBundleListener, Ob
     public Object create(String path) throws IllegalAccessException, InstantiationException, IOException, ClassNotFoundException {
         Class<?> clazz = serviceCache.get(path);
         if (clazz == null) {
-            StringBuffer warnings = new StringBuffer();
+            StringBuilder warnings = new StringBuilder();
             // We need to look for a bundle that has that class.
             int wrrningCounter=1;
             for (BundleWrapper wrapper : bundleWrappers.values()) {
@@ -187,14 +188,14 @@ public class Activator implements BundleActivator, SynchronousBundleListener, Ob
 
                 String className = properties.getProperty("class");
                 if (className == null) {
-                    warnings.append("("+(wrrningCounter++)+") Invalid service file in bundle "+wrapper+": 'class' property not defined.");
+                    warnings.append("(").append(wrrningCounter++).append(") Invalid service file in bundle ").append(wrapper).append(": 'class' property not defined.");
                     continue;
                 }
 
                 try {
                     clazz = wrapper.bundle.loadClass(className);
                 } catch (ClassNotFoundException e) {
-                    warnings.append("("+(wrrningCounter++)+") Bundle "+wrapper+" could not load "+className+": "+e);
+                    warnings.append("(").append(wrrningCounter++).append(") Bundle ").append(wrapper).append(" could not load ").append(className).append(": ").append(e);
                     continue;
                 }
 
@@ -214,7 +215,12 @@ public class Activator implements BundleActivator, SynchronousBundleListener, Ob
                 throw new IOException(msg);
             }
         }
-        return clazz.newInstance();
+        
+        try {
+            return clazz.getConstructor().newInstance();
+        } catch (InvocationTargetException | NoSuchMethodException e) {
+        	throw new InstantiationException(e.getMessage());
+        }
     }
 
     // ================================================================
@@ -245,7 +251,7 @@ public class Activator implements BundleActivator, SynchronousBundleListener, Ob
      * one of the packages of our interfaces
      *
      * @param bundle
-     * @return true if the bundle is improting.
+     * @return true if the bundle is importing.
      */
     private boolean isImportingUs(Bundle bundle) {
         BundleWiring wiring = bundle.adapt(BundleWiring.class);

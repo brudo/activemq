@@ -32,11 +32,11 @@ import org.junit.runners.Parameterized;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.Message;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.Message;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
@@ -168,6 +168,7 @@ public class JournalCorruptionExceptionTest {
         randomAccessFile.seek(offset);
         randomAccessFile.write(bla, 0, bla.length);
         randomAccessFile.getFD().sync();
+        dataFile.closeRandomAccessFile(randomAccessFile);
     }
 
     private int getNumberOfJournalFiles() throws IOException {

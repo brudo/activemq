@@ -30,7 +30,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javax.jms.InvalidClientIDException;
+import jakarta.jms.InvalidClientIDException;
 import javax.security.auth.login.CredentialException;
 
 import org.apache.activemq.broker.Broker;
@@ -253,6 +253,30 @@ public class MQTTAuthTest extends MQTTAuthTestSupport {
         connectionSub.subscribe(new Topic[]{new Topic("#", QoS.AT_LEAST_ONCE)});
         Message msg = connectionSub.receive(1, TimeUnit.SECONDS);
         assertNull("Shouldn't receive the message", msg);
+
+    }
+
+    @Test(timeout = 60 * 1000)
+    public void testWildcardRetainedSubscriptionLocked() throws Exception {
+        MQTT mqttPub = createMQTTConnection("pub", true);
+        mqttPub.setUserName("admin");
+        mqttPub.setPassword("admin");
+
+        getProxyToBroker().addTopic("one.foo");
+        BlockingConnection connectionPub = mqttPub.blockingConnection();
+        connectionPub.connect();
+        connectionPub.publish("one/foo", "test".getBytes(), QoS.AT_LEAST_ONCE, true);
+
+        MQTT mqttSub = createMQTTConnection("sub", true);
+        mqttSub.setUserName("user");
+        mqttSub.setPassword("password");
+        BlockingConnection connectionSub = mqttSub.blockingConnection();
+        connectionSub.connect();
+        connectionSub.subscribe(new Topic[]{new Topic("+/#", QoS.AT_LEAST_ONCE)});
+        Message msg = connectionSub.receive(1, TimeUnit.SECONDS);
+        assertNull("Shouldn't receive the message", msg);
+
+        assertEquals(1, getProxyToTopic("one.foo").getEnqueueCount());
     }
 
     @Test(timeout = 60 * 1000)

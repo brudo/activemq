@@ -24,13 +24,13 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.Enumeration;
 
-import javax.jms.Connection;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.QueueBrowser;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.QueueBrowser;
+import jakarta.jms.Session;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerService;
@@ -182,7 +182,7 @@ public class QueueBrowsingTest {
 
     @Test
     public void testMemoryLimit() throws Exception {
-        broker.getSystemUsage().getMemoryUsage().setLimit(16 * 1024);
+        broker.getSystemUsage().getMemoryUsage().setLimit((maxPageSize + 10) * 4 * 1024);
 
         int messageToSend = 370;
 
@@ -200,6 +200,10 @@ public class QueueBrowsingTest {
         for( int i=0; i < messageToSend; i++ ) {
             producer.send(session.createTextMessage(data));
         }
+
+        //Consume one message to free memory and allow the cursor to pageIn messages
+        MessageConsumer consumer = session.createConsumer(queue);
+        consumer.receive(1000);
 
         QueueBrowser browser = session.createBrowser(queue);
         Enumeration<?> enumeration = browser.getEnumeration();

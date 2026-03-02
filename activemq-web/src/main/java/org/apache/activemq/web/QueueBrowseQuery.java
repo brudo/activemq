@@ -16,28 +16,26 @@
  */
 package org.apache.activemq.web;
 
-import javax.jms.JMSException;
-import javax.jms.Queue;
-import javax.jms.QueueBrowser;
-import javax.jms.Session;
-
 import org.springframework.beans.factory.DisposableBean;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+
+import jakarta.jms.JMSException;
+import jakarta.jms.Queue;
+import jakarta.jms.QueueBrowser;
+import jakarta.jms.Session;
 
 /**
- * 
- * 
+ *
+ *
  */
 public class QueueBrowseQuery extends DestinationFacade implements DisposableBean {
-    private SessionPool sessionPool;
     private String selector;
-    private Session session;
     private Queue queue;
     private QueueBrowser browser;
 
-    public QueueBrowseQuery(BrokerFacade brokerFacade, SessionPool sessionPool) throws JMSException {
+    public QueueBrowseQuery(BrokerFacade brokerFacade) throws JMSException {
         super(brokerFacade);
-        this.sessionPool = sessionPool;
-        this.session = sessionPool.borrowSession();
         setJMSDestinationType("query");
     }
 
@@ -45,8 +43,6 @@ public class QueueBrowseQuery extends DestinationFacade implements DisposableBea
         if (browser != null) {
             browser.close();
         }
-        sessionPool.returnSession(session);
-        session = null;
     }
 
     public QueueBrowser getBrowser() throws JMSException {
@@ -62,7 +58,14 @@ public class QueueBrowseQuery extends DestinationFacade implements DisposableBea
 
     public Queue getQueue() throws JMSException {
         if (queue == null) {
-            queue = session.createQueue(getValidDestination());
+            try {
+                if (getBrokerFacade().getQueue(getValidDestination()) == null) {
+                    throw new IllegalArgumentException("Queue " + getValidDestination() + " doesn't exist");
+                }
+            } catch (Exception e) {
+                throw new JMSException(e.getMessage());
+            }
+            queue = getSession().createQueue(getValidDestination());
         }
         return queue;
     }
@@ -79,9 +82,12 @@ public class QueueBrowseQuery extends DestinationFacade implements DisposableBea
         this.selector = selector;
     }
 
-    public Session getSession() {
-        return session;
+    public Session getSession() throws JMSException {
+        ServletRequestAttributes servletRequestAttributes = (ServletRequestAttributes) RequestContextHolder.currentRequestAttributes();
+
+        return WebClient.getWebClient(servletRequestAttributes.getRequest()).getSession();
     }
+
 
     public boolean isQueue() {
         return true;
@@ -91,5 +97,4 @@ public class QueueBrowseQuery extends DestinationFacade implements DisposableBea
         return getSession().createBrowser(getQueue(), getSelector());
     }
 
-    
 }

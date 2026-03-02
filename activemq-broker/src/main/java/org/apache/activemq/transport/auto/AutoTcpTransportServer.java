@@ -99,9 +99,6 @@ public class AutoTcpTransportServer extends TcpTransportServer {
                 }
                 IntrospectionSupport.setProperties(wff, wfOptions);
             }
-            if (wff instanceof OpenWireFormatFactory) {
-                protocolVerifiers.put(AutoTransportUtils.OPENWIRE, new OpenWireProtocolVerifier((OpenWireFormatFactory) wff));
-            }
             return wff;
         } catch (Throwable e) {
            throw IOExceptionSupport.create("Could not create wire format factory for: " + scheme + ", reason: " + e, e);
@@ -238,9 +235,9 @@ public class AutoTcpTransportServer extends TcpTransportServer {
         if (isAllProtocols() || enabledProtocols.contains(AutoTransportUtils.OPENWIRE)) {
             OpenWireProtocolVerifier owpv;
             if (wireFormatFactory instanceof OpenWireFormatFactory) {
-                owpv = new OpenWireProtocolVerifier((OpenWireFormatFactory) wireFormatFactory);
+                owpv = new OpenWireProtocolVerifier(((OpenWireFormatFactory) wireFormatFactory).isSizePrefixDisabled());
             } else {
-                owpv = new OpenWireProtocolVerifier(new OpenWireFormatFactory());
+                owpv = new OpenWireProtocolVerifier(new OpenWireFormatFactory().isSizePrefixDisabled());
             }
             protocolVerifiers.put(AutoTransportUtils.OPENWIRE, owpv);
         }
@@ -293,7 +290,7 @@ public class AutoTcpTransportServer extends TcpTransportServer {
 
         try {
             //If this fails and throws an exception and the socket will be closed
-            waitForProtocolDetectionFinish(future, readBytes);
+            waitForProtocolDetectionFinish(future, readBytes.get());
         } finally {
             //call cancel in case task didn't complete
             future.cancel(true);
@@ -314,7 +311,7 @@ public class AutoTcpTransportServer extends TcpTransportServer {
         return new TransportInfo(format, transport, protocolInfo.detectedTransportFactory);
     }
 
-    protected void waitForProtocolDetectionFinish(final Future<?> future, final AtomicInteger readBytes) throws Exception {
+    protected void waitForProtocolDetectionFinish(final Future<?> future, final int readBytes) throws Exception {
         try {
             //Wait for protocolDetectionTimeOut if defined
             if (protocolDetectionTimeOut > 0) {
@@ -324,7 +321,7 @@ public class AutoTcpTransportServer extends TcpTransportServer {
             }
         } catch (TimeoutException e) {
             throw new InactivityIOException("Client timed out before wire format could be detected. " +
-                    " 8 bytes are required to detect the protocol but only: " + readBytes.get() + " byte(s) were sent.");
+                    " 8 bytes are required to detect the protocol but only: " + readBytes + " byte(s) were sent.");
         }
     }
 

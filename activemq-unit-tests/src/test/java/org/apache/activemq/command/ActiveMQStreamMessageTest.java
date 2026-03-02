@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,52 +16,34 @@
  */
 package org.apache.activemq.command;
 
-import java.io.Serializable;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
-import javax.jms.JMSException;
-import javax.jms.MessageFormatException;
-import javax.jms.MessageNotReadableException;
-import javax.jms.MessageNotWriteableException;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageEOFException;
+import jakarta.jms.MessageFormatException;
+import jakarta.jms.MessageNotReadableException;
+import jakarta.jms.MessageNotWriteableException;
 
-import junit.framework.TestCase;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.Test;
+import org.junit.experimental.categories.Category;
 
 /**
- * 
+ * Tests for the ActiveMQ StreamMessage implementation
  */
-public class ActiveMQStreamMessageTest extends TestCase {
+@Category(ParallelTest.class)
+public class ActiveMQStreamMessageTest {
 
-    /**
-     * Constructor for ActiveMQStreamMessageTest.
-     * 
-     * @param name
-     */
-    public ActiveMQStreamMessageTest(String name) {
-        super(name);
-    }
-
-    public static void main(String[] args) {
-        junit.textui.TestRunner.run(ActiveMQStreamMessageTest.class);
-    }
-
-    /*
-     * @see TestCase#setUp()
-     */
-    protected void setUp() throws Exception {
-        super.setUp();
-    }
-
-    /*
-     * @see TestCase#tearDown()
-     */
-    protected void tearDown() throws Exception {
-        super.tearDown();
-    }
-
+    @Test
     public void testGetDataStructureType() {
         ActiveMQStreamMessage msg = new ActiveMQStreamMessage();
         assertEquals(msg.getDataStructureType(), CommandTypes.ACTIVEMQ_STREAM_MESSAGE);
     }
 
+    @Test
     public void testReadBoolean() {
         ActiveMQStreamMessage msg = new ActiveMQStreamMessage();
         try {
@@ -124,6 +106,7 @@ public class ActiveMQStreamMessageTest extends TestCase {
         }
     }
 
+    @Test
     public void testreadByte() {
         ActiveMQStreamMessage msg = new ActiveMQStreamMessage();
         try {
@@ -138,7 +121,7 @@ public class ActiveMQStreamMessageTest extends TestCase {
             msg.reset();
             assertTrue(msg.readLong() == test);
             msg.reset();
-            assertTrue(msg.readString().equals(new Byte(test).toString()));
+            assertTrue(msg.readString().equals(Byte.toString(test)));
             msg.reset();
             try {
                 msg.readBoolean();
@@ -175,6 +158,7 @@ public class ActiveMQStreamMessageTest extends TestCase {
         }
     }
 
+    @Test
     public void testReadShort() {
         ActiveMQStreamMessage msg = new ActiveMQStreamMessage();
         try {
@@ -187,7 +171,7 @@ public class ActiveMQStreamMessageTest extends TestCase {
             msg.reset();
             assertTrue(msg.readLong() == test);
             msg.reset();
-            assertTrue(msg.readString().equals(new Short(test).toString()));
+            assertTrue(msg.readString().equals(Short.toString(test)));
             msg.reset();
             try {
                 msg.readBoolean();
@@ -230,6 +214,7 @@ public class ActiveMQStreamMessageTest extends TestCase {
         }
     }
 
+    @Test
     public void testReadChar() {
         ActiveMQStreamMessage msg = new ActiveMQStreamMessage();
         try {
@@ -238,7 +223,7 @@ public class ActiveMQStreamMessageTest extends TestCase {
             msg.reset();
             assertTrue(msg.readChar() == test);
             msg.reset();
-            assertTrue(msg.readString().equals(new Character(test).toString()));
+            assertTrue(msg.readString().equals(Character.toString(test)));
             msg.reset();
             try {
                 msg.readBoolean();
@@ -293,6 +278,7 @@ public class ActiveMQStreamMessageTest extends TestCase {
         }
     }
 
+    @Test
     public void testReadInt() {
         ActiveMQStreamMessage msg = new ActiveMQStreamMessage();
         try {
@@ -303,7 +289,7 @@ public class ActiveMQStreamMessageTest extends TestCase {
             msg.reset();
             assertTrue(msg.readLong() == test);
             msg.reset();
-            assertTrue(msg.readString().equals(new Integer(test).toString()));
+            assertTrue(msg.readString().equals(Integer.toString(test)));
             msg.reset();
             try {
                 msg.readBoolean();
@@ -352,6 +338,7 @@ public class ActiveMQStreamMessageTest extends TestCase {
         }
     }
 
+    @Test
     public void testReadLong() {
         ActiveMQStreamMessage msg = new ActiveMQStreamMessage();
         try {
@@ -360,7 +347,7 @@ public class ActiveMQStreamMessageTest extends TestCase {
             msg.reset();
             assertTrue(msg.readLong() == test);
             msg.reset();
-            assertTrue(msg.readString().equals(Long.valueOf(test).toString()));
+            assertTrue(msg.readString().equals(Long.toString(test)));
             msg.reset();
             try {
                 msg.readBoolean();
@@ -410,16 +397,17 @@ public class ActiveMQStreamMessageTest extends TestCase {
             } catch (MessageFormatException mfe) {
             }
             msg = new ActiveMQStreamMessage();
-            msg.writeObject(new Long("1"));
+            msg.writeObject(Long.valueOf("1"));
             // reset so it's readable now
             msg.reset();
-            assertEquals(new Long("1"), msg.readObject());
+            assertEquals(Long.parseLong("1"), msg.readObject());
         } catch (JMSException jmsEx) {
             jmsEx.printStackTrace();
             assertTrue(false);
         }
     }
 
+    @Test
     public void testReadFloat() {
         ActiveMQStreamMessage msg = new ActiveMQStreamMessage();
         try {
@@ -430,7 +418,7 @@ public class ActiveMQStreamMessageTest extends TestCase {
             msg.reset();
             assertTrue(msg.readDouble() == test);
             msg.reset();
-            assertTrue(msg.readString().equals(new Float(test).toString()));
+            assertTrue(msg.readString().equals(Float.toString(test)));
             msg.reset();
             try {
                 msg.readBoolean();
@@ -479,6 +467,7 @@ public class ActiveMQStreamMessageTest extends TestCase {
         }
     }
 
+    @Test
     public void testReadDouble()  {
         ActiveMQStreamMessage msg = new ActiveMQStreamMessage();
         try {
@@ -487,7 +476,7 @@ public class ActiveMQStreamMessageTest extends TestCase {
             msg.reset();
             assertTrue(msg.readDouble() == test);
             msg.reset();
-            assertTrue(msg.readString().equals(new Double(test).toString()));
+            assertTrue(msg.readString().equals(Double.toString(test)));
             msg.reset();
             try {
                 msg.readBoolean();
@@ -540,39 +529,39 @@ public class ActiveMQStreamMessageTest extends TestCase {
             jmsEx.printStackTrace();
             assertTrue(false);
         }
-      
     }
 
+    @Test
     public void testReadString() {
         ActiveMQStreamMessage msg = new ActiveMQStreamMessage();
         try {
             byte testByte = (byte)2;
-            msg.writeString(new Byte(testByte).toString());
+            msg.writeString(Byte.toString(testByte));
             msg.reset();
             assertTrue(msg.readByte() == testByte);
             msg.clearBody();
             short testShort = 3;
-            msg.writeString(new Short(testShort).toString());
+            msg.writeString(Short.toString(testShort));
             msg.reset();
             assertTrue(msg.readShort() == testShort);
             msg.clearBody();
             int testInt = 4;
-            msg.writeString(new Integer(testInt).toString());
+            msg.writeString(Integer.toString(testInt));
             msg.reset();
             assertTrue(msg.readInt() == testInt);
             msg.clearBody();
             long testLong = 6L;
-            msg.writeString(new Long(testLong).toString());
+            msg.writeString(Long.toString(testLong));
             msg.reset();
             assertTrue(msg.readLong() == testLong);
             msg.clearBody();
             float testFloat = 6.6f;
-            msg.writeString(new Float(testFloat).toString());
+            msg.writeString(Float.toString(testFloat));
             msg.reset();
             assertTrue(msg.readFloat() == testFloat);
             msg.clearBody();
             double testDouble = 7.7d;
-            msg.writeString(new Double(testDouble).toString());
+            msg.writeString(Double.toString(testDouble));
             msg.reset();
             assertTrue(msg.readDouble() == testDouble);
             msg.clearBody();
@@ -602,13 +591,14 @@ public class ActiveMQStreamMessageTest extends TestCase {
         }
     }
 
+    @Test
     public void testReadBigString() {
         ActiveMQStreamMessage msg = new ActiveMQStreamMessage();
         try {
             // Test with a 1Meg String
             StringBuffer bigSB = new StringBuffer(1024 * 1024);
             for (int i = 0; i < 1024 * 1024; i++) {
-                bigSB.append((char)'a' + i % 26);
+                bigSB.append('a' + i % 26);
             }
             String bigString = bigSB.toString();
 
@@ -622,6 +612,7 @@ public class ActiveMQStreamMessageTest extends TestCase {
         }
     }
 
+    @Test
     public void testReadBytes() {
         ActiveMQStreamMessage msg = new ActiveMQStreamMessage();
         try {
@@ -684,49 +675,50 @@ public class ActiveMQStreamMessageTest extends TestCase {
         }
     }
 
+    @Test
     public void testReadObject() {
         ActiveMQStreamMessage msg = new ActiveMQStreamMessage();
         try {
             byte testByte = (byte)2;
             msg.writeByte(testByte);
             msg.reset();
-            assertTrue(((Byte)msg.readObject()).byteValue() == testByte);
+            assertTrue((Byte) msg.readObject() == testByte);
             msg.clearBody();
 
             short testShort = 3;
             msg.writeShort(testShort);
             msg.reset();
-            assertTrue(((Short)msg.readObject()).shortValue() == testShort);
+            assertTrue((Short) msg.readObject() == testShort);
             msg.clearBody();
 
             int testInt = 4;
             msg.writeInt(testInt);
             msg.reset();
-            assertTrue(((Integer)msg.readObject()).intValue() == testInt);
+            assertTrue((Integer) msg.readObject() == testInt);
             msg.clearBody();
 
             long testLong = 6L;
             msg.writeLong(testLong);
             msg.reset();
-            assertTrue(((Long)msg.readObject()).longValue() == testLong);
+            assertTrue((Long) msg.readObject() == testLong);
             msg.clearBody();
 
             float testFloat = 6.6f;
             msg.writeFloat(testFloat);
             msg.reset();
-            assertTrue(((Float)msg.readObject()).floatValue() == testFloat);
+            assertTrue((Float) msg.readObject() == testFloat);
             msg.clearBody();
 
             double testDouble = 7.7d;
             msg.writeDouble(testDouble);
             msg.reset();
-            assertTrue(((Double)msg.readObject()).doubleValue() == testDouble);
+            assertTrue((Double) msg.readObject() == testDouble);
             msg.clearBody();
 
             char testChar = 'z';
             msg.writeChar(testChar);
             msg.reset();
-            assertTrue(((Character)msg.readObject()).charValue() == testChar);
+            assertTrue((Character) msg.readObject() == testChar);
             msg.clearBody();
 
             byte[] data = new byte[50];
@@ -743,21 +735,21 @@ public class ActiveMQStreamMessageTest extends TestCase {
             msg.clearBody();
             msg.writeBoolean(true);
             msg.reset();
-            assertTrue(((Boolean)msg.readObject()).booleanValue());
-
+            assertTrue((Boolean) msg.readObject());
         } catch (JMSException jmsEx) {
             jmsEx.printStackTrace();
             assertTrue(false);
         }
     }
 
+    @Test
     public void testClearBody() throws JMSException {
         ActiveMQStreamMessage streamMessage = new ActiveMQStreamMessage();
         try {
-            streamMessage.writeObject(new Long(2));
+            streamMessage.writeObject(2L);
             streamMessage.clearBody();
             assertFalse(streamMessage.isReadOnlyBody());
-            streamMessage.writeObject(new Long(2));
+            streamMessage.writeObject(2L);
             streamMessage.readObject();
             fail("should throw exception");
         } catch (MessageNotReadableException mnwe) {
@@ -766,6 +758,7 @@ public class ActiveMQStreamMessageTest extends TestCase {
         }
     }
 
+    @Test
     public void testReset() throws JMSException {
         ActiveMQStreamMessage streamMessage = new ActiveMQStreamMessage();
         try {
@@ -789,6 +782,7 @@ public class ActiveMQStreamMessageTest extends TestCase {
         }
     }
 
+    @Test
     public void testReadOnlyBody() throws JMSException {
         ActiveMQStreamMessage message = new ActiveMQStreamMessage();
         try {
@@ -888,6 +882,7 @@ public class ActiveMQStreamMessageTest extends TestCase {
         }
     }
 
+    @Test
     public void testWriteOnlyBody() throws JMSException {
         ActiveMQStreamMessage message = new ActiveMQStreamMessage();
         message.clearBody();
@@ -968,21 +963,22 @@ public class ActiveMQStreamMessageTest extends TestCase {
         } catch (MessageNotReadableException e) {
         }
     }
-    
+
+    @Test
     public void testWriteObject() {
         try {
             ActiveMQStreamMessage message = new ActiveMQStreamMessage();
             message.clearBody();
             message.writeObject("test");
-            message.writeObject(new Character('a'));
-            message.writeObject(new Boolean(false));
-            message.writeObject(new Byte((byte) 2));
-            message.writeObject(new Short((short) 2));
-            message.writeObject(new Integer(2));
-            message.writeObject(new Long(2l));
-            message.writeObject(new Float(2.0f));
-            message.writeObject(new Double(2.0d));
-        }catch(Exception e) {
+            message.writeObject('a');
+            message.writeObject(Boolean.FALSE);
+            message.writeObject((byte) 2);
+            message.writeObject((short) 2);
+            message.writeObject(2);
+            message.writeObject(2L);
+            message.writeObject(2.0f);
+            message.writeObject(2.0d);
+        } catch(Exception e) {
             fail(e.getMessage());
         }
         try {
@@ -990,11 +986,93 @@ public class ActiveMQStreamMessageTest extends TestCase {
             message.clearBody();
             message.writeObject(new Object());
             fail("should throw an exception");
-        }catch(MessageFormatException e) {
-            
-        }catch(Exception e) {
+        } catch(MessageFormatException e) {
+        } catch(Exception e) {
             fail(e.getMessage());
         }
     }
 
+    @Test
+    public void testReadEmptyBufferFromStream() throws JMSException {
+        ActiveMQStreamMessage message = new ActiveMQStreamMessage();
+        message.clearBody();
+
+        final byte[] BYTE_LIST = {1, 2, 4};
+
+        byte[] readList = new byte[BYTE_LIST.length - 1];
+        byte[] emptyList = {};
+
+        message.writeBytes(emptyList);
+        message.reset();
+
+        // First call should return zero as the array written was zero sized.
+        assertEquals(0, message.readBytes(readList));
+
+        // Second call should return -1 as we've reached the end of element.
+        assertEquals(-1, message.readBytes(readList));
+    }
+
+    @Test
+    public void testReadMixBufferValuesFromStream() throws JMSException {
+        ActiveMQStreamMessage message = new ActiveMQStreamMessage();
+        message.clearBody();
+
+        final int size = 3;
+
+        final byte[] BYTE_LIST_1 = {1, 2, 3};
+        final byte[] BYTE_LIST_2 = {4, 5, 6};
+        final byte[] EMPTY_LIST = {};
+
+        byte[] bigBuffer = new byte[size + size];
+        byte[] smallBuffer = new byte[size - 1];
+
+        message.writeBytes(BYTE_LIST_1);
+        message.writeBytes(EMPTY_LIST);
+        message.writeBytes(BYTE_LIST_2);
+        message.writeBytes(EMPTY_LIST);
+        message.reset();
+
+        // Read first with big buffer
+        assertEquals(size, message.readBytes(bigBuffer));
+        assertEquals(1, bigBuffer[0]);
+        assertEquals(2, bigBuffer[1]);
+        assertEquals(3, bigBuffer[2]);
+        assertEquals(-1, message.readBytes(bigBuffer));
+
+        // Read the empty buffer, should not be able to read anything else until
+        // the bytes read is completed.
+        assertEquals(0, message.readBytes(bigBuffer));
+        try {
+            message.readBoolean();
+        } catch (JMSException ex) {}
+        assertEquals(-1, message.readBytes(bigBuffer));
+
+        // Read the third buffer with small buffer, anything that is attempted
+        // to be read in between reads or before read completion should throw.
+        assertEquals(smallBuffer.length, message.readBytes(smallBuffer));
+        assertEquals(4, smallBuffer[0]);
+        assertEquals(5, smallBuffer[1]);
+        try {
+            message.readByte();
+        } catch (JMSException ex) {}
+        assertEquals(1, message.readBytes(smallBuffer));
+        assertEquals(6, smallBuffer[0]);
+        try {
+            message.readBoolean();
+        } catch (JMSException ex) {}
+        assertEquals(-1, message.readBytes(bigBuffer));
+
+        // Read the empty buffer, should not be able to read anything else until
+        // the bytes read is completed.
+        assertEquals(0, message.readBytes(bigBuffer));
+        try {
+            message.readBoolean();
+        } catch (JMSException ex) {}
+        assertEquals(-1, message.readBytes(bigBuffer));
+
+        // Message should be empty now
+        try {
+            message.readBoolean();
+        } catch (MessageEOFException ex) {}
+    }
 }

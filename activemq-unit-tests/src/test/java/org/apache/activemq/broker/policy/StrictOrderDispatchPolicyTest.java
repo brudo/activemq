@@ -18,7 +18,7 @@ package org.apache.activemq.broker.policy;
 
 import java.util.Iterator;
 
-import javax.jms.MessageConsumer;
+import jakarta.jms.MessageConsumer;
 
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.TopicSubscriptionTest;
@@ -31,8 +31,11 @@ import org.junit.runner.RunWith;
 import org.junit.runners.BlockJUnit4ClassRunner;
 
 import static org.junit.Assert.*;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 @RunWith(BlockJUnit4ClassRunner.class)
+@Category(ParallelTest.class)
 public class StrictOrderDispatchPolicyTest extends TopicSubscriptionTest {
 
     @Override

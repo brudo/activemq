@@ -21,8 +21,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import javax.jms.JMSException;
-import javax.jms.Message;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
 
 import org.apache.activemq.test.JmsTopicSendReceiveWithTwoConnectionsAndEmbeddedBrokerTest;
 import org.slf4j.Logger;
@@ -45,8 +45,8 @@ public class NestedMapAndListPropertyTest extends JmsTopicSendReceiveWithTwoConn
         Map map = (Map)message.getObjectProperty("mapField");
         assertNotNull(map);
         assertEquals("mapField.a", "foo", map.get("a"));
-        assertEquals("mapField.b", new Integer(23), map.get("b"));
-        assertEquals("mapField.c", new Long(45), map.get("c"));
+        assertEquals("mapField.b", 23, map.get("b"));
+        assertEquals("mapField.c", 45L, map.get("c"));
 
         value = map.get("d");
         assertTrue("mapField.d should be a Map", value instanceof Map);
@@ -82,8 +82,8 @@ public class NestedMapAndListPropertyTest extends JmsTopicSendReceiveWithTwoConn
 
         Map<String, Object> nestedMap = new HashMap<String, Object>();
         nestedMap.put("a", "foo");
-        nestedMap.put("b", new Integer(23));
-        nestedMap.put("c", new Long(45));
+        nestedMap.put("b", 23);
+        nestedMap.put("c", 45L);
         nestedMap.put("d", grandChildMap);
 
         answer.setObjectProperty("mapField", nestedMap);

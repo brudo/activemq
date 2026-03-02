@@ -25,10 +25,10 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.jms.Connection;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 import java.io.File;
 import java.io.FilenameFilter;
 import java.util.ArrayList;
@@ -36,7 +36,10 @@ import java.util.List;
 
 import static org.apache.activemq.store.kahadb.MultiKahaDBPersistenceAdapter.nameFromDestinationFilter;
 import static org.junit.Assert.*;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class MKahaDBIndexLocationTest {
 
     private static final Logger LOG = LoggerFactory.getLogger(MKahaDBIndexLocationTest.class);

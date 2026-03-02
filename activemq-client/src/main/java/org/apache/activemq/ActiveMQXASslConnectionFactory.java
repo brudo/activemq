@@ -19,16 +19,18 @@ package org.apache.activemq;
 import java.net.URI;
 import java.util.Properties;
 
-import javax.jms.JMSException;
-import javax.jms.XAConnection;
-import javax.jms.XAConnectionFactory;
-import javax.jms.XAQueueConnection;
-import javax.jms.XAQueueConnectionFactory;
-import javax.jms.XATopicConnection;
-import javax.jms.XATopicConnectionFactory;
+import jakarta.jms.JMSException;
+import jakarta.jms.XAConnection;
+import jakarta.jms.XAConnectionFactory;
+import jakarta.jms.XAJMSContext;
+import jakarta.jms.XAQueueConnection;
+import jakarta.jms.XAQueueConnectionFactory;
+import jakarta.jms.XATopicConnection;
+import jakarta.jms.XATopicConnectionFactory;
 
 import org.apache.activemq.management.JMSStatsImpl;
 import org.apache.activemq.transport.Transport;
+import org.apache.activemq.util.JMSExceptionSupport;
 
 public class ActiveMQXASslConnectionFactory extends ActiveMQSslConnectionFactory implements XAConnectionFactory, XAQueueConnectionFactory, XATopicConnectionFactory {
 
@@ -71,6 +73,24 @@ public class ActiveMQXASslConnectionFactory extends ActiveMQSslConnectionFactory
     @Override
     public XATopicConnection createXATopicConnection(String userName, String password) throws JMSException {
         return (XATopicConnection) createActiveMQConnection(userName, password);
+    }
+
+    @Override
+    public XAJMSContext createXAContext() {
+        try {
+            return new ActiveMQXAContext((ActiveMQXAConnection)createXAConnection());
+        } catch (JMSException e) {
+            throw JMSExceptionSupport.convertToJMSRuntimeException(e);
+        }
+    }
+
+    @Override
+    public XAJMSContext createXAContext(String userName, String password) {
+        try {
+            return new ActiveMQXAContext((ActiveMQXAConnection)createXAConnection(userName, password));
+        } catch (JMSException e) {
+            throw JMSExceptionSupport.convertToJMSRuntimeException(e);
+        }
     }
 
     @Override

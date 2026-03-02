@@ -16,17 +16,16 @@
  */
 package org.apache.activemq.bugs;
 
-import java.io.File;
 import java.util.Vector;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javax.jms.Connection;
-import javax.jms.DeliveryMode;
-import javax.jms.Destination;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Destination;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.ActiveMQPrefetchPolicy;
@@ -35,9 +34,11 @@ import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.region.policy.PolicyEntry;
 import org.apache.activemq.broker.region.policy.PolicyMap;
 import org.apache.activemq.command.ActiveMQQueue;
+import org.apache.activemq.test.annotations.ParallelTest;
 import org.apache.activemq.util.Wait;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.experimental.categories.Category;
 import org.junit.runners.BlockJUnit4ClassRunner;
 import org.junit.runner.RunWith;
 import org.junit.Test;
@@ -47,6 +48,7 @@ import org.slf4j.LoggerFactory;
 import static org.junit.Assert.*;
 
 
+@Category(ParallelTest.class)
 @RunWith(BlockJUnit4ClassRunner.class)
 public class MemoryUsageBlockResumeTest extends TestSupport implements Thread.UncaughtExceptionHandler {
 
@@ -187,7 +189,6 @@ public class MemoryUsageBlockResumeTest extends TestSupport implements Thread.Un
 
         Thread.setDefaultUncaughtExceptionHandler(this);
         broker = new BrokerService();
-        broker.setDataDirectory("target" + File.separator + "activemq-data");
         broker.setPersistent(true);
         broker.setUseJmx(false);
         broker.setAdvisorySupport(false);

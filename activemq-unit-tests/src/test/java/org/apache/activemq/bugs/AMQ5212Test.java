@@ -28,15 +28,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.Session;
-
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.Session;
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.ActiveMQMessageProducer;
 import org.apache.activemq.ActiveMQSession;
+import org.apache.activemq.AsyncCallback;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.MutableBrokerFilter;
 import org.apache.activemq.broker.ProducerBrokerExchange;
@@ -123,7 +122,7 @@ public class AMQ5212Test {
                             }
                             ActiveMQTextMessage message = new ActiveMQTextMessage();
                             message.setDestination(dest);
-                            activeMQMessageProducer.send(message, null);
+                            activeMQMessageProducer.send(message, (AsyncCallback) null);
 
                             // send a duplicate
                             activeMQConnection.syncSendPacket(message);
@@ -164,7 +163,7 @@ public class AMQ5212Test {
         ActiveMQMessageProducer activeMQMessageProducer = (ActiveMQMessageProducer) activeMQSession.createProducer(dest);
         ActiveMQTextMessage message = new ActiveMQTextMessage();
         message.setDestination(dest);
-        activeMQMessageProducer.send(message, null);
+        activeMQMessageProducer.send(message, (AsyncCallback) null);
 
         // send a duplicate
         activeMQConnection.syncSendPacket(message);
@@ -209,7 +208,7 @@ public class AMQ5212Test {
         ActiveMQMessageProducer activeMQMessageProducer = (ActiveMQMessageProducer) activeMQSession.createProducer(dest);
         ActiveMQTextMessage message = new ActiveMQTextMessage();
         message.setDestination(dest);
-        activeMQMessageProducer.send(message, null);
+        activeMQMessageProducer.send(message, (AsyncCallback) null);
 
         // send a duplicate
         activeMQConnection.syncSendPacket(message);
@@ -240,7 +239,7 @@ public class AMQ5212Test {
                 super.send(producerExchange, messageSend);
                 Object seq = messageSend.getProperty("seq");
                 if (seq instanceof Integer) {
-                    if  ( ((Integer) seq).intValue() %200 == 0 && producerExchange.getConnectionContext().getConnection() != null) {
+                    if  ((Integer) seq %200 == 0 && producerExchange.getConnectionContext().getConnection() != null) {
                         producerExchange.getConnectionContext().setDontSendReponse(true);
                         producerExchange.getConnectionContext().getConnection().serviceException(new IOException("force reconnect"));
                     }
@@ -277,7 +276,7 @@ public class AMQ5212Test {
                             }
                         }
 
-                    } catch (javax.jms.IllegalStateException expected) {
+                    } catch (jakarta.jms.IllegalStateException expected) {
                     } catch (Exception ignored) {
                         ignored.printStackTrace();
                     }

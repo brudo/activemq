@@ -19,14 +19,15 @@ package org.apache.activemq.broker.region;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
-import javax.jms.InvalidSelectorException;
-import javax.jms.JMSException;
+import jakarta.jms.InvalidSelectorException;
+import jakarta.jms.JMSException;
 
 import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.ConnectionContext;
@@ -40,7 +41,10 @@ import org.apache.activemq.command.Message;
 import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.command.MessageDispatch;
 import org.apache.activemq.command.MessageId;
+import org.apache.activemq.command.RemoveInfo;
+import org.apache.activemq.management.MessageFlowStats;
 import org.apache.activemq.store.TopicMessageStore;
+import org.apache.activemq.transaction.Synchronization;
 import org.apache.activemq.usage.SystemUsage;
 import org.apache.activemq.usage.Usage;
 import org.apache.activemq.usage.UsageListener;
@@ -55,8 +59,10 @@ public class DurableTopicSubscription extends PrefetchSubscription implements Us
     private final ConcurrentMap<ActiveMQDestination, Destination> durableDestinations = new ConcurrentHashMap<ActiveMQDestination, Destination>();
     private final SubscriptionKey subscriptionKey;
     private boolean keepDurableSubsActive;
+    private boolean enableMessageExpirationOnActiveDurableSubs;
     private final AtomicBoolean active = new AtomicBoolean();
     private final AtomicLong offlineTimestamp = new AtomicLong(-1);
+    private final HashSet<MessageId> ackedAndPrepared = new HashSet<MessageId>();
 
     public DurableTopicSubscription(Broker broker, SystemUsage usageManager, ConnectionContext context, ConsumerInfo info, boolean keepDurableSubsActive)
             throws JMSException {
@@ -65,6 +71,7 @@ public class DurableTopicSubscription extends PrefetchSubscription implements Us
         this.pending.setSystemUsage(usageManager);
         this.pending.setMemoryUsageHighWaterMark(getCursorMemoryHighWaterMark());
         this.keepDurableSubsActive = keepDurableSubsActive;
+        this.enableMessageExpirationOnActiveDurableSubs = broker.getBrokerService().isEnableMessageExpirationOnActiveDurableSubs();
         subscriptionKey = new SubscriptionKey(context.getClientId(), info.getSubscriptionName());
     }
 
@@ -217,12 +224,13 @@ public class DurableTopicSubscription extends PrefetchSubscription implements Us
 
                 for (final MessageReference node : dispatched) {
                     // Mark the dispatched messages as redelivered for next time.
-                    if (lastDeliveredSequenceId == 0 || (lastDeliveredSequenceId > 0 && node.getMessageId().getBrokerSequenceId() <= lastDeliveredSequenceId)) {
+                    if (lastDeliveredSequenceId == RemoveInfo.LAST_DELIVERED_UNKNOWN || lastDeliveredSequenceId == 0 ||
+                            (lastDeliveredSequenceId > 0 && node.getMessageId().getBrokerSequenceId() <= lastDeliveredSequenceId)) {
                         Integer count = redeliveredMessages.get(node.getMessageId());
                         if (count != null) {
-                            redeliveredMessages.put(node.getMessageId(), Integer.valueOf(count.intValue() + 1));
+                            redeliveredMessages.put(node.getMessageId(), count + 1);
                         } else {
-                            redeliveredMessages.put(node.getMessageId(), Integer.valueOf(1));
+                            redeliveredMessages.put(node.getMessageId(), 1);
                         }
                     }
                     if (keepDurableSubsActive && pending.isTransient()) {
@@ -265,7 +273,7 @@ public class DurableTopicSubscription extends PrefetchSubscription implements Us
             node.incrementReferenceCount();
             Integer count = redeliveredMessages.get(node.getMessageId());
             if (count != null) {
-                md.setRedeliveryCounter(count.intValue());
+                md.setRedeliveryCounter(count);
             }
         }
         return md;
@@ -288,6 +296,16 @@ public class DurableTopicSubscription extends PrefetchSubscription implements Us
 
     public void removePending(MessageReference node) throws IOException {
         pending.remove(node);
+    }
+
+    @Override
+    protected void processExpiredAck(ConnectionContext context, Destination dest,
+        MessageReference node) {
+
+        // Each subscription needs to expire both on the store and
+        // decrement the reference count
+        super.processExpiredAck(context, dest, node);
+        node.decrementReferenceCount();
     }
 
     @Override
@@ -321,15 +339,57 @@ public class DurableTopicSubscription extends PrefetchSubscription implements Us
     }
 
     @Override
-    protected void acknowledge(ConnectionContext context, MessageAck ack, MessageReference node) throws IOException {
+    protected boolean trackedInPendingTransaction(MessageReference node) {
+        return !ackedAndPrepared.isEmpty() && ackedAndPrepared.contains(node.getMessageId());
+    }
+
+    @Override
+    protected void acknowledge(ConnectionContext context, MessageAck ack, final MessageReference node) throws IOException {
         this.setTimeOfLastMessageAck(System.currentTimeMillis());
         Destination regionDestination = (Destination) node.getRegionDestination();
         regionDestination.acknowledge(context, this, ack, node);
         redeliveredMessages.remove(node.getMessageId());
         node.decrementReferenceCount();
+        if (context.isInTransaction() && context.getTransaction().getTransactionId().isXATransaction()) {
+            context.getTransaction().addSynchronization(new Synchronization() {
+
+                @Override
+                public void beforeCommit() throws Exception {
+                    // post xa prepare call
+                    synchronized (pendingLock) {
+                        ackedAndPrepared.add(node.getMessageId());
+                    }
+                }
+
+                @Override
+                public void afterCommit() throws Exception {
+                    synchronized (pendingLock) {
+                        // may be in the cursor post activate/load from the store
+                        pending.remove(node);
+                        ackedAndPrepared.remove(node.getMessageId());
+                    }
+                }
+
+                @Override
+                public void afterRollback() throws Exception {
+                    synchronized (pendingLock) {
+                        ackedAndPrepared.remove(node.getMessageId());
+                    }
+                    dispatchPending();
+                }
+            });
+        }
         ((Destination)node.getRegionDestination()).getDestinationStatistics().getDequeues().increment();
         if (info.isNetworkSubscription()) {
             ((Destination)node.getRegionDestination()).getDestinationStatistics().getForwards().add(ack.getMessageCount());
+            if(((Destination)node.getRegionDestination()).isAdvancedNetworkStatisticsEnabled() && getContext() != null && getContext().isNetworkConnection()) {
+                ((Destination)node.getRegionDestination()).getDestinationStatistics().getNetworkDequeues().add(ack.getMessageCount());
+            }
+
+            final MessageFlowStats tmpMessageFlowStats = ((Destination)node.getRegionDestination()).getDestinationStatistics().getMessageFlowStats();
+            if(tmpMessageFlowStats != null) {
+                tmpMessageFlowStats.dequeueStats(context.getClientId(), node.getMessageId().toString(), node.getMessage().getTimestamp(), node.getMessage().getBrokerInTime(), node.getMessage().getBrokerOutTime());
+            }
         }
     }
 
@@ -366,6 +426,7 @@ public class DurableTopicSubscription extends PrefetchSubscription implements Us
                 node.decrementReferenceCount();
             }
             dispatched.clear();
+            ackedAndPrepared.clear();
         }
         setSlowConsumer(false);
     }
@@ -388,5 +449,9 @@ public class DurableTopicSubscription extends PrefetchSubscription implements Us
 
     public boolean isKeepDurableSubsActive() {
         return keepDurableSubsActive;
+    }
+
+    public boolean isEnableMessageExpirationOnActiveDurableSubs() {
+    	return enableMessageExpirationOnActiveDurableSubs;
     }
 }

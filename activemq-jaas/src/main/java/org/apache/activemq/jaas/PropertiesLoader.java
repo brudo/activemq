@@ -17,14 +17,15 @@
 package org.apache.activemq.jaas;
 
 import java.io.File;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class PropertiesLoader {
     private static final Logger LOG = LoggerFactory.getLogger(PropertiesLoader.class);
-    static Map<FileNameKey, ReloadableProperties> staticCache = new HashMap<FileNameKey, ReloadableProperties>();
+    private static final Map<FileNameKey, ReloadableProperties> staticCache = new ConcurrentHashMap<FileNameKey, ReloadableProperties>();
     protected boolean debug;
 
     public void init(Map options) {
@@ -35,18 +36,10 @@ public class PropertiesLoader {
     }
 
     public ReloadableProperties load(String nameProperty, String fallbackName, Map options) {
-        ReloadableProperties result;
         FileNameKey key = new FileNameKey(nameProperty, fallbackName, options);
         key.setDebug(debug);
 
-        synchronized (staticCache) {
-            result = staticCache.get(key);
-            if (result == null) {
-                result = new ReloadableProperties(key);
-                staticCache.put(key, result);
-            }
-        }
-
+        ReloadableProperties result = staticCache.computeIfAbsent(key, k -> new ReloadableProperties(k));
         return result.obtained();
     }
 
@@ -60,12 +53,14 @@ public class PropertiesLoader {
         final boolean reload;
         private boolean decrypt;
         private boolean debug;
+        private String algorithm;
 
         public FileNameKey(String nameProperty, String fallbackName, Map options) {
             this.file = new File(baseDir(options), stringOption(nameProperty, fallbackName, options));
             absPath = file.getAbsolutePath();
             reload = booleanOption("reload", options);
             decrypt = booleanOption("decrypt", options);
+            algorithm = stringOption("algorithm", "PBEWithMD5AndDES", options);
         }
 
         @Override
@@ -92,6 +87,10 @@ public class PropertiesLoader {
 
         public void setDecrypt(boolean decrypt) {
             this.decrypt = decrypt;
+        }
+
+        public String getAlgorithm() {
+            return algorithm;
         }
 
         private String stringOption(String key, String nameDefault, Map options) {

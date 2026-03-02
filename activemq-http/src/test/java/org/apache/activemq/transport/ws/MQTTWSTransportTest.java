@@ -27,6 +27,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.activemq.util.Wait;
+import org.eclipse.jetty.client.HttpClient;
+import org.eclipse.jetty.client.dynamic.HttpClientTransportDynamic;
+import org.eclipse.jetty.io.ClientConnector;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.eclipse.jetty.websocket.client.ClientUpgradeRequest;
 import org.eclipse.jetty.websocket.client.WebSocketClient;
@@ -68,7 +71,14 @@ public class MQTTWSTransportTest extends WSTransportTestSupport {
     public void setUp() throws Exception {
         super.setUp();
 
-        wsClient = new WebSocketClient(new SslContextFactory(true));
+        SslContextFactory.Client sslContextFactory = new SslContextFactory.Client();
+        sslContextFactory.setTrustAll(true);
+        sslContextFactory.setEndpointIdentificationAlgorithm(null);
+        ClientConnector clientConnector = new ClientConnector();
+        clientConnector.setSslContextFactory(sslContextFactory);
+
+        HttpClient httpClient = new HttpClient(new HttpClientTransportDynamic(clientConnector));
+        wsClient = new WebSocketClient(httpClient);
         wsClient.start();
 
         request = new ClientUpgradeRequest();
@@ -88,6 +98,9 @@ public class MQTTWSTransportTest extends WSTransportTestSupport {
         if (wsMQTTConnection != null) {
             wsMQTTConnection.close();
             wsMQTTConnection = null;
+        }
+        if (wsClient != null) {
+            wsClient.stop();
             wsClient = null;
         }
 
@@ -220,13 +233,66 @@ public class MQTTWSTransportTest extends WSTransportTestSupport {
 
         TimeUnit.SECONDS.sleep(10);
 
-        assertTrue("Connection should still open", Wait.waitFor(new Wait.Condition() {
+        assertTrue("Connection should still be open", Wait.waitFor(new Wait.Condition() {
 
             @Override
             public boolean isSatisified() throws Exception {
                 return getProxyToBroker().getCurrentConnectionsCount() == 1;
             }
         }));
+
+        wsMQTTConnection.disconnect();
+        wsMQTTConnection.close();
+
+        done.set(true);
+
+        assertTrue("Connection should close", Wait.waitFor(new Wait.Condition() {
+
+            @Override
+            public boolean isSatisified() throws Exception {
+                return getProxyToBroker().getCurrentConnectionsCount() == 0;
+            }
+        }));
+
+        assertTrue("Client Connection should close", Wait.waitFor(new Wait.Condition() {
+
+            @Override
+            public boolean isSatisified() throws Exception {
+                return !wsMQTTConnection.isConnected();
+            }
+        }));
+    }
+
+    @Test(timeout = 60000)
+    public void testNoDefaultJettyWebSocketIdleTimeout() throws Exception {
+
+        final AtomicBoolean done = new AtomicBoolean();
+
+        CONNECT command = new CONNECT();
+
+        command.clientId(new UTF8Buffer(UUID.randomUUID().toString()));
+        command.cleanSession(false);
+        command.version(3);
+        command.keepAlive((short) 60);
+
+        wsMQTTConnection.sendFrame(command.encode());
+
+        MQTTFrame received = wsMQTTConnection.receive(15, TimeUnit.SECONDS);
+        if (received == null || received.messageType() != CONNACK.TYPE) {
+            fail("Client did not get expected CONNACK");
+        }
+
+        assertTrue("Connection should open", Wait.waitFor(new Wait.Condition() {
+
+            @Override
+            public boolean isSatisified() throws Exception {
+                return getProxyToBroker().getCurrentConnectionsCount() == 1;
+            }
+        }));
+
+        TimeUnit.SECONDS.sleep(35);
+
+        assertTrue("Connection should still be open", getProxyToBroker().getCurrentConnectionsCount() == 1);
 
         wsMQTTConnection.disconnect();
         wsMQTTConnection.close();

@@ -169,11 +169,17 @@ public final class IntrospectionSupport {
             if (target instanceof SSLServerSocket) {
                 // overcome illegal access issues with internal implementation class
                 clazz = SSLServerSocket.class;
+            } else if (target instanceof javax.net.ssl.SSLSocket) {
+                // overcome illegal access issues with internal implementation class
+                clazz = javax.net.ssl.SSLSocket.class;
             }
             Method setter = findSetterMethod(clazz, name);
             if (setter == null) {
                 return false;
             }
+
+            // JDK 11: class or setter might not be publicly accessible
+            setter.setAccessible(true);
 
             // If the type is null or it matches the needed type, just use the
             // value directly
@@ -305,7 +311,7 @@ public final class IntrospectionSupport {
             }
 
         }
-        StringBuffer buffer = new StringBuffer(simpleName(target.getClass()));
+        StringBuilder buffer = new StringBuilder(simpleName(target.getClass()));
         buffer.append(" {");
         Set<Entry<String, Object>> entrySet = map.entrySet();
         boolean first = true;
@@ -326,7 +332,7 @@ public final class IntrospectionSupport {
         return buffer.toString();
     }
 
-    protected static void appendToString(StringBuffer buffer, Object key, Object value) {
+    private static void appendToString(StringBuilder buffer, Object key, Object value) {
         if (value instanceof ActiveMQDestination) {
             ActiveMQDestination destination = (ActiveMQDestination)value;
             buffer.append(destination.getQualifiedName());

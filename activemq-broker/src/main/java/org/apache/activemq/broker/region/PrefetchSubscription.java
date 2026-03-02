@@ -24,7 +24,7 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.JMSException;
+import jakarta.jms.JMSException;
 
 import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.ConnectionContext;
@@ -174,7 +174,6 @@ public abstract class PrefetchSubscription extends AbstractSubscription {
                             pending.remove();
                             createMessageDispatch(node, node.getMessage());
                             dispatched.add(node);
-                            getSubscriptionStatistics().getInflightMessageSize().addSize(node.getSize());
                             onDispatch(node, node.getMessage());
                         }
                         return;
@@ -224,8 +223,8 @@ public abstract class PrefetchSubscription extends AbstractSubscription {
                         // Don't remove the nodes until we are committed.
                         if (!context.isInTransaction()) {
                             getSubscriptionStatistics().getDequeues().increment();
-                            ((Destination)node.getRegionDestination()).getDestinationStatistics().getInflight().decrement();
                             removeList.add(node);
+                            contractPrefetchExtension(1);
                         } else {
                             registerRemoveSync(context, node);
                         }
@@ -239,7 +238,7 @@ public abstract class PrefetchSubscription extends AbstractSubscription {
                 }
                 for (final MessageReference node : removeList) {
                     dispatched.remove(node);
-                    getSubscriptionStatistics().getInflightMessageSize().addSize(-node.getSize());
+                    decrementPrefetchCounter(node);
                 }
                 // this only happens after a reconnect - get an ack which is not
                 // valid
@@ -255,31 +254,20 @@ public abstract class PrefetchSubscription extends AbstractSubscription {
                         // Don't remove the nodes until we are committed - immediateAck option
                         if (!context.isInTransaction()) {
                             getSubscriptionStatistics().getDequeues().increment();
-                            ((Destination)node.getRegionDestination()).getDestinationStatistics().getInflight().decrement();
                             dispatched.remove(node);
-                            getSubscriptionStatistics().getInflightMessageSize().addSize(-node.getSize());
+                            decrementPrefetchCounter(node);
+                            contractPrefetchExtension(1);
                         } else {
                             registerRemoveSync(context, node);
+                            expandPrefetchExtension(1);
                         }
-
-                        if (isUsePrefetchExtension() && getPrefetchSize() != 0 && ack.isInTransaction()) {
-                            // allow transaction batch to exceed prefetch
-                            while (true) {
-                                int currentExtension = prefetchExtension.get();
-                                int newExtension = Math.max(currentExtension, currentExtension + 1);
-                                if (prefetchExtension.compareAndSet(currentExtension, newExtension)) {
-                                    break;
-                                }
-                            }
-                        }
-
                         acknowledge(context, ack, node);
                         destination = (Destination) node.getRegionDestination();
                         callDispatchMatched = true;
                         break;
                     }
                 }
-            }else if (ack.isDeliveredAck()) {
+            } else if (ack.isDeliveredAck()) {
                 // Message was delivered but not acknowledged: update pre-fetch
                 // counters.
                 int index = 0;
@@ -287,16 +275,7 @@ public abstract class PrefetchSubscription extends AbstractSubscription {
                     final MessageReference node = iter.next();
                     Destination nodeDest = (Destination) node.getRegionDestination();
                     if (ack.getLastMessageId().equals(node.getMessageId())) {
-                        if (isUsePrefetchExtension() && getPrefetchSize() != 0) {
-                            // allow  batch to exceed prefetch
-                            while (true) {
-                                int currentExtension = prefetchExtension.get();
-                                int newExtension = Math.max(currentExtension, index + 1);
-                                if (prefetchExtension.compareAndSet(currentExtension, newExtension)) {
-                                    break;
-                                }
-                            }
-                        }
+                        expandPrefetchExtension(ack.getMessageCount());
                         destination = nodeDest;
                         callDispatchMatched = true;
                         break;
@@ -319,25 +298,14 @@ public abstract class PrefetchSubscription extends AbstractSubscription {
                         inAckRange = true;
                     }
                     if (inAckRange) {
-                        Destination regionDestination = nodeDest;
                         if (broker.isExpired(node)) {
-                            regionDestination.messageExpired(context, this, node);
+                            processExpiredAck(context, nodeDest, node);
                         }
                         iter.remove();
-                        nodeDest.getDestinationStatistics().getInflight().decrement();
+                        decrementPrefetchCounter(node);
 
                         if (ack.getLastMessageId().equals(messageId)) {
-                            if (isUsePrefetchExtension() && getPrefetchSize() != 0) {
-                                // allow  batch to exceed prefetch
-                                while (true) {
-                                    int currentExtension = prefetchExtension.get();
-                                    int newExtension = Math.max(currentExtension, index + 1);
-                                    if (prefetchExtension.compareAndSet(currentExtension, newExtension)) {
-                                        break;
-                                    }
-                                }
-                            }
-
+                            contractPrefetchExtension(1);
                             destination = (Destination) node.getRegionDestination();
                             callDispatchMatched = true;
                             break;
@@ -392,20 +360,12 @@ public abstract class PrefetchSubscription extends AbstractSubscription {
                     if (inAckRange) {
                         sendToDLQ(context, node, ack.getPoisonCause());
                         Destination nodeDest = (Destination) node.getRegionDestination();
-                        nodeDest.getDestinationStatistics()
-                        .getInflight().decrement();
                         removeList.add(node);
                         getSubscriptionStatistics().getDequeues().increment();
                         index++;
                         acknowledge(context, ack, node);
                         if (ack.getLastMessageId().equals(messageId)) {
-                            while (true) {
-                                int currentExtension = prefetchExtension.get();
-                                int newExtension = Math.max(0, currentExtension - (index + 1));
-                                if (prefetchExtension.compareAndSet(currentExtension, newExtension)) {
-                                    break;
-                                }
-                            }
+                            contractPrefetchExtension(1);
                             destination = nodeDest;
                             callDispatchMatched = true;
                             break;
@@ -414,7 +374,7 @@ public abstract class PrefetchSubscription extends AbstractSubscription {
                 }
                 for (final MessageReference node : removeList) {
                     dispatched.remove(node);
-                    getSubscriptionStatistics().getInflightMessageSize().addSize(-node.getSize());
+                    decrementPrefetchCounter(node);
                 }
                 if (!callDispatchMatched) {
                     throw new JMSException(
@@ -435,6 +395,11 @@ public abstract class PrefetchSubscription extends AbstractSubscription {
         }
     }
 
+    protected void processExpiredAck(final ConnectionContext context, final Destination dest,
+        final MessageReference node) {
+        dest.messageExpired(context, this, node);
+    }
+
     private void registerRemoveSync(ConnectionContext context, final MessageReference node) {
         // setup a Synchronization to remove nodes from the
         // dispatched list.
@@ -442,37 +407,25 @@ public abstract class PrefetchSubscription extends AbstractSubscription {
                 new Synchronization() {
 
                     @Override
-                    public void beforeEnd() {
-                        if (isUsePrefetchExtension() && getPrefetchSize() != 0) {
-                            while (true) {
-                                int currentExtension = prefetchExtension.get();
-                                int newExtension = Math.max(0, currentExtension - 1);
-                                if (prefetchExtension.compareAndSet(currentExtension, newExtension)) {
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    @Override
                     public void afterCommit()
                             throws Exception {
                         Destination nodeDest = (Destination) node.getRegionDestination();
-                        synchronized(dispatchLock) {
+                        synchronized (dispatchLock) {
                             getSubscriptionStatistics().getDequeues().increment();
-                            dispatched.remove(node);
-                            getSubscriptionStatistics().getInflightMessageSize().addSize(-node.getSize());
-                            nodeDest.getDestinationStatistics().getInflight().decrement();
+                            if (dispatched.remove(node)) {
+                                // if consumer is removed, dispatched will be empty and inflight will
+                                // already have been adjusted
+                                decrementPrefetchCounter(node);
+                            }
                         }
+                        contractPrefetchExtension(1);
                         nodeDest.wakeup();
                         dispatchPending();
                     }
 
                     @Override
                     public void afterRollback() throws Exception {
-                        synchronized(dispatchLock) {
-                            // poisionAck will decrement - otherwise still inflight on client
-                        }
+                        contractPrefetchExtension(1);
                     }
                 });
     }
@@ -577,9 +530,7 @@ public abstract class PrefetchSubscription extends AbstractSubscription {
 
     @Override
     public long getPendingMessageSize() {
-        synchronized (pendingLock) {
-            return pending.messageSize();
-        }
+        return pending.messageSize();
     }
 
     @Override
@@ -663,10 +614,12 @@ public abstract class PrefetchSubscription extends AbstractSubscription {
         for (MessageReference r : dispatched) {
             if (r.getRegionDestination() == destination) {
                 references.add(r);
+                //Decrement the size as we are removing and redispatching all references
                 getSubscriptionStatistics().getInflightMessageSize().addSize(-r.getSize());
             }
         }
         redispatch.addAll(0, references);
+        //Clean up in flight message stats on the destination after dispatched is cleared
         destination.getDestinationStatistics().getInflight().subtract(references.size());
         dispatched.removeAll(references);
     }
@@ -687,6 +640,10 @@ public abstract class PrefetchSubscription extends AbstractSubscription {
                         MessageReference node = pending.next();
                         if (node == null) {
                             break;
+                        }
+                        if (trackedInPendingTransaction(node)) {
+                            node.decrementReferenceCount();
+                            continue;
                         }
 
                         // Synchronize between dispatched list and remove of message from pending list
@@ -716,7 +673,7 @@ public abstract class PrefetchSubscription extends AbstractSubscription {
                         // decrement after dispatch has taken ownership to avoid usage jitter
                         node.decrementReferenceCount();
                     }
-                } else if (!isSlowConsumer()) {
+                } else if (!pending.isEmpty() && !isSlowConsumer()) {
                     setSlowConsumer(true);
                     slowConsumerTargets = destinations;
                 }
@@ -730,6 +687,10 @@ public abstract class PrefetchSubscription extends AbstractSubscription {
                 dest.slowConsumer(context, this);
             }
         }
+    }
+
+    protected boolean trackedInPendingTransaction(MessageReference node) {
+        return false;
     }
 
     protected void setPendingBatchSize(PendingMessageCursor pending, int numberToDispatch) {
@@ -747,9 +708,8 @@ public abstract class PrefetchSubscription extends AbstractSubscription {
 
         MessageDispatch md = createMessageDispatch(node, message);
         if (node != QueueMessageReference.NULL_MESSAGE) {
-            getSubscriptionStatistics().getDispatched().increment();
             dispatched.add(node);
-            getSubscriptionStatistics().getInflightMessageSize().addSize(node.getSize());
+            getSubscriptionStatistics().getDispatched().increment();
         }
         if (getPrefetchSize() == 0) {
             while (true) {
@@ -776,8 +736,13 @@ public abstract class PrefetchSubscription extends AbstractSubscription {
                     if (nodeDest != null) {
                         if (node != QueueMessageReference.NULL_MESSAGE) {
                             nodeDest.getDestinationStatistics().getDispatched().increment();
-                            nodeDest.getDestinationStatistics().getInflight().increment();
-                            LOG.trace("{} failed to dispatch: {} - {}, dispatched: {}, inflight: {}", new Object[]{ info.getConsumerId(), message.getMessageId(), message.getDestination(), getSubscriptionStatistics().getDispatched().getCount(), dispatched.size() });
+                            //We still increment here as the dispatched list is still tracking references at this point
+                            //Metrics will get cleaned up in addReferencesAndUpdateRedispatch() when the dispatched
+                            //list is also cleaned up as the failure causes the subscription to close
+                            incrementPrefetchCounter(node);
+                            LOG.trace("{} failed to dispatch: {} - {}, dispatched: {}, inflight: {}",
+                                    info.getConsumerId(), message.getMessageId(), message.getDestination(),
+                                    getSubscriptionStatistics().getDispatched().getCount(), dispatched.size());
                         }
                     }
                     if (node instanceof QueueMessageReference) {
@@ -798,8 +763,11 @@ public abstract class PrefetchSubscription extends AbstractSubscription {
         if (nodeDest != null) {
             if (node != QueueMessageReference.NULL_MESSAGE) {
                 nodeDest.getDestinationStatistics().getDispatched().increment();
-                nodeDest.getDestinationStatistics().getInflight().increment();
-                LOG.trace("{} dispatched: {} - {}, dispatched: {}, inflight: {}", new Object[]{ info.getConsumerId(), message.getMessageId(), message.getDestination(), getSubscriptionStatistics().getDispatched().getCount(), dispatched.size() });
+                incrementPrefetchCounter(node);
+                nodeDest.messageDispatched(context, this, node);
+                LOG.trace("{} dispatched: {} - {}, dispatched: {}, inflight: {}",
+                        info.getConsumerId(), message.getMessageId(), message.getDestination(),
+                        getSubscriptionStatistics().getDispatched().getCount(), dispatched.size());
             }
         }
 
@@ -899,5 +867,15 @@ public abstract class PrefetchSubscription extends AbstractSubscription {
         } catch (Exception e) {
             LOG.trace("Caught exception during dispatch after prefetch change.", e);
         }
+    }
+
+    private void incrementPrefetchCounter(final MessageReference node) {
+        ((Destination)node.getRegionDestination()).getDestinationStatistics().getInflight().increment();
+        getSubscriptionStatistics().getInflightMessageSize().addSize(node.getSize());
+    }
+
+    private void decrementPrefetchCounter(final MessageReference node) {
+        ((Destination)node.getRegionDestination()).getDestinationStatistics().getInflight().decrement();
+        getSubscriptionStatistics().getInflightMessageSize().addSize(-node.getSize());
     }
 }

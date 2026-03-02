@@ -16,7 +16,7 @@
  */
 package org.apache.activemq.network;
 
-import javax.jms.DeliveryMode;
+import jakarta.jms.DeliveryMode;
 
 import junit.framework.Test;
 
@@ -39,8 +39,8 @@ public class DemandForwardingBridgeTest extends NetworkTestSupport {
     private DemandForwardingBridge bridge;
 
     public void initCombosForTestSendThenAddConsumer() {
-        addCombinationValues("deliveryMode", new Object[] {new Integer(DeliveryMode.NON_PERSISTENT), new Integer(DeliveryMode.PERSISTENT)});
-        addCombinationValues("destinationType", new Object[] {new Byte(ActiveMQDestination.QUEUE_TYPE)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT, DeliveryMode.PERSISTENT});
+        addCombinationValues("destinationType", new Object[] {ActiveMQDestination.QUEUE_TYPE});
     }
 
     public void testSendThenAddConsumer() throws Exception {
@@ -116,8 +116,8 @@ public class DemandForwardingBridgeTest extends NetworkTestSupport {
     }
 
     public void initCombosForTestAddConsumerThenSend() {
-        addCombinationValues("deliveryMode", new Object[] {new Integer(DeliveryMode.NON_PERSISTENT), new Integer(DeliveryMode.PERSISTENT)});
-        addCombinationValues("destinationType", new Object[] {new Byte(ActiveMQDestination.QUEUE_TYPE), new Byte(ActiveMQDestination.TOPIC_TYPE)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT, DeliveryMode.PERSISTENT});
+        addCombinationValues("destinationType", new Object[] {ActiveMQDestination.QUEUE_TYPE, ActiveMQDestination.TOPIC_TYPE});
     }
 
     public void testAddConsumerThenSend() throws Exception {

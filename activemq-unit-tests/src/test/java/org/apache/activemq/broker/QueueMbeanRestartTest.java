@@ -20,8 +20,8 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 import javax.management.ObjectName;
 
 import org.apache.activemq.TestSupport;
@@ -46,11 +46,9 @@ public class QueueMbeanRestartTest extends TestSupport {
     @Parameterized.Parameters
     public static Collection<TestSupport.PersistenceAdapterChoice[]> getTestParameters() {
         TestSupport.PersistenceAdapterChoice[] kahaDb = {TestSupport.PersistenceAdapterChoice.KahaDB};
-        TestSupport.PersistenceAdapterChoice[] levelDb = {TestSupport.PersistenceAdapterChoice.LevelDB};
         TestSupport.PersistenceAdapterChoice[] jdbc = {TestSupport.PersistenceAdapterChoice.JDBC};
         List<TestSupport.PersistenceAdapterChoice[]> choices = new ArrayList<TestSupport.PersistenceAdapterChoice[]>();
         choices.add(kahaDb);
-        choices.add(levelDb);
         choices.add(jdbc);
 
         return choices;

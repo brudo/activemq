@@ -16,30 +16,36 @@
  */
 package org.apache.activemq.broker.scheduler;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageListener;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
+import org.apache.activemq.ActiveMQConnectionFactory;
+import org.apache.activemq.ScheduledMessage;
+import org.apache.activemq.store.kahadb.disk.journal.Location;
+import org.apache.activemq.store.kahadb.scheduler.JobSchedulerStoreImpl;
+import org.apache.activemq.util.DefaultTestAppender;
+import org.apache.activemq.util.ProducerThread;
+import org.apache.activemq.util.Wait;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.LogEvent;
+import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javax.jms.Connection;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageListener;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
-
-import org.apache.activemq.ActiveMQConnectionFactory;
-import org.apache.activemq.ScheduledMessage;
-import org.apache.activemq.util.ProducerThread;
-import org.apache.activemq.util.Wait;
-import org.junit.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 
 public class JmsSchedulerTest extends JobSchedulerTestSupport {
 
@@ -156,7 +162,7 @@ public class JmsSchedulerTest extends JobSchedulerTestSupport {
         // make sure the message isn't delivered early
         Thread.sleep(2000);
         assertEquals(latch.getCount(), COUNT);
-        latch.await(5, TimeUnit.SECONDS);
+        latch.await(10, TimeUnit.SECONDS);
         assertEquals(latch.getCount(), 0);
         connection.close();
     }
@@ -201,6 +207,73 @@ public class JmsSchedulerTest extends JobSchedulerTestSupport {
 
     @Test
     public void testScheduleRestart() throws Exception {
+        testScheduleRestart(RestartType.NORMAL);
+    }
+
+    @Test
+    public void testScheduleFullRecoveryRestart() throws Exception {
+        testScheduleRestart(RestartType.FULL_RECOVERY);
+    }
+
+    @Test
+    public void testUpdatesAppliedToIndexBeforeJournalShouldBeDiscarded() throws Exception {
+        final int NUMBER_OF_MESSAGES = 1000;
+        final AtomicInteger numberOfDiscardedJobs = new AtomicInteger();
+        final JobSchedulerStoreImpl jobSchedulerStore = (JobSchedulerStoreImpl) broker.getJobSchedulerStore();
+        Location middleLocation = null;
+
+        Appender appender = new DefaultTestAppender() {
+            @Override
+            public void append(LogEvent event) {
+                if (event.getMessage() != null && event.getMessage().getFormattedMessage().contains("Removed Job past last appened in the journal")) {
+                    numberOfDiscardedJobs.incrementAndGet();
+                }
+            }
+
+            @Override
+            public boolean isStarted() {
+                return true; // false in DefaultTestAppender so Log4j will discard this appender
+            }
+        };
+
+        registerLogAppender(appender);
+
+        // send a messages
+        Connection connection = createConnection();
+        Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+        connection.start();
+        MessageProducer producer = session.createProducer(destination);
+
+        for (int i = 0; i < NUMBER_OF_MESSAGES; i++) {
+            TextMessage message = session.createTextMessage("test msg");
+            long time = 5000;
+            message.setLongProperty(ScheduledMessage.AMQ_SCHEDULED_DELAY, time);
+            producer.send(message);
+
+            if (NUMBER_OF_MESSAGES / 2 == i) {
+                middleLocation = jobSchedulerStore.getJournal().getLastAppendLocation();
+            }
+        }
+
+        producer.close();
+
+        broker.stop();
+        broker.waitUntilStopped();
+
+        // Simulating the case here updates got applied on the index before the journal updates
+        jobSchedulerStore.getJournal().setLastAppendLocation(middleLocation);
+        jobSchedulerStore.load();
+
+        assertEquals(numberOfDiscardedJobs.get(), NUMBER_OF_MESSAGES / 2);
+    }
+
+    private void registerLogAppender(final Appender appender) {
+        org.apache.logging.log4j.core.Logger log4jLogger = (org.apache.logging.log4j.core.Logger)LogManager.getLogger(JobSchedulerStoreImpl.class);
+        log4jLogger.addAppender(appender);
+        log4jLogger.setLevel(Level.TRACE);
+    }
+
+    private void testScheduleRestart(final RestartType restartType) throws Exception {
         // send a message
         Connection connection = createConnection();
         Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
@@ -213,19 +286,14 @@ public class JmsSchedulerTest extends JobSchedulerTestSupport {
         producer.close();
 
         //restart broker
-        broker.stop();
-        broker.waitUntilStopped();
-
-        broker = createBroker(false);
-        broker.start();
-        broker.waitUntilStarted();
+        restartBroker(restartType);
 
         // consume the message
         connection = createConnection();
         connection.start();
         session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
         MessageConsumer consumer = session.createConsumer(destination);
-        Message msg = consumer.receive(5000);
+        Message msg = consumer.receive(10000);
         assertNotNull("Didn't receive the message", msg);
 
         //send another message

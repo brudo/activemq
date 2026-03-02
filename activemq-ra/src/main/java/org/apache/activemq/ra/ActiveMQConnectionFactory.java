@@ -18,17 +18,18 @@ package org.apache.activemq.ra;
 
 import java.io.Serializable;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.JMSException;
-import javax.jms.QueueConnection;
-import javax.jms.QueueConnectionFactory;
-import javax.jms.TopicConnection;
-import javax.jms.TopicConnectionFactory;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.JMSContext;
+import jakarta.jms.JMSException;
+import jakarta.jms.QueueConnection;
+import jakarta.jms.QueueConnectionFactory;
+import jakarta.jms.TopicConnection;
+import jakarta.jms.TopicConnectionFactory;
 import javax.naming.Reference;
-import javax.resource.Referenceable;
-import javax.resource.ResourceException;
-import javax.resource.spi.ConnectionManager;
+import jakarta.resource.Referenceable;
+import jakarta.resource.ResourceException;
+import jakarta.resource.spi.ConnectionManager;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,14 +62,14 @@ public class ActiveMQConnectionFactory implements ConnectionFactory, QueueConnec
     }
 
     /**
-     * @see javax.jms.ConnectionFactory#createConnection()
+     * @see jakarta.jms.ConnectionFactory#createConnection()
      */
     public Connection createConnection() throws JMSException {
         return createConnection(info.copy());
     }
 
     /**
-     * @see javax.jms.ConnectionFactory#createConnection(java.lang.String,
+     * @see jakarta.jms.ConnectionFactory#createConnection(java.lang.String,
      *      java.lang.String)
      */
     public Connection createConnection(String userName, String password) throws JMSException {
@@ -76,6 +77,38 @@ public class ActiveMQConnectionFactory implements ConnectionFactory, QueueConnec
         i.setUserName(userName);
         i.setPassword(password);
         return createConnection(i);
+    }
+    
+    /**
+     * @return Returns the JMSContext.
+     */
+    @Override
+    public JMSContext createContext() {
+        throw new UnsupportedOperationException("createContext() is not supported");
+    }
+
+    /**
+     * @return Returns the JMSContext.
+     */
+    @Override
+    public JMSContext createContext(String userName, String password) {
+        throw new UnsupportedOperationException("createContext(userName, password) is not supported");
+    }
+
+    /**
+     * @return Returns the JMSContext.
+     */
+    @Override
+    public JMSContext createContext(String userName, String password, int sessionMode) {
+        throw new UnsupportedOperationException("createContext(userName, password, sessionMode) is not supported");
+    }
+
+    /**
+     * @return Returns the JMSContext.
+     */
+    @Override
+    public JMSContext createContext(int sessionMode) {
+        throw new UnsupportedOperationException("createContext(sessionMode) is not supported");
     }
 
     /**
@@ -91,6 +124,7 @@ public class ActiveMQConnectionFactory implements ConnectionFactory, QueueConnec
             if (manager == null) {
                 throw new JMSException("No JCA ConnectionManager configured! Either enable UseInboundSessionEnabled or get your JCA container to configure one.");
             }
+
             return (Connection)manager.allocateConnection(factory, connectionRequestInfo);
         } catch (ResourceException e) {
             // Throw the root cause if it was a JMSException..

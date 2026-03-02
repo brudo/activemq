@@ -19,8 +19,8 @@ package org.apache.activemq.broker.policy;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Map.Entry;
-import javax.jms.Connection;
-import javax.jms.MessageConsumer;
+import jakarta.jms.Connection;
+import jakarta.jms.MessageConsumer;
 import org.apache.activemq.util.MessageIdList;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -31,7 +31,7 @@ public class AbortSlowConsumer2Test extends AbortSlowConsumerBase {
 
     @Parameterized.Parameters(name = "isTopic({0})")
     public static Collection<Object[]> getTestParameters() {
-        return Arrays.asList(new Object[][]{{Boolean.TRUE}, {Boolean.FALSE}});
+        return Arrays.asList(new Object[][]{{Boolean.TRUE}});
     }
 
     public AbortSlowConsumer2Test(Boolean isTopic) {

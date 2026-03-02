@@ -16,7 +16,7 @@
  */
 package org.apache.activemq.proxy;
 
-import javax.jms.DeliveryMode;
+import jakarta.jms.DeliveryMode;
 
 import junit.framework.Test;
 import org.apache.activemq.broker.StubConnection;
@@ -47,8 +47,8 @@ public class ProxyConnectorTest extends ProxyTestSupport {
     }
 
     public void initCombosForTestSendAndConsume() {
-        addCombinationValues("deliveryMode", new Object[] {Integer.valueOf(DeliveryMode.NON_PERSISTENT), Integer.valueOf(DeliveryMode.PERSISTENT)});
-        addCombinationValues("destinationType", new Object[] {Byte.valueOf(ActiveMQDestination.TOPIC_TYPE)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT, DeliveryMode.PERSISTENT});
+        addCombinationValues("destinationType", new Object[] {ActiveMQDestination.TOPIC_TYPE});
     }
 
     public void testSendAndConsume() throws Exception {

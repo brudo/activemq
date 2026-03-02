@@ -70,16 +70,20 @@ public class LDAPLoginModule implements LoginModule {
     protected DirContext context;
 
     private Subject subject;
-    private CallbackHandler handler;  
+    private CallbackHandler handler;
     private LDAPLoginProperty [] config;
-    private String username;
-    private Set<GroupPrincipal> groups = new HashSet<GroupPrincipal>();
+    private Principal user;
+    private Set<GroupPrincipal> groups = new HashSet<>();
+
+    /** the authentication status*/
+    private boolean succeeded = false;
+    private boolean commitSucceeded = false;
 
     @Override
     public void initialize(Subject subject, CallbackHandler callbackHandler, Map sharedState, Map options) {
         this.subject = subject;
         this.handler = callbackHandler;
-        
+
         config = new LDAPLoginProperty [] {
         		new LDAPLoginProperty (INITIAL_CONTEXT_FACTORY, (String)options.get(INITIAL_CONTEXT_FACTORY)),
         		new LDAPLoginProperty (CONNECTION_URL, (String)options.get(CONNECTION_URL)),
@@ -110,18 +114,16 @@ public class LDAPLoginModule implements LoginModule {
         callbacks[1] = new PasswordCallback("Password", false);
         try {
             handler.handle(callbacks);
-        } catch (IOException ioe) {
+        } catch (IOException | UnsupportedCallbackException ioe) {
             throw (LoginException)new LoginException().initCause(ioe);
-        } catch (UnsupportedCallbackException uce) {
-            throw (LoginException)new LoginException().initCause(uce);
         }
-        
+
         String password;
-        
-        username = ((NameCallback)callbacks[0]).getName();
+
+        String username = ((NameCallback)callbacks[0]).getName();
         if (username == null)
         	return false;
-        	
+
         if (((PasswordCallback)callbacks[1]).getPassword() != null)
         	password = new String(((PasswordCallback)callbacks[1]).getPassword());
         else
@@ -130,36 +132,67 @@ public class LDAPLoginModule implements LoginModule {
         // authenticate will throw LoginException
         // in case of failed authentication
         authenticate(username, password);
+
+        user = new UserPrincipal(username);
+        succeeded = true;
         return true;
     }
 
     @Override
     public boolean logout() throws LoginException {
-        username = null;
+        subject.getPrincipals().remove(user);
+        subject.getPrincipals().removeAll(groups);
+
+        user = null;
+        groups.clear();
+
+        succeeded = false;
+        commitSucceeded = false;
         return true;
     }
 
     @Override
     public boolean commit() throws LoginException {
-        Set<Principal> principals = subject.getPrincipals();
-        principals.add(new UserPrincipal(username));
-        for (GroupPrincipal gp : groups) {
-            principals.add(gp);
+        if (!succeeded) {
+            user = null;
+            groups.clear();
+            return false;
         }
+
+        Set<Principal> principals = subject.getPrincipals();
+        principals.add(user);
+        principals.addAll(groups);
+
+        commitSucceeded = true;
         return true;
     }
 
     @Override
     public boolean abort() throws LoginException {
-        username = null;
+        if (!succeeded) {
+            return false;
+        } else if (commitSucceeded) {
+            // we succeeded, but another required module failed
+            logout();
+        } else {
+            // our commit failed
+            user = null;
+            groups.clear();
+            succeeded = false;
+        }
         return true;
     }
 
-    protected void close(DirContext context) {
+    protected void closeContext() {
+        if (context == null) {
+            return;
+        }
         try {
             context.close();
         } catch (Exception e) {
             log.error(e.toString());
+        } finally {
+            context = null;
         }
     }
 
@@ -167,25 +200,23 @@ public class LDAPLoginModule implements LoginModule {
 
         MessageFormat userSearchMatchingFormat;
         boolean userSearchSubtreeBool;
-        
-        DirContext context = null;
 
         if (log.isDebugEnabled()) {
             log.debug("Create the LDAP initial context.");
         }
         try {
-            context = open();
+            openContext();
         } catch (NamingException ne) {
             FailedLoginException ex = new FailedLoginException("Error opening LDAP connection");
             ex.initCause(ne);
             throw ex;
         }
-        
+
         if (!isLoginPropertySet(USER_SEARCH_MATCHING))
         	return false;
 
         userSearchMatchingFormat = new MessageFormat(getLDAPPropertyValue(USER_SEARCH_MATCHING));
-        userSearchSubtreeBool = Boolean.valueOf(getLDAPPropertyValue(USER_SEARCH_SUBTREE)).booleanValue();
+        userSearchSubtreeBool = Boolean.valueOf(getLDAPPropertyValue(USER_SEARCH_SUBTREE));
 
         try {
 
@@ -200,7 +231,7 @@ public class LDAPLoginModule implements LoginModule {
             }
 
             // setup attributes
-            List<String> list = new ArrayList<String>();
+            List<String> list = new ArrayList<>();
             if (isLoginPropertySet(USER_ROLE_NAME)) {
                 list.add(getLDAPPropertyValue(USER_ROLE_NAME));
             }
@@ -252,9 +283,7 @@ public class LDAPLoginModule implements LoginModule {
                         dn = path;
                     }
                 } catch (URISyntaxException e) {
-                    if (context != null) {
-                        close(context);
-                    }
+                    closeContext();
                     FailedLoginException ex = new FailedLoginException("Error parsing absolute name as URI.");
                     ex.initCause(e);
                     throw ex;
@@ -292,14 +321,12 @@ public class LDAPLoginModule implements LoginModule {
             ex.initCause(e);
             throw ex;
         } catch (NamingException e) {
-            if (context != null) {
-                close(context);
-            }
             FailedLoginException ex = new FailedLoginException("Error contacting LDAP");
             ex.initCause(e);
             throw ex;
+        } finally {
+            closeContext();
         }
-
         return true;
     }
 
@@ -309,11 +336,11 @@ public class LDAPLoginModule implements LoginModule {
         boolean roleSearchSubtreeBool;
         boolean expandRolesBool;
         roleSearchMatchingFormat = new MessageFormat(getLDAPPropertyValue(ROLE_SEARCH_MATCHING));
-        roleSearchSubtreeBool = Boolean.valueOf(getLDAPPropertyValue(ROLE_SEARCH_SUBTREE)).booleanValue();
-        expandRolesBool = Boolean.valueOf(getLDAPPropertyValue(EXPAND_ROLES)).booleanValue();
-        
+        roleSearchSubtreeBool = Boolean.parseBoolean(getLDAPPropertyValue(ROLE_SEARCH_SUBTREE));
+        expandRolesBool = Boolean.parseBoolean(getLDAPPropertyValue(EXPAND_ROLES));
+
         if (list == null) {
-            list = new ArrayList<String>();
+            list = new ArrayList<>();
         }
         if (!isLoginPropertySet(ROLE_NAME)) {
             return list;
@@ -334,8 +361,8 @@ public class LDAPLoginModule implements LoginModule {
             log.debug("  base DN: " + getLDAPPropertyValue(ROLE_BASE));
             log.debug("  filter: " + filter);
         }
-        HashSet<String> haveSeenNames = new HashSet<String>();
-        Queue<String> pendingNameExpansion = new LinkedList<String>();
+        HashSet<String> haveSeenNames = new HashSet<>();
+        Queue<String> pendingNameExpansion = new LinkedList<>();
         NamingEnumeration<SearchResult> results = context.search(getLDAPPropertyValue(ROLE_BASE), filter, constraints);
         while (results.hasMore()) {
             SearchResult result = results.next();
@@ -371,7 +398,7 @@ public class LDAPLoginModule implements LoginModule {
     }
 
     protected String doRFC2254Encoding(String inputString) {
-        StringBuffer buf = new StringBuffer(inputString.length());
+        StringBuilder buf = new StringBuilder(inputString.length());
         for (int i = 0; i < inputString.length(); i++) {
             char c = inputString.charAt(i);
             switch (c) {
@@ -400,10 +427,10 @@ public class LDAPLoginModule implements LoginModule {
 
     protected boolean bindUser(DirContext context, String dn, String password) throws NamingException {
         boolean isValid = false;
-
         if (log.isDebugEnabled()) {
             log.debug("Binding the user.");
         }
+        context.addToEnvironment(Context.SECURITY_AUTHENTICATION, "simple");
         context.addToEnvironment(Context.SECURITY_PRINCIPAL, dn);
         context.addToEnvironment(Context.SECURITY_CREDENTIALS, password);
         try {
@@ -413,7 +440,6 @@ public class LDAPLoginModule implements LoginModule {
                 log.debug("User " + dn + " successfully bound.");
             }
         } catch (AuthenticationException e) {
-            isValid = false;
             if (log.isDebugEnabled()) {
                 log.debug("Authentication failed for dn=" + dn);
             }
@@ -429,7 +455,7 @@ public class LDAPLoginModule implements LoginModule {
         } else {
             context.removeFromEnvironment(Context.SECURITY_CREDENTIALS);
         }
-
+        context.addToEnvironment(Context.SECURITY_AUTHENTICATION, getLDAPPropertyValue(AUTHENTICATION));
         return isValid;
     }
 
@@ -439,7 +465,7 @@ public class LDAPLoginModule implements LoginModule {
             return values;
         }
         if (values == null) {
-            values = new ArrayList<String>();
+            values = new ArrayList<>();
         }
         Attribute attr = attrs.get(attrId);
         if (attr == null) {
@@ -453,9 +479,12 @@ public class LDAPLoginModule implements LoginModule {
         return values;
     }
 
-    protected DirContext open() throws NamingException {
+    protected void openContext() throws NamingException {
+        if (context != null) {
+            return;
+        }
         try {
-            Hashtable<String, String> env = new Hashtable<String, String>();
+            Hashtable<String, String> env = new Hashtable<>();
             env.put(Context.INITIAL_CONTEXT_FACTORY, getLDAPPropertyValue(INITIAL_CONTEXT_FACTORY));
             if (isLoginPropertySet(CONNECTION_USERNAME)) {
                 env.put(Context.SECURITY_PRINCIPAL, getLDAPPropertyValue(CONNECTION_USERNAME));
@@ -474,24 +503,24 @@ public class LDAPLoginModule implements LoginModule {
             context = new InitialDirContext(env);
 
         } catch (NamingException e) {
+            closeContext();
             log.error(e.toString());
             throw e;
         }
-        return context;
     }
-    
+
     private String getLDAPPropertyValue (String propertyName){
-    	for (int i=0; i < config.length; i++ )
-    		if (config[i].getPropertyName() == propertyName)
-    			return config[i].getPropertyValue();
+        for (LDAPLoginProperty ldapLoginProperty : config)
+            if (ldapLoginProperty.getPropertyName().equals(propertyName))
+                return ldapLoginProperty.getPropertyValue();
     	return null;
     }
-    
+
     private boolean isLoginPropertySet(String propertyName) {
-    	for (int i=0; i < config.length; i++ ) {
-    		if (config[i].getPropertyName() == propertyName && (config[i].getPropertyValue() != null && !"".equals(config[i].getPropertyValue())))
-    				return true;
-    	}
+        for (LDAPLoginProperty ldapLoginProperty : config) {
+            if (ldapLoginProperty.getPropertyName().equals(propertyName) && (ldapLoginProperty.getPropertyValue() != null && !"".equals(ldapLoginProperty.getPropertyValue())))
+                return true;
+        }
     	return false;
     }
 

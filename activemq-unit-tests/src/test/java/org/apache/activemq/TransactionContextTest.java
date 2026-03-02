@@ -21,13 +21,16 @@ import static org.junit.Assert.fail;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javax.jms.TransactionRolledBackException;
+import jakarta.jms.TransactionRolledBackException;
 
 import org.apache.activemq.transaction.Synchronization;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class TransactionContextTest {
     
     TransactionContext underTest;

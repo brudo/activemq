@@ -27,13 +27,16 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.BlockJUnit4ClassRunner;
 
-import javax.jms.MessageConsumer;
+import jakarta.jms.MessageConsumer;
 import java.util.Iterator;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 @RunWith(BlockJUnit4ClassRunner.class)
+@Category(ParallelTest.class)
 public class SimpleDispatchPolicyTest extends QueueSubscriptionTest {
 
     @Override

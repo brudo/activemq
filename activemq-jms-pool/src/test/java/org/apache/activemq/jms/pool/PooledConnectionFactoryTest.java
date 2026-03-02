@@ -16,13 +16,6 @@
  */
 package org.apache.activemq.jms.pool;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotSame;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertSame;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -32,19 +25,22 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.Connection;
-import javax.jms.JMSException;
-import javax.jms.QueueConnectionFactory;
-import javax.jms.Session;
-import javax.jms.TopicConnectionFactory;
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
+import jakarta.jms.QueueConnectionFactory;
+import jakarta.jms.Session;
+import jakarta.jms.TopicConnectionFactory;
 
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.command.ConnectionId;
 import org.apache.activemq.util.Wait;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.junit.Test;
+
+import static org.junit.Assert.*;
 
 /**
  * Checks the behavior of the PooledConnectionFactory when the maximum amount of
@@ -57,7 +53,7 @@ import org.junit.Test;
  */
 public class PooledConnectionFactoryTest extends JmsPoolTestSupport {
 
-    public final static Logger LOG = Logger.getLogger(PooledConnectionFactoryTest.class);
+    public final static Logger LOG = LogManager.getLogger(PooledConnectionFactoryTest.class);
 
     @Test(timeout = 60000)
     public void testInstanceOf() throws  Exception {
@@ -65,6 +61,23 @@ public class PooledConnectionFactoryTest extends JmsPoolTestSupport {
         assertTrue(pcf instanceof QueueConnectionFactory);
         assertTrue(pcf instanceof TopicConnectionFactory);
         pcf.stop();
+    }
+
+    @Test(timeout = 120000)
+    public void testConnectionTimeout() throws Exception {
+        ActiveMQConnectionFactory amq = new ActiveMQConnectionFactory("vm://broker1?marshal=false&broker.persistent=false&broker.useJmx=false");
+        PooledConnectionFactory cf = new PooledConnectionFactory();
+        cf.setConnectionFactory(amq);
+        cf.setConnectionTimeout(100);
+
+        PooledConnection connection = (PooledConnection) cf.createConnection();
+        assertEquals(1, cf.getNumConnections());
+
+        // wait for the connection timeout
+        Thread.sleep(300);
+
+        connection = (PooledConnection) cf.createConnection();
+        assertEquals(1, cf.getNumConnections());
     }
 
     @Test(timeout = 60000)
@@ -318,7 +331,7 @@ public class PooledConnectionFactoryTest extends JmsPoolTestSupport {
 
             @Override
             public boolean isSatisified() throws Exception {
-                return result.isDone() && result.get().booleanValue();
+                return result.isDone() && result.get();
             }
         }, TimeUnit.SECONDS.toMillis(10), TimeUnit.MILLISECONDS.toMillis(50));
 
@@ -333,7 +346,7 @@ public class PooledConnectionFactoryTest extends JmsPoolTestSupport {
 
     static class TestRunner implements Callable<Boolean> {
 
-        public final static Logger LOG = Logger.getLogger(TestRunner.class);
+        public final static Logger LOG = LogManager.getLogger(TestRunner.class);
 
         /**
          * @return true if test succeeded, false otherwise
@@ -369,14 +382,14 @@ public class PooledConnectionFactoryTest extends JmsPoolTestSupport {
                     fail("seconds call to Connection.createSession() was supposed" +
                          "to raise an JMSException as internal session pool" +
                          "is exhausted. This did not happen and indiates a problem");
-                    return new Boolean(false);
+                    return Boolean.FALSE;
                 } catch (JMSException ex) {
                     if (ex.getCause().getClass() == java.util.NoSuchElementException.class) {
                         // expected, ignore but log
                         LOG.info("Caught expected " + ex);
                     } else {
                         LOG.error(ex);
-                        return new Boolean(false);
+                        return Boolean.FALSE;
                     }
                 } finally {
                     if (one != null) {
@@ -388,7 +401,7 @@ public class PooledConnectionFactoryTest extends JmsPoolTestSupport {
                 }
             } catch (Exception ex) {
                 LOG.error(ex.getMessage());
-                return new Boolean(false);
+                return Boolean.FALSE;
             } finally {
                 if (cf != null) {
                     cf.stop();
@@ -396,7 +409,7 @@ public class PooledConnectionFactoryTest extends JmsPoolTestSupport {
             }
 
             // all good, test succeeded
-            return new Boolean(true);
+            return Boolean.TRUE;
         }
     }
 }

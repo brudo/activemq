@@ -23,11 +23,11 @@ import org.junit.runners.Parameterized;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.jms.Connection;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -48,10 +48,6 @@ public class DurableSubscriptionOffline1Test extends DurableSubscriptionOfflineT
 
         persistenceAdapterChoices.add(PersistenceAdapterChoice.KahaDB);
         persistenceAdapterChoices.add(PersistenceAdapterChoice.JDBC);
-        if (!osName.equalsIgnoreCase("AIX") && !osName.equalsIgnoreCase("SunOS")) {
-            //choices.add(levelDb);
-            persistenceAdapterChoices.add(PersistenceAdapterChoice.LevelDB);
-        }
 
         List<Object[]> testParameters = new ArrayList<Object[]>();
         Boolean[] booleanValues = {Boolean.FALSE, Boolean.TRUE};
@@ -68,7 +64,7 @@ public class DurableSubscriptionOffline1Test extends DurableSubscriptionOfflineT
 
     public DurableSubscriptionOffline1Test(PersistenceAdapterChoice adapter, Boolean usePrioritySupport) {
         this.defaultPersistenceAdapter = adapter;
-        this.usePrioritySupport = usePrioritySupport.booleanValue();
+        this.usePrioritySupport = usePrioritySupport;
         LOG.debug(">>>> Created with adapter {} usePrioritySupport? {}", defaultPersistenceAdapter, usePrioritySupport);
 
     }

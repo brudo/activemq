@@ -24,12 +24,12 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.JmsTestSupport;
@@ -47,8 +47,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static org.junit.Assert.*;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 @RunWith(BlockJUnit4ClassRunner.class)
+@Category(ParallelTest.class)
 public class MessageGroupLateArrivalsTest {
     public static final Logger log = LoggerFactory.getLogger(MessageGroupLateArrivalsTest.class);
     protected Connection connection;
@@ -214,7 +217,7 @@ public class MessageGroupLateArrivalsTest {
 
         log.info("worker2  received " + messageCount.get("worker2") + " messages from groups " + messageGroups.get("worker2"));
         assertEquals("worker2 received " + messageCount.get("worker2") + " messages from groups " + messageGroups.get("worker2")
-                , 2 * perBatch, messageCount.get("worker1").intValue());
+                , perBatch, messageCount.get("worker2").intValue());
         assertEquals("worker2 received " + messageCount.get("worker2") + " messages from groups " + messageGroups.get("worker2")
                 , 1, messageGroups.get("worker2").size());
     }

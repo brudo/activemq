@@ -16,10 +16,10 @@
  */
 package org.apache.activemq.broker.virtual;
 
-import javax.jms.Connection;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 
 import org.apache.activemq.broker.jmx.MBeanTest;
 import org.apache.activemq.command.ActiveMQQueue;
@@ -100,4 +100,5 @@ public class VirtualTopicsAndDurableSubsTest extends MBeanTest {
     public void testRetryMessages() throws Exception {}
     public void testMoveMessagesBySelector() throws Exception {}
     public void testCopyMessagesBySelector() throws Exception {}
+    public void testQueuePauseResume() throws Exception {}
 }

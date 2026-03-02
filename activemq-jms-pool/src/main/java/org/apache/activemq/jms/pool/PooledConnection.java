@@ -19,23 +19,23 @@ package org.apache.activemq.jms.pool;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionConsumer;
-import javax.jms.ConnectionMetaData;
-import javax.jms.Destination;
-import javax.jms.ExceptionListener;
-import javax.jms.IllegalStateException;
-import javax.jms.JMSException;
-import javax.jms.Queue;
-import javax.jms.QueueConnection;
-import javax.jms.QueueSession;
-import javax.jms.ServerSessionPool;
-import javax.jms.Session;
-import javax.jms.TemporaryQueue;
-import javax.jms.TemporaryTopic;
-import javax.jms.Topic;
-import javax.jms.TopicConnection;
-import javax.jms.TopicSession;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionConsumer;
+import jakarta.jms.ConnectionMetaData;
+import jakarta.jms.Destination;
+import jakarta.jms.ExceptionListener;
+import jakarta.jms.IllegalStateException;
+import jakarta.jms.JMSException;
+import jakarta.jms.Queue;
+import jakarta.jms.QueueConnection;
+import jakarta.jms.QueueSession;
+import jakarta.jms.ServerSessionPool;
+import jakarta.jms.Session;
+import jakarta.jms.TemporaryQueue;
+import jakarta.jms.TemporaryTopic;
+import jakarta.jms.Topic;
+import jakarta.jms.TopicConnection;
+import jakarta.jms.TopicSession;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -81,8 +81,8 @@ public class PooledConnection implements TopicConnection, QueueConnection, Poole
 
     @Override
     public void close() throws JMSException {
-        this.cleanupConnectionTemporaryDestinations();
         this.cleanupAllLoanedSessions();
+        this.cleanupConnectionTemporaryDestinations();
         if (this.pool != null) {
             this.pool.decrementReferenceCount();
             this.pool = null;
@@ -162,6 +162,44 @@ public class PooledConnection implements TopicConnection, QueueConnection, Poole
         return (TopicSession) createSession(transacted, ackMode);
     }
 
+    /**
+     * Creates a <CODE>Session</CODE> object.
+     *
+     * @throws JMSException if the <CODE>Connection</CODE> object fails to
+     *                 create a session due to some internal error or lack of
+     *                 support for the specific transaction and acknowledgement
+     *                 mode.
+     * @since 2.0
+     */
+    @Override
+    public Session createSession() throws JMSException {
+        throw new UnsupportedOperationException("createSession() is unsupported"); 
+    }
+
+    /**
+     * Creates a <CODE>Session</CODE> object.
+     *
+     * @param acknowledgeMode indicates whether the consumer or the client will
+     *                acknowledge any messages it receives; ignored if the
+     *                session is transacted. Legal values are
+     *                <code>Session.AUTO_ACKNOWLEDGE</code>,
+     *                <code>Session.CLIENT_ACKNOWLEDGE</code>, and
+     *                <code>Session.DUPS_OK_ACKNOWLEDGE</code>.
+     * @return a newly created session
+     * @throws JMSException if the <CODE>Connection</CODE> object fails to
+     *                 create a session due to some internal error or lack of
+     *                 support for the specific transaction and acknowledgement
+     *                 mode.
+     * @see Session#AUTO_ACKNOWLEDGE
+     * @see Session#CLIENT_ACKNOWLEDGE
+     * @see Session#DUPS_OK_ACKNOWLEDGE
+     * @since 2.0
+     */
+    @Override
+    public Session createSession(int sessionMode) throws JMSException {
+        throw new UnsupportedOperationException("createSession(int sessionMode) is unsupported"); 
+    }
+    
     @Override
     public Session createSession(boolean transacted, int ackMode) throws JMSException {
         PooledSession result = (PooledSession) pool.createSession(transacted, ackMode);
@@ -174,6 +212,28 @@ public class PooledConnection implements TopicConnection, QueueConnection, Poole
         // creates / destroys temporary destinations and closes etc.
         result.addSessionEventListener(this);
         return result;
+    }
+    
+    /**
+     * 
+     * @see jakarta.jms.ConnectionConsumer
+     * @since 2.0
+     */
+    @Override
+    public ConnectionConsumer createSharedConnectionConsumer(Topic topic, String subscriptionName, String messageSelector, ServerSessionPool sessionPool, 
+                                                             int maxMessages) throws JMSException {
+        throw new UnsupportedOperationException("createSharedConnectionConsumer() is not supported");
+    }
+
+    /**
+     * 
+     * @see jakarta.jms.ConnectionConsumer
+     * @since 2.0
+     */
+    @Override
+    public ConnectionConsumer createSharedDurableConnectionConsumer(Topic topic, String subscriptionName, String messageSelector, ServerSessionPool sessionPool,
+                                                                    int maxMessages) throws JMSException {
+       throw new UnsupportedOperationException("createSharedConnectionConsumer() is not supported");
     }
 
     // Implementation methods
@@ -201,7 +261,7 @@ public class PooledConnection implements TopicConnection, QueueConnection, Poole
         return pool.getConnection();
     }
 
-    protected void assertNotClosed() throws javax.jms.IllegalStateException {
+    protected void assertNotClosed() throws jakarta.jms.IllegalStateException {
         if (stopped || pool == null) {
             throw new IllegalStateException("Connection closed");
         }
@@ -256,7 +316,7 @@ public class PooledConnection implements TopicConnection, QueueConnection, Poole
             try {
                 session.close();
             } catch (JMSException ex) {
-                LOG.info("failed to close laoned Session \"" + session + "\" on closing pooled connection: " + ex.getMessage());
+                LOG.info("failed to close loaned Session \"" + session + "\" on closing pooled connection: " + ex.getMessage());
             }
         }
         loanedSessions.clear();

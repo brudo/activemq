@@ -25,16 +25,16 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javax.jms.DeliveryMode;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.Queue;
-import javax.jms.QueueConnection;
-import javax.jms.QueueConnectionFactory;
-import javax.jms.QueueReceiver;
-import javax.jms.QueueSender;
-import javax.jms.QueueSession;
-import javax.jms.TextMessage;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.Queue;
+import jakarta.jms.QueueConnection;
+import jakarta.jms.QueueConnectionFactory;
+import jakarta.jms.QueueReceiver;
+import jakarta.jms.QueueSender;
+import jakarta.jms.QueueSession;
+import jakarta.jms.TextMessage;
 import javax.naming.NamingException;
 
 import junit.framework.TestCase;
@@ -43,14 +43,15 @@ import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.AutoFailTestSupport;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.util.Wait;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A AMQ1936Test
  *
  */
 public class AMQ1936Test extends TestCase {
-    private final static Logger logger = Logger.getLogger(AMQ1936Test.class);
+    private final static Logger logger = LoggerFactory.getLogger(AMQ1936Test.class);
     private final static String TEST_QUEUE_NAME = "dynamicQueues/duplicate.message.test.queue";
     // //--
     //
@@ -177,7 +178,7 @@ public class AMQ1936Test extends TestCase {
                         }
                         if (messages.containsKey(message.getJMSMessageID())) {
                             duplicateSignal.countDown();
-                            logger.fatal("duplicate message id detected:" + message.getJMSMessageID());
+                            logger.error("duplicate message id detected:" + message.getJMSMessageID());
                             fail("Duplicate message id detected:" + message.getJMSMessageID());
                         } else {
                             messages.put(message.getJMSMessageID(), message.getJMSMessageID());
@@ -275,14 +276,14 @@ public class AMQ1936Test extends TestCase {
                         try {
                             receiver.close();
                         } catch (JMSException e) {
-                            logger.warn(e);
+                            logger.warn(e.getMessage(), e);
                         }
                     }
                     if (session != null) {
                         try {
                             session.close();
                         } catch (JMSException e) {
-                            logger.warn(e);
+                            logger.warn(e.getMessage(), e);
                         }
                     }
                     if (queueConnection != null) {
@@ -290,12 +291,12 @@ public class AMQ1936Test extends TestCase {
                     }
                 }
             } catch (JMSException e) {
-                logger.error(e);
+                logger.error(e.getMessage(), e);
                 e.printStackTrace();
             } catch (NamingException e) {
-                logger.error(e);
+                logger.error(e.getMessage(), e);
             } catch (Exception e) {
-                logger.error(e);
+                logger.error(e.getMessage(), e);
                 e.printStackTrace();
             }
         }

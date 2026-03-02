@@ -25,9 +25,11 @@ public interface Stomp {
     byte BREAK = '\n';
     byte COLON = ':';
     byte ESCAPE = '\\';
+    byte CARRIAGE_RETURN = '\r';
     byte[] ESCAPE_ESCAPE_SEQ = { 92, 92 };
     byte[] COLON_ESCAPE_SEQ = { 92, 99 };
     byte[] NEWLINE_ESCAPE_SEQ = { 92, 110 };
+    byte[] CARRIAGE_ESCAPE_SEQ = { 92, 114 };
 
     String COMMA = ",";
     String V1_0 = "1.0";
@@ -49,8 +51,14 @@ public interface Stomp {
         String CONNECT = "CONNECT";
         String SEND = "SEND";
         String DISCONNECT = "DISCONNECT";
-        String SUBSCRIBE = "SUB";
-        String UNSUBSCRIBE = "UNSUB";
+        String SUBSCRIBE = "SUBSCRIBE";
+        String UNSUBSCRIBE = "UNSUBSCRIBE";
+
+        // Preserve legacy incorrect allow shortened names for
+        // subscribe and un-subscribe as it has been there for so
+        // long that someone has undoubtedly come to expect it.
+        String SUBSCRIBE_PREFIX = "SUB";
+        String UNSUBSCRIBE_PREFIX = "UNSUB";
 
         String BEGIN_TRANSACTION = "BEGIN";
         String COMMIT_TRANSACTION = "COMMIT";

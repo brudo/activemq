@@ -19,9 +19,9 @@ package org.apache.activemq.broker.scheduler;
 
 import java.io.File;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.Queue;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.Queue;
 import javax.management.ObjectName;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
@@ -40,6 +40,11 @@ import org.junit.rules.TestName;
 public class JobSchedulerTestSupport {
 
     @Rule public TestName name = new TestName();
+
+    enum RestartType {
+        NORMAL,
+        FULL_RECOVERY
+    }
 
     protected String connectionUri;
     protected BrokerService broker;
@@ -112,5 +117,23 @@ public class JobSchedulerTestSupport {
         answer.setSchedulerSupport(true);
         answer.setUseJmx(isUseJmx());
         return answer;
+    }
+
+    protected void restartBroker(RestartType restartType) throws Exception {
+        tearDown();
+
+        if (restartType == RestartType.FULL_RECOVERY)  {
+            File dir = broker.getSchedulerDirectoryFile();
+
+            if (dir != null) {
+                IOHelper.deleteFile(new File(dir, "scheduleDB.data"));
+                IOHelper.deleteFile(new File(dir, "scheduleDB.redo"));
+            }
+        }
+
+        broker = createBroker(false);
+
+        broker.start();
+        broker.waitUntilStarted();
     }
 }

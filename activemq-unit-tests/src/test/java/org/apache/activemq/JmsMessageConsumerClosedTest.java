@@ -18,22 +18,25 @@ package org.apache.activemq;
 
 import static org.junit.Assert.assertNull;
 
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.IllegalStateException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageListener;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.IllegalStateException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageListener;
+import jakarta.jms.Session;
 
 import org.apache.activemq.broker.BrokerService;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  * Test behavior of JMS MessageConsumer API implementation when closed.
  */
+@Category(ParallelTest.class)
 public class JmsMessageConsumerClosedTest {
 
     private Connection connection;

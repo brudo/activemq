@@ -25,15 +25,16 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
 
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerService;
+import org.apache.activemq.util.IOHelper;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.store.kahadb.disk.journal.DataFile;
 import org.apache.activemq.store.kahadb.disk.journal.Journal;
@@ -42,17 +43,19 @@ import org.apache.activemq.util.ByteSequence;
 import org.apache.activemq.util.RecoverableRandomAccessFile;
 import org.junit.After;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+
+@Category(ParallelTest.class)
 @RunWith(Parameterized.class)
 public class JournalCorruptionIndexRecoveryTest {
 
     private static final Logger LOG = LoggerFactory.getLogger(JournalCorruptionIndexRecoveryTest.class);
 
-    private final String KAHADB_DIRECTORY = "target/activemq-data/";
     private final String payload = new String(new byte[1024]);
 
     private ActiveMQConnectionFactory cf = null;
@@ -92,7 +95,6 @@ public class JournalCorruptionIndexRecoveryTest {
         broker.setDeleteAllMessagesOnStartup(delete);
         broker.setPersistent(true);
         broker.setUseJmx(true);
-        broker.setDataDirectory(KAHADB_DIRECTORY);
         broker.addConnector("tcp://localhost:0");
 
         configurePersistence(broker);
@@ -184,9 +186,9 @@ public class JournalCorruptionIndexRecoveryTest {
     }
 
     private void whackIndex(File dataDir) {
-        File indexToDelete = new File(dataDir, "db.data");
+        final File indexToDelete = new File(dataDir, "db.data");
         LOG.info("Whacking index: " + indexToDelete);
-        indexToDelete.delete();
+        IOHelper.deleteFileNonBlocking(indexToDelete);
     }
 
     private void corruptBatchMiddle(int i) throws IOException {
@@ -227,6 +229,7 @@ public class JournalCorruptionIndexRecoveryTest {
         Arrays.fill(bla, fill);
         randomAccessFile.seek(offset);
         randomAccessFile.write(bla, 0, bla.length);
+        dataFile.closeRandomAccessFile(randomAccessFile);
     }
 
     private int getNumberOfJournalFiles() throws IOException {

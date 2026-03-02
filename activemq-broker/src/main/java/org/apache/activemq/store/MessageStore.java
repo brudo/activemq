@@ -176,6 +176,11 @@ public interface MessageStore extends Service {
      */
     void resetBatching();
 
+
+    default void recoverMessages(final MessageRecoveryContext messageRecoveryContext) throws Exception {
+        throw new UnsupportedOperationException("recoverMessages(messageRecoveryContext) is not supported");
+    }
+
     void recoverNextMessages(int maxReturned, MessageRecoveryListener listener) throws Exception;
 
     void dispose(ConnectionContext context);
@@ -209,4 +214,11 @@ public interface MessageStore extends Service {
     void updateMessage(Message message) throws IOException;
 
     void registerIndexListener(IndexListener indexListener);
+
+    StoreType getType();
+
+    enum StoreType {
+        MEMORY, JDBC, KAHADB, TEMP_KAHADB
+    }
+
 }

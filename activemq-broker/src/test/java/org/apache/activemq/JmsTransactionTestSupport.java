@@ -21,17 +21,17 @@ import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageListener;
-import javax.jms.MessageProducer;
-import javax.jms.ObjectMessage;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageListener;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.ObjectMessage;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 
 import org.apache.activemq.broker.BrokerFactory;
 import org.apache.activemq.broker.BrokerService;
@@ -114,6 +114,7 @@ public abstract class JmsTransactionTestSupport extends TestSupport implements M
     /**
      */
     protected BrokerService createBroker() throws Exception, URISyntaxException {
+        System.setProperty("org.apache.activemq.SERIALIZABLE_PACKAGES", "java.util");
         return BrokerFactory.createBroker(new URI("broker://()/localhost?persistent=false"));
     }
 
@@ -161,7 +162,7 @@ public abstract class JmsTransactionTestSupport extends TestSupport implements M
 
         TextMessage message = session.createTextMessage("Batch Message");
         for (int j = 0; j < batchCount; j++) {
-            LOG.info("Producing bacth " + j + " of " + batchSize + " messages");
+            LOG.info("Producing batch " + j + " of " + batchSize + " messages");
 
             beginTx();
             for (int i = 0; i < batchSize; i++) {
@@ -169,7 +170,7 @@ public abstract class JmsTransactionTestSupport extends TestSupport implements M
             }
             messageSent();
             commitTx();
-            LOG.info("Consuming bacth " + j + " of " + batchSize + " messages");
+            LOG.info("Consuming batch " + j + " of " + batchSize + " messages");
 
             beginTx();
             for (int i = 0; i < batchSize; i++) {
@@ -186,7 +187,7 @@ public abstract class JmsTransactionTestSupport extends TestSupport implements M
     }
 
     /**
-     * Sends a batch of messages and validates that the rollbacked message was
+     * Sends a batch of messages and validates that the rolled-back message was
      * not consumed.
      *
      * @throws Exception
@@ -199,7 +200,7 @@ public abstract class JmsTransactionTestSupport extends TestSupport implements M
         producer.send(outbound[0]);
         commitTx();
 
-        // sends a message that gets rollbacked
+        // sends a message that gets rolled-back
         beginTx();
         producer.send(session.createTextMessage("I'm going to get rolled back."));
         rollbackTx();
@@ -223,7 +224,7 @@ public abstract class JmsTransactionTestSupport extends TestSupport implements M
         messages.add(message);
         LOG.info("Received: " + message);
 
-        // validates that the rollbacked was not consumed
+        // validates that the rolled-back was not consumed
         commitTx();
         Message inbound[] = new Message[messages.size()];
         messages.toArray(inbound);
@@ -252,7 +253,7 @@ public abstract class JmsTransactionTestSupport extends TestSupport implements M
         messages.add(message);
         LOG.info("Received: " + message);
 
-        // validates that the rollbacked was not consumed
+        // validates that the rolled-back was not consumed
         commitTx();
         Message inbound[] = new Message[messages.size()];
         messages.toArray(inbound);
@@ -274,7 +275,7 @@ public abstract class JmsTransactionTestSupport extends TestSupport implements M
         producer.send(outbound[0]);
         commitTx();
 
-        // sends a message that gets rollbacked
+        // sends a message that gets rolled-back
         beginTx();
         producer.send(session.createTextMessage("I'm going to get rolled back."));
         consumer.close();
@@ -299,7 +300,7 @@ public abstract class JmsTransactionTestSupport extends TestSupport implements M
         messages.add(message);
         LOG.info("Received: " + message);
 
-        // validates that the rollbacked was not consumed
+        // validates that the rolled-back was not consumed
         commitTx();
         Message inbound[] = new Message[messages.size()];
         messages.toArray(inbound);
@@ -320,7 +321,7 @@ public abstract class JmsTransactionTestSupport extends TestSupport implements M
         producer.send(outbound[0]);
         commitTx();
 
-        // sends a message that gets rollbacked
+        // sends a message that gets rolled-back
         beginTx();
         producer.send(session.createTextMessage("I'm going to get rolled back."));
         consumer.close();
@@ -347,7 +348,7 @@ public abstract class JmsTransactionTestSupport extends TestSupport implements M
         messages.add(message);
         LOG.info("Received: " + message);
 
-        // validates that the rollbacked was not consumed
+        // validates that the rolled-back was not consumed
         commitTx();
         Message inbound[] = new Message[messages.size()];
         messages.toArray(inbound);
@@ -355,7 +356,7 @@ public abstract class JmsTransactionTestSupport extends TestSupport implements M
     }
 
     /**
-     * Sends a batch of messages and validates that the rollbacked message was
+     * Sends a batch of messages and validates that the rolled-back message was
      * redelivered.
      *
      * @throws Exception
@@ -406,7 +407,7 @@ public abstract class JmsTransactionTestSupport extends TestSupport implements M
     }
 
     /**
-     * Sends a batch of messages and validates that the rollbacked message was
+     * Sends a batch of messages and validates that the rolled-back message was
      * redelivered.
      *
      * @throws Exception
@@ -460,7 +461,7 @@ public abstract class JmsTransactionTestSupport extends TestSupport implements M
     }
 
     /**
-     * Sends a batch of messages and validates that the rollbacked message was
+     * Sends a batch of messages and validates that the rolled-back message was
      * not consumed.
      *
      * @throws Exception
@@ -486,12 +487,12 @@ public abstract class JmsTransactionTestSupport extends TestSupport implements M
             LOG.info("Received: " + message);
         }
 
-        // validates that the rollbacked was not consumed
+        // validates that the rolled-back was not consumed
         commitTx();
     }
 
     /**
-     * Perform the test that validates if the rollbacked message was redelivered
+     * Perform the test that validates if the rolled-back message was redelivered
      * multiple times.
      *
      * @throws Exception
@@ -503,7 +504,7 @@ public abstract class JmsTransactionTestSupport extends TestSupport implements M
     }
 
     /**
-     * Sends a batch of messages and validates that the rollbacked message was
+     * Sends a batch of messages and validates that the rolled-back message was
      * not consumed. This test differs by setting the message prefetch to one.
      *
      * @throws Exception
@@ -514,7 +515,7 @@ public abstract class JmsTransactionTestSupport extends TestSupport implements M
     }
 
     /**
-     * Sends a batch of messages and and validates that the rollbacked message
+     * Sends a batch of messages and and validates that the rolled-back message
      * was redelivered. This test differs by setting the message prefetch to
      * one.
      *
@@ -569,6 +570,7 @@ public abstract class JmsTransactionTestSupport extends TestSupport implements M
     }
 
     public void testChangeMutableObjectInObjectMessageThenRollback() throws Exception {
+
         ArrayList<String> list = new ArrayList<String>();
         list.add("First");
         Message outbound = session.createObjectMessage(list);

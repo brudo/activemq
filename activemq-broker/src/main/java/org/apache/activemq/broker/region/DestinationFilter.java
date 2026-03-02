@@ -32,6 +32,7 @@ import org.apache.activemq.command.MessageDispatchNotification;
 import org.apache.activemq.command.ProducerInfo;
 import org.apache.activemq.store.MessageStore;
 import org.apache.activemq.usage.MemoryUsage;
+import org.apache.activemq.usage.TempUsage;
 import org.apache.activemq.usage.Usage;
 import org.apache.activemq.util.SubscriptionKey;
 
@@ -120,6 +121,11 @@ public class DestinationFilter implements Destination {
     @Override
     public void setMemoryUsage(MemoryUsage memoryUsage) {
         next.setMemoryUsage(memoryUsage);
+    }
+
+    @Override
+    public TempUsage getTempUsage() {
+        return next.getTempUsage();
     }
 
     @Override
@@ -319,6 +325,11 @@ public class DestinationFilter implements Destination {
     }
 
     @Override
+    public void messageDispatched(ConnectionContext context, Subscription sub, MessageReference messageReference) {
+        next.messageDispatched(context, sub, messageReference);
+    }
+
+    @Override
     public void messageDiscarded(ConnectionContext context, Subscription sub, MessageReference messageReference) {
         next.messageDiscarded(context, sub, messageReference);
     }
@@ -379,13 +390,43 @@ public class DestinationFilter implements Destination {
     }
 
     @Override
-    public void clearPendingMessages() {
-        next.clearPendingMessages();
+    public void clearPendingMessages(int pendingAdditionsCount) {
+        next.clearPendingMessages(pendingAdditionsCount);
     }
 
     @Override
     public void duplicateFromStore(Message message, Subscription subscription) {
         next.duplicateFromStore(message, subscription);
+    }
+
+    @Override
+    public boolean isSendDuplicateFromStoreToDLQ() {
+        return next.isSendDuplicateFromStoreToDLQ();
+    }
+
+    @Override
+    public void setSendDuplicateFromStoreToDLQ(boolean sendDuplicateFromStoreToDLQ) {
+        next.setSendDuplicateFromStoreToDLQ(sendDuplicateFromStoreToDLQ);
+    }
+
+    @Override
+    public boolean isAdvancedNetworkStatisticsEnabled() {
+        return next.isAdvancedNetworkStatisticsEnabled();
+    }
+
+    @Override
+    public void setAdvancedNetworkStatisticsEnabled(boolean advancedNetworkStatisticsEnabled) {
+        next.setAdvancedNetworkStatisticsEnabled(advancedNetworkStatisticsEnabled);
+    }
+
+    @Override
+    public boolean isAdvancedMessageStatisticsEnabled() {
+        return next.isAdvancedMessageStatisticsEnabled();
+    }
+
+    @Override
+    public void setAdvancedMessageStatisticsEnabled(boolean advancedMessageStatisticsEnabled) {
+        next.setAdvancedMessageStatisticsEnabled(advancedMessageStatisticsEnabled);
     }
 
     public void deleteSubscription(ConnectionContext context, SubscriptionKey key) throws Exception {

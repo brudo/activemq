@@ -28,6 +28,8 @@ import org.apache.activemq.openwire.OpenWireFormat;
 import org.apache.activemq.util.ByteSequence;
 import org.apache.activemq.wireformat.WireFormat;
 
+
+
 public abstract class DataStructureTestSupport extends CombinationTestSupport {
     public boolean cacheEnabled;
     public WireFormat wireFormat;
@@ -70,7 +72,7 @@ public abstract class DataStructureTestSupport extends CombinationTestSupport {
             throw new AssertionFailedError("Not equals, classes don't match. expected: " + expect.getClass() + ", was: " + was.getClass());
         }
         if (expect.getClass().isArray()) {
-            Class componentType = expect.getClass().getComponentType();
+            Class<?> componentType = expect.getClass().getComponentType();
             if (componentType.isPrimitive()) {
                 boolean ok = false;
                 if (componentType == byte.class) {

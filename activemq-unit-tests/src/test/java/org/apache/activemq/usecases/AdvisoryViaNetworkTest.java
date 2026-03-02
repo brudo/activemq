@@ -19,10 +19,12 @@ package org.apache.activemq.usecases;
 import java.net.URI;
 import java.util.Arrays;
 
-import javax.jms.MessageConsumer;
+import jakarta.jms.MessageConsumer;
 
 import org.apache.activemq.JmsMultipleBrokersTestSupport;
+import org.apache.activemq.advisory.AdvisorySupport;
 import org.apache.activemq.broker.BrokerService;
+import org.apache.activemq.broker.region.Destination;
 import org.apache.activemq.broker.region.DestinationInterceptor;
 import org.apache.activemq.broker.region.RegionBroker;
 import org.apache.activemq.broker.region.virtual.CompositeTopic;
@@ -104,12 +106,16 @@ public class AdvisoryViaNetworkTest extends JmsMultipleBrokersTestSupport {
         createConsumer("A", topic1);
         createConsumer("A", new ActiveMQTopic("A.FOO2"));
 
+        // Wait for network bridge to propagate consumers to broker B
+        waitForConsumerOnBroker(brokerB, advisoryTopic);
+        waitForConsumerOnBroker(brokerB, topic1);
+
         //verify that brokerB's advisory prefetch is 10 but normal topic prefetch is 1
         assertEquals(10, brokerB.getDestination(advisoryTopic).getConsumers().get(0).getPrefetchSize());
         assertEquals(1, brokerB.getDestination(topic1).getConsumers().get(0).getPrefetchSize());
 
         //both advisory messages are not acked yet because of optimized acks
-        assertDeqInflight(0, 2);
+        assertDeqInflight(0, 2, topic1, new ActiveMQTopic("A.FOO2"));
     }
 
     /**
@@ -137,11 +143,15 @@ public class AdvisoryViaNetworkTest extends JmsMultipleBrokersTestSupport {
         createConsumer("A", topic1);
         createConsumer("A", new ActiveMQTopic("A.FOO2"));
 
+        // Wait for network bridge to propagate consumers to broker B
+        waitForConsumerOnBroker(brokerB, advisoryTopic);
+        waitForConsumerOnBroker(brokerB, topic1);
+
         //verify that brokerB's advisory prefetch is 1 but normal topic prefetch is 10
         assertEquals(1, brokerB.getDestination(advisoryTopic).getConsumers().get(0).getPrefetchSize());
         assertEquals(10, brokerB.getDestination(topic1).getConsumers().get(0).getPrefetchSize());
 
-        assertDeqInflight(2, 0);
+        assertDeqInflight(2, 0, topic1, new ActiveMQTopic("A.FOO2"));
     }
 
     /**
@@ -168,11 +178,15 @@ public class AdvisoryViaNetworkTest extends JmsMultipleBrokersTestSupport {
         createConsumer("A", topic1);
         createConsumer("A", new ActiveMQTopic("A.FOO2"));
 
+        // Wait for network bridge to propagate consumers to broker B
+        waitForConsumerOnBroker(brokerB, advisoryTopic);
+        waitForConsumerOnBroker(brokerB, topic1);
+
         //verify that both consumers have a prefetch of 10
         assertEquals(10, brokerB.getDestination(advisoryTopic).getConsumers().get(0).getPrefetchSize());
         assertEquals(10, brokerB.getDestination(topic1).getConsumers().get(0).getPrefetchSize());
 
-        assertDeqInflight(0, 2);
+        assertDeqInflight(0, 2, topic1, new ActiveMQTopic("A.FOO2"));
     }
 
     /**
@@ -198,11 +212,15 @@ public class AdvisoryViaNetworkTest extends JmsMultipleBrokersTestSupport {
         createConsumer("A", topic1);
         createConsumer("A", new ActiveMQTopic("A.FOO2"));
 
+        // Wait for network bridge to propagate consumers to broker B
+        waitForConsumerOnBroker(brokerB, advisoryTopic);
+        waitForConsumerOnBroker(brokerB, topic1);
+
         //verify that both consumers have a prefetch of 1
         assertEquals(1, brokerB.getDestination(advisoryTopic).getConsumers().get(0).getPrefetchSize());
         assertEquals(1, brokerB.getDestination(topic1).getConsumers().get(0).getPrefetchSize());
 
-        assertDeqInflight(2, 0);
+        assertDeqInflight(2, 0, topic1, new ActiveMQTopic("A.FOO2"));
     }
 
     /**
@@ -227,7 +245,7 @@ public class AdvisoryViaNetworkTest extends JmsMultipleBrokersTestSupport {
             createConsumer("A", new ActiveMQTopic("A.FOO"));
         }
 
-        assertDeqInflight(7, 3);
+        assertDeqInflight(7, 3, new ActiveMQTopic("A.FOO"));
     }
 
     /**
@@ -254,19 +272,28 @@ public class AdvisoryViaNetworkTest extends JmsMultipleBrokersTestSupport {
             createConsumer("A", new ActiveMQTopic("A.FOO"));
         }
 
-        assertDeqInflight(7, 3);
+        assertDeqInflight(7, 3, new ActiveMQTopic("A.FOO"));
     }
 
-    private void assertDeqInflight(final int dequeue, final int inflight) throws Exception {
-        assertTrue("deq and inflight as expected", Wait.waitFor(new Wait.Condition() {
-            @Override
-            public boolean isSatisified() throws Exception {
-                RegionBroker regionBroker = (RegionBroker) brokers.get("A").broker.getRegionBroker();
-                LOG.info("A Deq:" + regionBroker.getDestinationStatistics().getDequeues().getCount());
-                LOG.info("A Inflight:" + regionBroker.getDestinationStatistics().getInflight().getCount());
-                return regionBroker.getDestinationStatistics().getDequeues().getCount() == dequeue
-                        && regionBroker.getDestinationStatistics().getInflight().getCount() == inflight;
+    private void assertDeqInflight(final int dequeue, final int inflight,
+                                   final ActiveMQTopic... topics) throws Exception {
+        // Use >= instead of == because duplex bridges with statically included destinations
+        // may generate additional advisory messages from the bridge's own subscriptions,
+        // depending on subscription registration ordering.
+        assertTrue("deq and inflight as expected", Wait.waitFor(() -> {
+            long actualDeq = 0;
+            long actualInflight = 0;
+            for (final ActiveMQTopic topic : topics) {
+                final ActiveMQTopic advisory = AdvisorySupport.getConsumerAdvisoryTopic(topic);
+                final Destination destination = brokers.get("A").broker.getDestination(advisory);
+                if (destination != null) {
+                    actualDeq += destination.getDestinationStatistics().getDequeues().getCount();
+                    actualInflight += destination.getDestinationStatistics().getInflight().getCount();
+                }
             }
+            LOG.info("A Deq:{} (expected >={}), Inflight:{} (expected >={})",
+                    actualDeq, dequeue, actualInflight, inflight);
+            return actualDeq >= dequeue && actualInflight >= inflight;
         }));
     }
 
@@ -390,6 +417,17 @@ public class AdvisoryViaNetworkTest extends JmsMultipleBrokersTestSupport {
     public void setUp() throws Exception {
         super.setAutoFail(true);
         super.setUp();
+    }
+
+    private void waitForConsumerOnBroker(final BrokerService broker, final ActiveMQTopic topic) throws Exception {
+        assertTrue("Consumer on " + broker.getBrokerName() + " for " + topic,
+            Wait.waitFor(() -> {
+                try {
+                    return !broker.getDestination(topic).getConsumers().isEmpty();
+                } catch (final Exception e) {
+                    return false;
+                }
+            }, 30000, 100));
     }
 
 }

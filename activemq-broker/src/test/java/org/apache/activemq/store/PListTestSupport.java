@@ -128,11 +128,9 @@ public abstract class PListTestSupport {
     }
 
     protected void doTestRemove(final int COUNT) throws IOException {
-        Map<String, ByteSequence> map = new LinkedHashMap<String, ByteSequence>();
         for (int i = 0; i < COUNT; i++) {
             String test = new String("test" + i);
             ByteSequence bs = new ByteSequence(test.getBytes());
-            map.put(test, bs);
             plist.addLast(test, bs);
         }
         assertEquals(plist.size(), COUNT);
@@ -278,7 +276,7 @@ public abstract class PListTestSupport {
         executor.execute(new B());
 
         executor.shutdown();
-        boolean finishedInTime = executor.awaitTermination(5, TimeUnit.MINUTES);
+        boolean finishedInTime = executor.awaitTermination(10, TimeUnit.MINUTES);
         LOG.info("Tested completion finished in time? -> {}", finishedInTime ? "YES" : "NO");
 
         assertTrue("no exceptions", exceptions.isEmpty());

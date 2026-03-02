@@ -21,15 +21,15 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Queue;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
 
@@ -43,11 +43,13 @@ import org.apache.activemq.broker.region.policy.PolicyEntry;
 import org.apache.activemq.broker.region.policy.PolicyMap;
 import org.apache.activemq.store.kahadb.KahaDBPersistenceAdapter;
 import org.apache.activemq.util.DefaultTestAppender;
-import org.apache.log4j.Appender;
-import org.apache.log4j.Level;
-import org.apache.log4j.spi.LoggingEvent;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LogEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+
 
 public class QueuePurgeTest extends CombinationTestSupport {
     private static final Logger LOG = LoggerFactory.getLogger(QueuePurgeTest.class);
@@ -108,14 +110,15 @@ public class QueuePurgeTest extends CombinationTestSupport {
         QueueViewMBean proxy = getProxyToQueueViewMBean();
         LOG.info("purging..");
 
-        org.apache.log4j.Logger log4jLogger = org.apache.log4j.Logger.getLogger(org.apache.activemq.broker.jmx.QueueView.class);
+        org.apache.logging.log4j.core.Logger log4jLogger = (org.apache.logging.log4j.core.Logger)LogManager.getLogger(org.apache.activemq.broker.jmx.QueueView.class);
+        
         final AtomicBoolean gotPurgeLogMessage = new AtomicBoolean(false);
 
         Appender appender = new DefaultTestAppender() {
             @Override
-            public void doAppend(LoggingEvent event) {
-                if (event.getMessage() instanceof String) {
-                    String message = (String) event.getMessage();
+            public void append(LogEvent event) {
+                if (event.getMessage() != null) {
+                    String message = event.getMessage().getFormattedMessage();
                     if (message.contains("purge of " + NUM_TO_SEND +" messages")) {
                         LOG.info("Received a log message: {} ", event.getMessage());
                         gotPurgeLogMessage.set(true);
@@ -123,16 +126,14 @@ public class QueuePurgeTest extends CombinationTestSupport {
                 }
             }
         };
-
-        Level level = log4jLogger.getLevel();
-        log4jLogger.setLevel(Level.INFO);
+        appender.start();
         log4jLogger.addAppender(appender);
+
         try {
 
             proxy.purge();
 
         } finally {
-            log4jLogger.setLevel(level);
             log4jLogger.removeAppender(appender);
         }
 

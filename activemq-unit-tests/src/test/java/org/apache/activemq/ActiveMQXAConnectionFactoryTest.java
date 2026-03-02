@@ -23,17 +23,17 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.TextMessage;
-import javax.jms.XAConnection;
-import javax.jms.XAConnectionFactory;
-import javax.jms.XAQueueConnection;
-import javax.jms.XASession;
-import javax.jms.XATopicConnection;
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.TextMessage;
+import jakarta.jms.XAConnection;
+import jakarta.jms.XAConnectionFactory;
+import jakarta.jms.XAQueueConnection;
+import jakarta.jms.XASession;
+import jakarta.jms.XATopicConnection;
 import javax.transaction.xa.XAException;
 import javax.transaction.xa.XAResource;
 import javax.transaction.xa.Xid;
@@ -446,17 +446,51 @@ public class ActiveMQXAConnectionFactoryTest extends CombinationTestSupport {
         try {
             session.commit();
             fail("expect exception after close");
-        } catch (javax.jms.IllegalStateException expected) {}
+        } catch (jakarta.jms.IllegalStateException expected) {}
 
         try {
             session.rollback();
             fail("expect exception after close");
-        } catch (javax.jms.IllegalStateException expected) {}
+        } catch (jakarta.jms.IllegalStateException expected) {}
 
         try {
             session.getTransacted();
             fail("expect exception after close");
-        } catch (javax.jms.IllegalStateException expected) {}
+        } catch (jakarta.jms.IllegalStateException expected) {}
+    }
+
+    public void testProducerFailAfterRollbackOnly() throws Exception {
+
+        ActiveMQConnectionFactory cf1 = getXAConnectionFactory("vm://localhost?broker.persistent=false");
+        XAConnection connection1 = (XAConnection)cf1.createConnection();
+        connection1.start();
+
+        XASession session = connection1.createXASession();
+        XAResource resource = session.getXAResource();
+        Destination dest = new ActiveMQQueue(getName());
+
+        // publish a message
+        Xid tid = createXid();
+        resource.start(tid, XAResource.TMNOFLAGS);
+        MessageProducer producer = session.createProducer(dest);
+        ActiveMQTextMessage message  = new ActiveMQTextMessage();
+        message.setText(getName());
+
+        // can happen out of band with XA via RAR
+        resource.end(tid, XAResource.TMFAIL);
+        ((ActiveMQSession)session).getTransactionContext().setRollbackOnly(true);
+        try {
+            producer.send(message);
+            fail("expect error on setRollbackOnly");
+        } catch (JMSException expected) {}
+
+        // rollback only state does not linger
+        tid = createXid();
+        resource.start(tid, XAResource.TMNOFLAGS);
+        producer.send(message);
+        resource.end(tid, XAResource.TMSUCCESS);
+        resource.commit(tid, true);
+        connection1.close();
     }
 
     public void testRollbackXaErrorCode() throws Exception {

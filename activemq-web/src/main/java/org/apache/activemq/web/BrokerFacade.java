@@ -97,7 +97,7 @@ public interface BrokerFacade {
 	/**
 	 * All active non-durable subscribers to a topic.
 	 * 
-	 * @param queueName
+	 * @param topicName
 	 *            the name of the topic, not <code>null</code>
 	 * @return not <code>null</code>
 	 * @throws Exception
@@ -108,8 +108,6 @@ public interface BrokerFacade {
 	/**
 	 * All active non-durable subscribers to a topic.
 	 * 
-	 * @param queueName
-	 *            the name of the topic, not <code>null</code>
 	 * @return not <code>null</code>
 	 * @throws Exception
 	 */
@@ -136,12 +134,12 @@ public interface BrokerFacade {
 			throws Exception;
 
 	/**
-	 * The names of all transport connectors of the broker (f.e. openwire, ssl)
+	 * All transport connectors of the broker (f.e. openwire, ssl)
 	 * 
 	 * @return not <code>null</code>
 	 * @throws Exception
 	 */
-	Collection<String> getConnectors() throws Exception;
+	Collection<ConnectorViewMBean> getConnectors() throws Exception;
 
 	/**
 	 * A transport connectors.
@@ -162,8 +160,7 @@ public interface BrokerFacade {
 	Collection<ConnectionViewMBean> getConnections() throws Exception;
 
 	/**
-	 * The names of all connections to a specific transport connectors of the
-	 * broker.
+	 * All connections to a specific transport connectors of the broker.
 	 * 
 	 * @see #getConnection(String)
 	 * @param connectorName
@@ -171,7 +168,7 @@ public interface BrokerFacade {
 	 * @return not <code>null</code>
 	 * @throws Exception
 	 */
-	Collection<String> getConnections(String connectorName) throws Exception;
+	Collection<ConnectionViewMBean> getConnections(String connectorName) throws Exception;
 
 	/**
 	 * A specific connection to the broker.

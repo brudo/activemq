@@ -24,15 +24,13 @@ import java.io.InputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.io.Serializable;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.InflaterInputStream;
 
-import javax.jms.JMSException;
-import javax.jms.ObjectMessage;
+import jakarta.jms.JMSException;
+import jakarta.jms.ObjectMessage;
 
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.util.ByteArrayInputStream;
@@ -59,13 +57,13 @@ import org.apache.activemq.wireformat.WireFormat;
  * written to.
  *
  * @openwire:marshaller code="26"
- * @see javax.jms.Session#createObjectMessage()
- * @see javax.jms.Session#createObjectMessage(Serializable)
- * @see javax.jms.BytesMessage
- * @see javax.jms.MapMessage
- * @see javax.jms.Message
- * @see javax.jms.StreamMessage
- * @see javax.jms.TextMessage
+ * @see jakarta.jms.Session#createObjectMessage()
+ * @see jakarta.jms.Session#createObjectMessage(Serializable)
+ * @see jakarta.jms.BytesMessage
+ * @see jakarta.jms.MapMessage
+ * @see jakarta.jms.Message
+ * @see jakarta.jms.StreamMessage
+ * @see jakarta.jms.TextMessage
  */
 public class ActiveMQObjectMessage extends ActiveMQMessage implements ObjectMessage, TransientInitializer {
 
@@ -129,6 +127,11 @@ public class ActiveMQObjectMessage extends ActiveMQMessage implements ObjectMess
     }
 
     @Override
+    public boolean isContentMarshalled() {
+        return content != null || object == null;
+    }
+
+    @Override
     public byte getDataStructureType() {
         return DATA_STRUCTURE_TYPE;
     }
@@ -166,8 +169,8 @@ public class ActiveMQObjectMessage extends ActiveMQMessage implements ObjectMess
      * @param newObject the message's data
      * @throws JMSException if the JMS provider fails to set the object due to
      *                 some internal error.
-     * @throws javax.jms.MessageFormatException if object serialization fails.
-     * @throws javax.jms.MessageNotWriteableException if the message is in
+     * @throws jakarta.jms.MessageFormatException if object serialization fails.
+     * @throws jakarta.jms.MessageNotWriteableException if the message is in
      *                 read-only mode.
      */
 
@@ -191,9 +194,18 @@ public class ActiveMQObjectMessage extends ActiveMQMessage implements ObjectMess
      */
     @Override
     public Serializable getObject() throws JMSException {
-        if (object == null && getContent() != null) {
+        final ByteSequence content = getContent();
+        if (object == null && content != null) {
+            this.object = deserialize(content);
+        }
+        return this.object;
+    }
+
+    private Serializable deserialize(ByteSequence content) throws JMSException {
+        Serializable object = null;
+
+        if (content != null) {
             try {
-                ByteSequence content = getContent();
                 InputStream is = new ByteArrayInputStream(content);
                 if (isCompressed()) {
                     is = new InflaterInputStream(is);
@@ -213,7 +225,7 @@ public class ActiveMQObjectMessage extends ActiveMQMessage implements ObjectMess
                 throw JMSExceptionSupport.create("Failed to build body from bytes. Reason: " + e, e);
             }
         }
-        return this.object;
+        return object;
     }
 
     @Override
@@ -273,5 +285,21 @@ public class ActiveMQObjectMessage extends ActiveMQMessage implements ObjectMess
     public void initTransients() {
         trustedPackages = Arrays.asList(ClassLoadingAwareObjectInputStream.serializablePackages);
         trustAllPackages = false;
+    }
+
+    @Override
+    public boolean isBodyAssignableTo(Class c) throws JMSException {
+        final Serializable object = getObject();
+        if (object == null) {
+            return true;
+        }
+        return Serializable.class == c || Object.class == c || c.isInstance(object);
+    }
+
+    @SuppressWarnings("unchecked")
+    protected <T> T doGetBody(Class<T> asType) throws JMSException {
+        storeContent();
+        final ByteSequence content = getContent();
+        return content != null ? (T) deserialize(content) : null;
     }
 }

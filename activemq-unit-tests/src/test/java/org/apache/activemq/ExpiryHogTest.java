@@ -17,9 +17,9 @@
 package org.apache.activemq;
 
 import java.util.concurrent.TimeUnit;
-import javax.jms.ConnectionFactory;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.region.policy.PolicyEntry;
 import org.apache.activemq.broker.region.policy.PolicyMap;
@@ -28,11 +28,14 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.BlockJUnit4ClassRunner;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  * User: gtully
  */
 @RunWith(BlockJUnit4ClassRunner.class)
+@Category(ParallelTest.class)
 public class ExpiryHogTest extends JmsMultipleClientsTestSupport {
     boolean sleep = false;
 

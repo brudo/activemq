@@ -16,11 +16,9 @@
  */
 package org.apache.activemq.xbean;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
 import junit.framework.TestCase;
-
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerService;
 import org.slf4j.Logger;

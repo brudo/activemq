@@ -16,8 +16,6 @@
  */
 package org.apache.activemq.bugs;
 
-import com.google.common.base.Throwables;
-
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.command.ActiveMQBytesMessage;
@@ -34,12 +32,12 @@ import java.util.Arrays;
 import java.util.Random;
 import java.util.zip.DataFormatException;
 
-import javax.jms.Connection;
-import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Queue;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
 
 public class AMQ6244Test {
 
@@ -112,7 +110,12 @@ public class AMQ6244Test {
                 final ActiveMQBytesMessage uncompressedMsg = receiveMsg(consumer, compressedMsg);
                 validateMsgContent(uncompressedMsg);
             } catch (JMSException jmsE) {
-                final Throwable rootCause = Throwables.getRootCause(jmsE);
+                Throwable cause = jmsE.getCause();
+                Throwable rootCause = null;
+                while (cause != null) {
+                    rootCause = cause;
+                    cause = cause.getCause();
+                }
 
                 if (rootCause instanceof DataFormatException || rootCause instanceof NegativeArraySizeException) {
                     final StringWriter sw = new StringWriter();

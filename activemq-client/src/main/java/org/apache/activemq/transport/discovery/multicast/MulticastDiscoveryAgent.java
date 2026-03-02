@@ -291,27 +291,30 @@ public class MulticastDiscoveryAgent implements DiscoveryAgent, Runnable {
                 discoveryURI = new URI(DEFAULT_DISCOVERY_URI_STRING);
             }
             
-            if (LOG.isTraceEnabled()) 
-        	  	LOG.trace("start - discoveryURI = " + discoveryURI);        	  	        	  
-        	  
-        	  String myHost = discoveryURI.getHost();
-        	  int    myPort = discoveryURI.getPort(); 
-        	     
-        	  if( DEFAULT_HOST_STR.equals(myHost) ) 
-        	  	myHost = DEFAULT_HOST_IP;       	      	  
-        	  
-        	  if(myPort < 0 )
-        	    myPort = DEFAULT_PORT;        	    
-        	  
-        	  if (LOG.isTraceEnabled()) {
-        	  	LOG.trace("start - myHost = " + myHost); 
-        	  	LOG.trace("start - myPort = " + myPort);   	
-        	  	LOG.trace("start - group  = " + group );		       	  	
-        	  	LOG.trace("start - interface  = " + mcInterface );
-        	  	LOG.trace("start - network interface  = " + mcNetworkInterface );
-        	  	LOG.trace("start - join network interface  = " + mcJoinNetworkInterface );
-        	  }	
-        	  
+            if (LOG.isTraceEnabled()) {
+                LOG.trace("start - discoveryURI = " + discoveryURI);
+            }
+
+            String myHost = discoveryURI.getHost();
+            int    myPort = discoveryURI.getPort();
+
+            if (DEFAULT_HOST_STR.equals(myHost)) {
+                myHost = DEFAULT_HOST_IP;
+            }
+
+            if (myPort < 0) {
+                myPort = DEFAULT_PORT;
+            }
+
+            if (LOG.isTraceEnabled()) {
+                LOG.trace("start - myHost = " + myHost);
+                LOG.trace("start - myPort = " + myPort);
+                LOG.trace("start - group  = " + group);
+                LOG.trace("start - interface  = " + mcInterface);
+                LOG.trace("start - network interface  = " + mcNetworkInterface);
+                LOG.trace("start - join network interface  = " + mcJoinNetworkInterface);
+            }
+
             this.inetAddress = InetAddress.getByName(myHost);
             this.sockAddress = new InetSocketAddress(this.inetAddress, myPort);
             mcast = new MulticastSocket(myPort);
@@ -342,20 +345,22 @@ public class MulticastDiscoveryAgent implements DiscoveryAgent, Runnable {
     private NetworkInterface findNetworkInterface() throws SocketException {
         Enumeration<NetworkInterface> ifcs = NetworkInterface.getNetworkInterfaces();
         List<NetworkInterface> possibles = new ArrayList<NetworkInterface>();
-        while (ifcs.hasMoreElements()) {
-            NetworkInterface ni = ifcs.nextElement();
-            try {
-                if (ni.supportsMulticast()
-                        && ni.isUp()) {
-                    for (InterfaceAddress ia : ni.getInterfaceAddresses()) {
-                        if (ia != null && ia.getAddress() instanceof java.net.Inet4Address
-                                && !ia.getAddress().isLoopbackAddress()
-                                && (ni.getDisplayName()==null || !ni.getDisplayName().startsWith("vnic"))) {
-                            possibles.add(ni);
+        if (ifcs != null) {
+            while (ifcs.hasMoreElements()) {
+                NetworkInterface ni = ifcs.nextElement();
+                try {
+                    if (ni.supportsMulticast()
+                            && ni.isUp()) {
+                        for (InterfaceAddress ia : ni.getInterfaceAddresses()) {
+                            if (ia != null && ia.getAddress() instanceof java.net.Inet4Address
+                                    && !ia.getAddress().isLoopbackAddress()
+                                    && (ni.getDisplayName()==null || !ni.getDisplayName().startsWith("vnic"))) {
+                                possibles.add(ni);
+                            }
                         }
                     }
-                }
-            } catch (SocketException ignored) {}
+                } catch (SocketException ignored) {}
+            }
         }
         return possibles.isEmpty() ? null : possibles.get(possibles.size() - 1);
     }

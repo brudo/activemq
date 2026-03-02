@@ -68,6 +68,8 @@ public class AnnotatedMBean extends StandardMBean {
         }
     }
 
+    private final ObjectName objectName;
+
     private static byte byteFromProperty(String s) {
         byte val = OFF;
         String config = System.getProperty(s, "").toLowerCase(Locale.ENGLISH);
@@ -88,7 +90,7 @@ public class AnnotatedMBean extends StandardMBean {
 
         for (Class c : object.getClass().getInterfaces()) {
             if (mbeanName.equals(c.getName())) {
-                context.registerMBean(new AnnotatedMBean(object, c), objectName);
+                context.registerMBean(new AnnotatedMBean(object, c, objectName), objectName);
                 return;
             }
         }
@@ -97,13 +99,15 @@ public class AnnotatedMBean extends StandardMBean {
     }
 
     /** Instance where the MBean interface is implemented by another object. */
-    public <T> AnnotatedMBean(T impl, Class<T> mbeanInterface) throws NotCompliantMBeanException {
+    public <T> AnnotatedMBean(T impl, Class<T> mbeanInterface, ObjectName objectName) throws NotCompliantMBeanException {
         super(impl, mbeanInterface);
+        this.objectName = objectName;
     }
 
     /** Instance where the MBean interface is implemented by this object. */
-    protected AnnotatedMBean(Class<?> mbeanInterface) throws NotCompliantMBeanException {
+    protected AnnotatedMBean(Class<?> mbeanInterface, ObjectName objectName) throws NotCompliantMBeanException {
         super(mbeanInterface);
+        this.objectName = objectName;
     }
 
     /** {@inheritDoc} */
@@ -198,9 +202,18 @@ public class AnnotatedMBean extends StandardMBean {
 
     @Override
     public Object invoke(String s, Object[] objects, String[] strings) throws MBeanException, ReflectionException {
+        objects = (objects == null) ? new Object[]{} : objects;
         JMXAuditLogEntry entry = null;
         if (audit != OFF) {
-            Subject subject = Subject.getSubject(AccessController.getContext());
+            /**
+             * [AMQ-9563] JDK JAAS API conversion assistance
+             *
+             * Use a shim along with multi-release jar to
+             * support JDK 17 and JDK 24+ in one build.
+             *
+             * see: src/main/java24 folder
+             */
+            Subject subject = SubjectShim.lookupSubject();
             String caller = "anonymous";
             if (subject != null) {
                 caller = "";
@@ -212,6 +225,7 @@ public class AnnotatedMBean extends StandardMBean {
             entry = new JMXAuditLogEntry();
             entry.setUser(caller);
             entry.setTimestamp(System.currentTimeMillis());
+            entry.setTarget(extractTargetTypeProperty(objectName));
             entry.setOperation(this.getMBeanInfo().getClassName() + "." + s);
 
             try
@@ -241,6 +255,21 @@ public class AnnotatedMBean extends StandardMBean {
         if ((audit&EXIT) == EXIT) {
             entry.complete();
             auditLog.log(entry);
+        }
+        return result;
+    }
+
+    // keep brokerName last b/c objectNames include the brokerName
+    final static String[] targetPropertiesCandidates = new String[] {"destinationName", "networkConnectorName", "connectorName", "connectionName", "brokerName"};
+    private String extractTargetTypeProperty(ObjectName objectName) {
+        String result = null;
+        for (String attr: targetPropertiesCandidates) {
+            try {
+                result = objectName.getKeyProperty(attr);
+                if (result != null) {
+                    break;
+                }
+            } catch (NullPointerException ok) {}
         }
         return result;
     }

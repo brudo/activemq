@@ -28,7 +28,7 @@ import org.apache.activemq.command.ActiveMQTopic;
 import org.apache.activemq.filter.DestinationFilter;
 
 /**
- * Creates <a href="http://activemq.org/site/virtual-destinations.html">Virtual
+ * Creates <a href="https://activemq.apache.org/virtual-destinations">Virtual
  * Topics</a> using a prefix and postfix. The virtual destination creates a
  * wildcard that is then used to look up all active queue subscriptions which
  * match.
@@ -44,6 +44,8 @@ public class VirtualTopic implements VirtualDestination {
     private boolean local = false;
     private boolean concurrentSend = false;
     private boolean transactedSend = false;
+    private boolean dropOnResourceLimit = false;
+    private boolean setOriginalDestination = true;
 
     @Override
     public ActiveMQDestination getVirtualDestination() {
@@ -65,7 +67,7 @@ public class VirtualTopic implements VirtualDestination {
     public Destination interceptMappedDestination(Destination destination) {
         // do a reverse map from destination to get actual virtual destination
         final String physicalName = destination.getActiveMQDestination().getPhysicalName();
-        final Pattern pattern = Pattern.compile(getRegex(prefix) + "(.*)" + getRegex(postfix));
+        final Pattern pattern = Pattern.compile(getRegex(prefix) + "(.+)" + getRegex(postfix));
         final Matcher matcher = pattern.matcher(physicalName);
         if (matcher.matches()) {
             final String virtualName = matcher.group(1);
@@ -242,5 +244,21 @@ public class VirtualTopic implements VirtualDestination {
         if (transactedSend != other.transactedSend)
             return false;
         return true;
+    }
+
+    public boolean isDropOnResourceLimit() {
+        return dropOnResourceLimit;
+    }
+
+    public void setDropOnResourceLimit(boolean dropOnResourceLimit) {
+        this.dropOnResourceLimit = dropOnResourceLimit;
+    }
+
+    public boolean isSetOriginalDestination() {
+        return setOriginalDestination;
+    }
+
+    public void setSetOriginalDestination(boolean setOriginalDestination) {
+        this.setOriginalDestination = setOriginalDestination;
     }
 }

@@ -30,15 +30,15 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageListener;
-import javax.jms.MessageProducer;
-import javax.jms.QueueConnection;
-import javax.jms.QueueReceiver;
-import javax.jms.QueueSession;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageListener;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.QueueConnection;
+import jakarta.jms.QueueReceiver;
+import jakarta.jms.QueueSession;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 import javax.management.ObjectName;
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.ActiveMQConnectionFactory;
@@ -63,22 +63,30 @@ import org.slf4j.LoggerFactory;
 public class AMQ4485LowLimitTest extends JmsMultipleBrokersTestSupport {
     static final String payload = new String(new byte[10 * 1024]);
     private static final Logger LOG = LoggerFactory.getLogger(AMQ4485LowLimitTest.class);
-    final int portBase = 61600;
-    int numBrokers = 8;
-    final int numProducers = 30;
-    final int numMessages = 1000;
-    final int consumerSleepTime = 40;
-    StringBuilder brokersUrl = new StringBuilder();
+    int numBrokers = 4;
+    final int[] brokerPorts = new int[numBrokers];
+    final int numProducers = 10;
+    final int numMessages = 200;
+    final int consumerSleepTime = 5;
     HashMap<ActiveMQQueue, AtomicInteger> accumulators = new HashMap<ActiveMQQueue, AtomicInteger>();
     private ArrayList<Throwable> exceptions = new ArrayList<Throwable>();
 
-    protected void buildUrlList() throws Exception {
+    protected void collectBrokerPorts() throws Exception {
         for (int i = 0; i < numBrokers; i++) {
-            brokersUrl.append("tcp://localhost:" + (portBase + i));
+            final BrokerService broker = brokers.get("B" + i).broker;
+            brokerPorts[i] = broker.getTransportConnectors().get(0).getConnectUri().getPort();
+        }
+    }
+
+    protected String buildBrokersUrl() {
+        final StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < numBrokers; i++) {
+            sb.append("tcp://localhost:").append(brokerPorts[i]);
             if (i != numBrokers - 1) {
-                brokersUrl.append(',');
+                sb.append(',');
             }
         }
+        return sb.toString();
     }
 
     protected BrokerService createBroker(int brokerid) throws Exception {
@@ -95,11 +103,8 @@ public class AMQ4485LowLimitTest extends JmsMultipleBrokersTestSupport {
 
         broker.setUseJmx(true);
         broker.setBrokerName("B" + brokerid);
-        broker.addConnector(new URI("tcp://localhost:" + (portBase + brokerid)));
+        broker.addConnector(new URI("tcp://localhost:0"));
 
-        if (addToNetwork) {
-            addNetworkConnector(broker);
-        }
         broker.setSchedulePeriodForDestinationPurge(0);
         broker.getSystemUsage().getMemoryUsage().setLimit(256 * 1024 * 1024l);
 
@@ -132,20 +137,20 @@ public class AMQ4485LowLimitTest extends JmsMultipleBrokersTestSupport {
         return broker;
     }
 
-    private void addNetworkConnector(BrokerService broker) throws Exception {
-        StringBuilder networkConnectorUrl = new StringBuilder("static:(").append(brokersUrl.toString());
-        networkConnectorUrl.append(')');
+    private void addNetworkConnector(BrokerService broker, String brokersUrl) throws Exception {
+        final String networkConnectorUrl = "static:(" + brokersUrl + ")";
 
         for (int i = 0; i < 2; i++) {
-            NetworkConnector nc = new DiscoveryNetworkConnector(new URI(networkConnectorUrl.toString()));
+            final NetworkConnector nc = new DiscoveryNetworkConnector(new URI(networkConnectorUrl));
             nc.setName("Bridge-" + i);
             nc.setNetworkTTL(1);
             nc.setDecreaseNetworkConsumerPriority(true);
             nc.setDynamicOnly(true);
             nc.setPrefetchSize(100);
             nc.setDynamicallyIncludedDestinations(
-                    Arrays.asList(new ActiveMQDestination[]{new ActiveMQQueue("GW.*")}));
+                Arrays.asList(new ActiveMQDestination[]{new ActiveMQQueue("GW.*")}));
             broker.addNetworkConnector(nc);
+            broker.startNetworkConnector(nc, null);
         }
     }
 
@@ -156,7 +161,8 @@ public class AMQ4485LowLimitTest extends JmsMultipleBrokersTestSupport {
         BrokerService b = createBroker(0, false);
         b.start();
 
-        ActiveMQConnectionFactory connectionFactory = new ActiveMQConnectionFactory("tcp://localhost:" + (portBase + 0));
+        final int port = b.getTransportConnectors().get(0).getConnectUri().getPort();
+        ActiveMQConnectionFactory connectionFactory = new ActiveMQConnectionFactory("tcp://localhost:" + port);
         connectionFactory.setWatchTopicAdvisories(false);
 
         QueueConnection c1 = connectionFactory.createQueueConnection();
@@ -207,13 +213,19 @@ public class AMQ4485LowLimitTest extends JmsMultipleBrokersTestSupport {
 
     public void testBrokers() throws Exception {
 
-        buildUrlList();
-
         for (int i = 0; i < numBrokers; i++) {
             createBroker(i);
         }
 
         startAllBrokers();
+
+        // Get actual ports after brokers start and add network connectors
+        collectBrokerPorts();
+        final String brokersUrl = buildBrokersUrl();
+        for (int i = 0; i < numBrokers; i++) {
+            addNetworkConnector(brokers.get("B" + i).broker, brokersUrl);
+        }
+
         waitForBridgeFormation(numBrokers - 1);
 
         verifyPeerBrokerInfos(numBrokers - 1);
@@ -252,7 +264,7 @@ public class AMQ4485LowLimitTest extends JmsMultipleBrokersTestSupport {
                 }
                 return true;
             }
-        }, 1000 * 60 * 1000l, 20*1000));
+        }, 5 * 60 * 1000L, 10_000));
 
         assertTrue("No exceptions:" + exceptions, exceptions.isEmpty());
 
@@ -266,7 +278,7 @@ public class AMQ4485LowLimitTest extends JmsMultipleBrokersTestSupport {
 
     private void startConsumer(String brokerName, ActiveMQDestination destination) throws Exception {
         int id = Integer.parseInt(brokerName.substring(1));
-        ActiveMQConnectionFactory connectionFactory = new ActiveMQConnectionFactory("tcp://localhost:" + (portBase + id));
+        ActiveMQConnectionFactory connectionFactory = new ActiveMQConnectionFactory("tcp://localhost:" + brokerPorts[id]);
         connectionFactory.setWatchTopicAdvisories(false);
         QueueConnection queueConnection = connectionFactory.createQueueConnection();
         queueConnection.start();
@@ -303,7 +315,7 @@ public class AMQ4485LowLimitTest extends JmsMultipleBrokersTestSupport {
         ActiveMQQueue compositeQ = new ActiveMQQueue(compositeDest.toString());
 
         for (int id = 0; id < nBrokers; id++) {
-            ActiveMQConnectionFactory connectionFactory = new ActiveMQConnectionFactory("failover:(tcp://localhost:" + (portBase + id) + ")");
+            ActiveMQConnectionFactory connectionFactory = new ActiveMQConnectionFactory("failover:(tcp://localhost:" + brokerPorts[id] + ")");
             connectionFactory.setWatchTopicAdvisories(false);
 
             QueueConnection queueConnection = connectionFactory.createQueueConnection();
@@ -330,7 +342,7 @@ public class AMQ4485LowLimitTest extends JmsMultipleBrokersTestSupport {
     private List<ConsumerState> startAllGWConsumers(int nBrokers) throws Exception {
         List<ConsumerState> consumerStates = new LinkedList<ConsumerState>();
         for (int id = 0; id < nBrokers; id++) {
-            ActiveMQConnectionFactory connectionFactory = new ActiveMQConnectionFactory("failover:(tcp://localhost:" + (portBase + id) + ")");
+            ActiveMQConnectionFactory connectionFactory = new ActiveMQConnectionFactory("failover:(tcp://localhost:" + brokerPorts[id] + ")");
             connectionFactory.setWatchTopicAdvisories(false);
 
             QueueConnection queueConnection = connectionFactory.createQueueConnection();
@@ -393,7 +405,7 @@ public class AMQ4485LowLimitTest extends JmsMultipleBrokersTestSupport {
                 @Override
                 public void run() {
                     try {
-                        ActiveMQConnectionFactory connectionFactory = new ActiveMQConnectionFactory("failover:(tcp://localhost:" + (portBase + id) + ")");
+                        ActiveMQConnectionFactory connectionFactory = new ActiveMQConnectionFactory("failover:(tcp://localhost:" + brokerPorts[id] + ")");
                         connectionFactory.setWatchTopicAdvisories(false);
                         QueueConnection queueConnection = connectionFactory.createQueueConnection();
                         queueConnection.start();

@@ -16,27 +16,21 @@
  */
 package org.apache.activemq.usecases;
 
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
-
-import javax.jms.Connection;
-import javax.jms.DeliveryMode;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageListener;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.Topic;
-import javax.jms.TopicSubscriber;
-import javax.management.ObjectName;
-
+import jakarta.jms.Connection;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageListener;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.Topic;
+import jakarta.jms.TopicSubscriber;
 import junit.framework.Test;
-
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.CombinationTestSupport;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.jmx.DestinationViewMBean;
+import org.apache.activemq.broker.jmx.QueueViewMBean;
 import org.apache.activemq.broker.region.policy.FilePendingQueueMessageStoragePolicy;
 import org.apache.activemq.broker.region.policy.PendingQueueMessageStoragePolicy;
 import org.apache.activemq.broker.region.policy.PolicyEntry;
@@ -48,6 +42,11 @@ import org.apache.activemq.command.ActiveMQTopic;
 import org.apache.activemq.util.Wait;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.management.ObjectName;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class ExpiredMessagesWithNoConsumerTest extends CombinationTestSupport {
 
@@ -252,6 +251,73 @@ public class ExpiredMessagesWithNoConsumerTest extends CombinationTestSupport {
 
         assertEquals("Not all sent messages have expired", sendCount, view.getExpiredCount());
         assertEquals("memory usage doesn't go to duck egg", 0, view.getMemoryPercentUsage());
+    }
+
+    public void testExpiredMessagesWithNoConsumerPauseResume() throws Exception {
+
+        createBrokerWithMemoryLimit();
+
+        ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory(connectionUri);
+        connection = factory.createConnection();
+        session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+        producer = session.createProducer(destination);
+        producer.setTimeToLive(1000);
+        connection.start();
+        final long sendCount = 2000;
+
+        ObjectName name = new ObjectName("org.apache.activemq:type=Broker,brokerName=localhost,destinationType=Queue,destinationName=test");
+        final QueueViewMBean queueView = (QueueViewMBean) broker.getManagementContext().newProxyInstance(name, QueueViewMBean.class, true);
+        queueView.pause();
+        assertTrue(queueView.isPaused());
+
+        final Thread producingThread = new Thread("Producing Thread") {
+            @Override
+            public void run() {
+                try {
+                    int i = 0;
+                    long tStamp = System.currentTimeMillis();
+                    while (i++ < sendCount) {
+                        producer.send(session.createTextMessage("test"));
+                        if (i%100 == 0) {
+                            LOG.info("sent: " + i + " @ " + ((System.currentTimeMillis() - tStamp) / 100)  + "m/ms");
+                            tStamp = System.currentTimeMillis() ;
+                        }
+                    }
+                } catch (Throwable ex) {
+                    ex.printStackTrace();
+                }
+            }
+        };
+
+        producingThread.start();
+
+        assertTrue("producer failed to complete within allocated time", Wait.waitFor(new Wait.Condition() {
+            @Override
+            public boolean isSatisified() throws Exception {
+                producingThread.join(TimeUnit.SECONDS.toMillis(3000));
+                return !producingThread.isAlive();
+            }
+        }));
+
+        assertEquals("No messages should have expired", Long.valueOf(0l), Long.valueOf(queueView.getExpiredCount()));
+        queueView.resume();
+        assertFalse(queueView.isPaused());
+
+        Wait.waitFor(new Wait.Condition() {
+            @Override
+            public boolean isSatisified() throws Exception {
+                LOG.info("enqueue=" + queueView.getEnqueueCount() + ", dequeue=" + queueView.getDequeueCount()
+                        + ", inflight=" + queueView.getInFlightCount() + ", expired= " + queueView.getExpiredCount()
+                        + ", size= " + queueView.getQueueSize());
+                return sendCount == queueView.getExpiredCount();
+            }
+        }, Wait.MAX_WAIT_MILLIS * 10);
+        LOG.info("enqueue=" + queueView.getEnqueueCount() + ", dequeue=" + queueView.getDequeueCount()
+                + ", inflight=" + queueView.getInFlightCount() + ", expired= " + queueView.getExpiredCount()
+                + ", size= " + queueView.getQueueSize());
+
+        assertEquals("Not all sent messages have expired", sendCount, queueView.getExpiredCount());
+        assertEquals("memory usage doesn't go to duck egg", 0, queueView.getMemoryPercentUsage());
     }
 
     // first ack delivered after expiry

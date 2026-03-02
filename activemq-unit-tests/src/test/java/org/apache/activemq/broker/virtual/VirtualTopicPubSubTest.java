@@ -18,12 +18,12 @@ package org.apache.activemq.broker.virtual;
 
 import java.util.Vector;
 
-import javax.jms.Connection;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 
 import junit.framework.Test;
 
@@ -31,11 +31,14 @@ import org.apache.activemq.EmbeddedBrokerTestSupport;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTopic;
 import org.apache.activemq.spring.ConsumerBean;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  *
  * 
  */
+@Category(ParallelTest.class)
 public class VirtualTopicPubSubTest extends EmbeddedBrokerTestSupport {
 
     private Vector<Connection> connections = new Vector<Connection>();
@@ -46,7 +49,7 @@ public class VirtualTopicPubSubTest extends EmbeddedBrokerTestSupport {
     }
 
     public void initCombosForTestVirtualTopicCreation() {
-        addCombinationValues("ackMode", new Object[] {new Integer(Session.AUTO_ACKNOWLEDGE), new Integer(Session.CLIENT_ACKNOWLEDGE) });
+        addCombinationValues("ackMode", new Object[] {Session.AUTO_ACKNOWLEDGE, Session.CLIENT_ACKNOWLEDGE});
     }
 
     private boolean doneTwice = false;

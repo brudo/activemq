@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectStreamException;
 import java.io.OutputStream;
+import java.io.Serializable;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashMap;
@@ -29,10 +30,10 @@ import java.util.Map;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.InflaterInputStream;
 
-import javax.jms.JMSException;
-import javax.jms.MapMessage;
-import javax.jms.MessageFormatException;
-import javax.jms.MessageNotWriteableException;
+import jakarta.jms.JMSException;
+import jakarta.jms.MapMessage;
+import jakarta.jms.MessageFormatException;
+import jakarta.jms.MessageNotWriteableException;
 
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.util.ByteArrayInputStream;
@@ -90,12 +91,12 @@ import org.fusesource.hawtbuf.UTF8Buffer;
  * as a <code>char</code> must throw a <code>NullPointerException</code>.
  *
  * @openwire:marshaller code="25"
- * @see javax.jms.Session#createMapMessage()
- * @see javax.jms.BytesMessage
- * @see javax.jms.Message
- * @see javax.jms.ObjectMessage
- * @see javax.jms.StreamMessage
- * @see javax.jms.TextMessage
+ * @see jakarta.jms.Session#createMapMessage()
+ * @see jakarta.jms.BytesMessage
+ * @see jakarta.jms.Message
+ * @see jakarta.jms.ObjectMessage
+ * @see jakarta.jms.StreamMessage
+ * @see jakarta.jms.TextMessage
  */
 public class ActiveMQMapMessage extends ActiveMQMessage implements MapMessage {
 
@@ -103,7 +104,9 @@ public class ActiveMQMapMessage extends ActiveMQMessage implements MapMessage {
 
     protected transient Map<String, Object> map = new HashMap<String, Object>();
 
-    private Object readResolve() throws ObjectStreamException {
+    @Override
+    protected Object readResolve() throws ObjectStreamException {
+        super.readResolve();
         if (this.map == null) {
             this.map = new HashMap<String, Object>();
         }
@@ -162,6 +165,11 @@ public class ActiveMQMapMessage extends ActiveMQMessage implements MapMessage {
         }
     }
 
+    @Override
+    public boolean isContentMarshalled() {
+        return content != null || map == null || map.isEmpty();
+    }
+
     /**
      * Builds the message body from data
      *
@@ -169,9 +177,16 @@ public class ActiveMQMapMessage extends ActiveMQMessage implements MapMessage {
      * @throws IOException
      */
     private void loadContent() throws JMSException {
+        if (getContent() != null && map.isEmpty()) {
+            map = deserialize(getContent());
+        }
+    }
+
+    private Map<String, Object> deserialize(ByteSequence content) throws JMSException {
+        final Map<String, Object> map;
+
         try {
-            if (getContent() != null && map.isEmpty()) {
-                ByteSequence content = getContent();
+            if (content != null) {
                 InputStream is = new ByteArrayInputStream(content);
                 if (isCompressed()) {
                     is = new InflaterInputStream(is);
@@ -179,10 +194,14 @@ public class ActiveMQMapMessage extends ActiveMQMessage implements MapMessage {
                 DataInputStream dataIn = new DataInputStream(is);
                 map = MarshallingSupport.unmarshalPrimitiveMap(dataIn);
                 dataIn.close();
+            } else {
+                map = new HashMap<>();
             }
         } catch (IOException e) {
             throw JMSExceptionSupport.create(e);
         }
+
+        return map;
     }
 
     @Override
@@ -226,13 +245,13 @@ public class ActiveMQMapMessage extends ActiveMQMessage implements MapMessage {
             return false;
         }
         if (value instanceof Boolean) {
-            return ((Boolean)value).booleanValue();
+            return (Boolean) value;
         }
         if (value instanceof UTF8Buffer) {
-            return Boolean.valueOf(value.toString()).booleanValue();
+            return Boolean.valueOf(value.toString());
         }
         if (value instanceof String) {
-            return Boolean.valueOf(value.toString()).booleanValue();
+            return Boolean.valueOf(value.toString());
         } else {
             throw new MessageFormatException(" cannot read a boolean from " + value.getClass().getName());
         }
@@ -255,13 +274,13 @@ public class ActiveMQMapMessage extends ActiveMQMessage implements MapMessage {
             return 0;
         }
         if (value instanceof Byte) {
-            return ((Byte)value).byteValue();
+            return (Byte) value;
         }
         if (value instanceof UTF8Buffer) {
-            return Byte.valueOf(value.toString()).byteValue();
+            return Byte.valueOf(value.toString());
         }
         if (value instanceof String) {
-            return Byte.valueOf(value.toString()).byteValue();
+            return Byte.valueOf(value.toString());
         } else {
             throw new MessageFormatException(" cannot read a byte from " + value.getClass().getName());
         }
@@ -284,16 +303,16 @@ public class ActiveMQMapMessage extends ActiveMQMessage implements MapMessage {
             return 0;
         }
         if (value instanceof Short) {
-            return ((Short)value).shortValue();
+            return (Short) value;
         }
         if (value instanceof Byte) {
             return ((Byte)value).shortValue();
         }
         if (value instanceof UTF8Buffer) {
-            return Short.valueOf(value.toString()).shortValue();
+            return Short.valueOf(value.toString());
         }
         if (value instanceof String) {
-            return Short.valueOf(value.toString()).shortValue();
+            return Short.valueOf(value.toString());
         } else {
             throw new MessageFormatException(" cannot read a short from " + value.getClass().getName());
         }
@@ -316,7 +335,7 @@ public class ActiveMQMapMessage extends ActiveMQMessage implements MapMessage {
         if (value == null) {
             throw new NullPointerException();
         } else if (value instanceof Character) {
-            return ((Character)value).charValue();
+            return (Character) value;
         } else {
             throw new MessageFormatException(" cannot read a char from " + value.getClass().getName());
         }
@@ -339,7 +358,7 @@ public class ActiveMQMapMessage extends ActiveMQMessage implements MapMessage {
             return 0;
         }
         if (value instanceof Integer) {
-            return ((Integer)value).intValue();
+            return (Integer) value;
         }
         if (value instanceof Short) {
             return ((Short)value).intValue();
@@ -348,10 +367,10 @@ public class ActiveMQMapMessage extends ActiveMQMessage implements MapMessage {
             return ((Byte)value).intValue();
         }
         if (value instanceof UTF8Buffer) {
-            return Integer.valueOf(value.toString()).intValue();
+            return Integer.valueOf(value.toString());
         }
         if (value instanceof String) {
-            return Integer.valueOf(value.toString()).intValue();
+            return Integer.valueOf(value.toString());
         } else {
             throw new MessageFormatException(" cannot read an int from " + value.getClass().getName());
         }
@@ -374,7 +393,7 @@ public class ActiveMQMapMessage extends ActiveMQMessage implements MapMessage {
             return 0;
         }
         if (value instanceof Long) {
-            return ((Long)value).longValue();
+            return (Long) value;
         }
         if (value instanceof Integer) {
             return ((Integer)value).longValue();
@@ -386,10 +405,10 @@ public class ActiveMQMapMessage extends ActiveMQMessage implements MapMessage {
             return ((Byte)value).longValue();
         }
         if (value instanceof UTF8Buffer) {
-            return Long.valueOf(value.toString()).longValue();
+            return Long.valueOf(value.toString());
         }
         if (value instanceof String) {
-            return Long.valueOf(value.toString()).longValue();
+            return Long.valueOf(value.toString());
         } else {
             throw new MessageFormatException(" cannot read a long from " + value.getClass().getName());
         }
@@ -412,13 +431,13 @@ public class ActiveMQMapMessage extends ActiveMQMessage implements MapMessage {
             return 0;
         }
         if (value instanceof Float) {
-            return ((Float)value).floatValue();
+            return (Float) value;
         }
         if (value instanceof UTF8Buffer) {
-            return Float.valueOf(value.toString()).floatValue();
+            return Float.valueOf(value.toString());
         }
         if (value instanceof String) {
-            return Float.valueOf(value.toString()).floatValue();
+            return Float.valueOf(value.toString());
         } else {
             throw new MessageFormatException(" cannot read a float from " + value.getClass().getName());
         }
@@ -441,13 +460,13 @@ public class ActiveMQMapMessage extends ActiveMQMessage implements MapMessage {
         if (value == null) {
             return 0;
         } else if (value instanceof Double) {
-            return ((Double)value).doubleValue();
+            return (Double) value;
         } else if (value instanceof Float) {
-            return ((Float)value).floatValue();
+            return (Float) value;
         } else if (value instanceof UTF8Buffer) {
-            return Double.valueOf(value.toString()).doubleValue();
+            return Double.valueOf(value.toString());
         } else if (value instanceof String) {
-            return Double.valueOf(value.toString()).doubleValue();
+            return Double.valueOf(value.toString());
         } else {
             throw new MessageFormatException("Cannot read a double from " + value.getClass().getName());
         }
@@ -586,7 +605,7 @@ public class ActiveMQMapMessage extends ActiveMQMessage implements MapMessage {
     @Override
     public void setByte(String name, byte value) throws JMSException {
         initializeWriting();
-        put(name, Byte.valueOf(value));
+        put(name, value);
     }
 
     /**
@@ -603,7 +622,7 @@ public class ActiveMQMapMessage extends ActiveMQMessage implements MapMessage {
     @Override
     public void setShort(String name, short value) throws JMSException {
         initializeWriting();
-        put(name, Short.valueOf(value));
+        put(name, value);
     }
 
     /**
@@ -620,7 +639,7 @@ public class ActiveMQMapMessage extends ActiveMQMessage implements MapMessage {
     @Override
     public void setChar(String name, char value) throws JMSException {
         initializeWriting();
-        put(name, Character.valueOf(value));
+        put(name, value);
     }
 
     /**
@@ -637,7 +656,7 @@ public class ActiveMQMapMessage extends ActiveMQMessage implements MapMessage {
     @Override
     public void setInt(String name, int value) throws JMSException {
         initializeWriting();
-        put(name, Integer.valueOf(value));
+        put(name, value);
     }
 
     /**
@@ -654,7 +673,7 @@ public class ActiveMQMapMessage extends ActiveMQMessage implements MapMessage {
     @Override
     public void setLong(String name, long value) throws JMSException {
         initializeWriting();
-        put(name, Long.valueOf(value));
+        put(name, value);
     }
 
     /**
@@ -671,7 +690,7 @@ public class ActiveMQMapMessage extends ActiveMQMessage implements MapMessage {
     @Override
     public void setFloat(String name, float value) throws JMSException {
         initializeWriting();
-        put(name, new Float(value));
+        put(name, value);
     }
 
     /**
@@ -688,7 +707,7 @@ public class ActiveMQMapMessage extends ActiveMQMessage implements MapMessage {
     @Override
     public void setDouble(String name, double value) throws JMSException {
         initializeWriting();
-        put(name, new Double(value));
+        put(name, value);
     }
 
     /**
@@ -821,5 +840,31 @@ public class ActiveMQMapMessage extends ActiveMQMessage implements MapMessage {
     public Map<String, Object> getContentMap() throws JMSException {
         initializeReading();
         return map;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public boolean isBodyAssignableTo(Class c) throws JMSException {
+        final Map<String, Object> map = getContentMap();
+        if (map == null || map.isEmpty()) {
+            return true;
+        }
+        return c.isAssignableFrom(java.util.Map.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    protected <T> T doGetBody(Class<T> asType) throws JMSException {
+        storeContent();
+        final ByteSequence content = getContent();
+        final Map<String, Object> map = content != null ? deserialize(content) : null;
+
+        //This implementation treats an empty map as not having a body so if empty
+        //we should return null as well
+        if (map != null && !map.isEmpty()) {
+            map.replaceAll((k, v) -> v instanceof UTF8Buffer ? v.toString() : v);
+            return (T) map;
+        } else {
+            return null;
+        }
     }
 }

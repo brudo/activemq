@@ -35,8 +35,11 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedList;
+import java.util.Map;
+import java.util.TreeMap;
 
 /**
  *
@@ -68,6 +71,7 @@ public class JDBCMessageStore extends AbstractMessageStore {
     protected final JDBCPersistenceAdapter persistenceAdapter;
     protected ActiveMQMessageAudit audit;
     protected final LinkedList<Long> pendingAdditions = new LinkedList<Long>();
+    protected final TreeMap<Long, Message> rolledBackAcks = new TreeMap<Long, Message>();
     final long[] perPriorityLastRecovered = new long[10];
 
     public JDBCMessageStore(JDBCPersistenceAdapter persistenceAdapter, JDBCAdapter adapter, WireFormat wireFormat, ActiveMQDestination destination, ActiveMQMessageAudit audit) throws IOException {
@@ -250,7 +254,7 @@ public class JDBCMessageStore extends AbstractMessageStore {
     @Override
     public void removeMessage(ConnectionContext context, MessageAck ack) throws IOException {
 
-    	long seq = ack.getLastMessageId().getFutureOrSequenceLong() != null ?
+    	long seq = (ack.getLastMessageId().getFutureOrSequenceLong() != null && ((Long) ack.getLastMessageId().getFutureOrSequenceLong() != 0)) ?
                 (Long) ack.getLastMessageId().getFutureOrSequenceLong() :
                 persistenceAdapter.getStoreSequenceIdForMessageId(context, ack.getLastMessageId(), destination)[0];
 
@@ -355,17 +359,25 @@ public class JDBCMessageStore extends AbstractMessageStore {
             if (LOG.isTraceEnabled()) {
                 LOG.trace(this + " recoverNext lastRecovered:" + Arrays.toString(perPriorityLastRecovered) + ", minPending:" + minPendingSequeunceId());
             }
+
+            maxReturned -= recoverRolledBackAcks(maxReturned, listener);
+
             adapter.doRecoverNextMessages(c, destination, perPriorityLastRecovered, minPendingSequeunceId(),
                     maxReturned, isPrioritizedMessages(), new JDBCMessageRecoveryListener() {
 
                 @Override
                 public boolean recoverMessage(long sequenceId, byte[] data) throws Exception {
-                        Message msg = (Message)wireFormat.unmarshal(new ByteSequence(data));
+                    if (listener.canRecoveryNextMessage()) {
+                        Message msg = (Message) wireFormat.unmarshal(new ByteSequence(data));
                         msg.getMessageId().setBrokerSequenceId(sequenceId);
                         msg.getMessageId().setFutureOrSequenceLong(sequenceId);
+                        msg.getMessageId().setEntryLocator(sequenceId);
                         listener.recoverMessage(msg);
                         trackLastRecovered(sequenceId, msg.getPriority());
                         return true;
+                    } else {
+                        return false;
+                    }
                 }
 
                 @Override
@@ -384,6 +396,41 @@ public class JDBCMessageStore extends AbstractMessageStore {
             c.close();
         }
 
+    }
+
+    public void trackRollbackAck(Message message) {
+        synchronized (rolledBackAcks) {
+            rolledBackAcks.put((Long)message.getMessageId().getEntryLocator(), message);
+        }
+    }
+
+    private int recoverRolledBackAcks(int max, MessageRecoveryListener listener) throws Exception {
+        int recovered = 0;
+        ArrayList<Long> toRemove = new ArrayList<Long>();
+        synchronized (rolledBackAcks) {
+            if (!rolledBackAcks.isEmpty()) {
+                for ( Map.Entry<Long,Message> candidate : rolledBackAcks.entrySet()) {
+                    if (candidate.getKey() <= lastRecovered(candidate.getValue().getPriority())) {
+                        listener.recoverMessage(candidate.getValue());
+                        recovered++;
+                        toRemove.add(candidate.getKey());
+                        if (recovered == max) {
+                            break;
+                        }
+                    } else {
+                        toRemove.add(candidate.getKey());
+                    }
+                }
+                for (Long key : toRemove) {
+                    rolledBackAcks.remove(key);
+                }
+            }
+        }
+        return recovered;
+    }
+
+    private long lastRecovered(int priority) {
+        return perPriorityLastRecovered[isPrioritizedMessages() ? priority : 0];
     }
 
     private void trackLastRecovered(long sequenceId, int priority) {
@@ -433,6 +480,12 @@ public class JDBCMessageStore extends AbstractMessageStore {
     @Override
     public String toString() {
         return destination.getPhysicalName() + ",pendingSize:" + pendingAdditions.size();
+    }
+
+
+    @Override
+    public StoreType getType() {
+        return StoreType.JDBC;
     }
 
 }

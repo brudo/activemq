@@ -40,7 +40,7 @@ public class JNDIReferenceFactory implements ObjectFactory {
 
     /**
      * This will be called by a JNDIprovider when a Reference is retrieved from
-     * a JNDI store - and generates the orignal instance
+     * a JNDI store - and generates the original instance
      * 
      * @param object the Reference object
      * @param name the JNDI name
@@ -62,7 +62,7 @@ public class JNDIReferenceFactory implements ObjectFactory {
             Class theClass = loadClass(this, reference.getClassName());
             if (JNDIStorableInterface.class.isAssignableFrom(theClass)) {
 
-                JNDIStorableInterface store = (JNDIStorableInterface)theClass.newInstance();
+                JNDIStorableInterface store = JNDIStorableInterface.class.cast(theClass.getConstructor().newInstance());
                 Properties properties = new Properties();
                 for (Enumeration iter = reference.getAll(); iter.hasMoreElements();) {
 

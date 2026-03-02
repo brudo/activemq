@@ -18,11 +18,11 @@ package org.apache.activemq.security;
 
 import java.net.URI;
 
-import javax.jms.Connection;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 
 import junit.framework.TestCase;
 
@@ -64,7 +64,7 @@ public class JaasNetworkTest extends TestCase {
         System.setProperty("javax.net.ssl.keyStorePassword", "password");
         System.setProperty("javax.net.ssl.keyStoreType", "jks");  
         
-        ActiveMQConnectionFactory producerFactory  = new ActiveMQConnectionFactory("ssl://localhost:61617");
+        ActiveMQConnectionFactory producerFactory  = new ActiveMQConnectionFactory("ssl://localhost:61617?verifyHostName=false");
         Connection producerConn = producerFactory.createConnection();
         Session producerSess = producerConn.createSession(false, Session.AUTO_ACKNOWLEDGE);
         MessageProducer producer = producerSess.createProducer(new ActiveMQQueue("test"));
@@ -72,7 +72,7 @@ public class JaasNetworkTest extends TestCase {
         TextMessage sentMessage = producerSess.createTextMessage("test");
         producer.send(sentMessage);
         
-        ActiveMQConnectionFactory consumerFactory  = new ActiveMQConnectionFactory("ssl://localhost:61618");
+        ActiveMQConnectionFactory consumerFactory  = new ActiveMQConnectionFactory("ssl://localhost:61618?verifyHostName=false");
         Connection consumerConn = consumerFactory.createConnection();
         Session consumerSess = consumerConn.createSession(false, Session.AUTO_ACKNOWLEDGE);
         consumerConn.start();

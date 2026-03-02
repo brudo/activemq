@@ -18,10 +18,11 @@ package org.apache.activemq.jms.pool;
 
 import static org.junit.Assert.assertEquals;
 
-import javax.jms.Connection;
-import javax.jms.Queue;
-import javax.jms.Session;
-import javax.jms.Topic;
+import jakarta.jms.Connection;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
+import jakarta.jms.Topic;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerService;
@@ -117,6 +118,24 @@ public class PooledConnectionFactoryWithTemporaryDestinationsTest extends JmsPoo
         }
 
         assertEquals(0, countBrokerTemporaryTopics());
+    }
+
+    @Test(timeout = 60000)
+    public void testTemporaryQueueLeakAfterConnectionCloseWithConsumer() throws Exception {
+        Connection pooledConnection = null;
+        Session session = null;
+        Queue tempQueue = null;
+        for (int i = 0; i < 2; i++) {
+            pooledConnection = pooledFactory.createConnection();
+            session = pooledConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            tempQueue = session.createTemporaryQueue();
+            MessageConsumer consumer = session.createConsumer(tempQueue);
+            consumer.receiveNoWait();
+            LOG.info("Created queue named: " + tempQueue.getQueueName());
+            pooledConnection.close();
+        }
+
+        assertEquals(0, countBrokerTemporaryQueues());
     }
 
     private int countBrokerTemporaryQueues() throws Exception {

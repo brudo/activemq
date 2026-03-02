@@ -17,22 +17,26 @@
 package org.apache.activemq.ra;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.util.concurrent.TimeUnit;
 
-import javax.jms.Connection;
-import javax.jms.Session;
-import javax.jms.TopicSubscriber;
+import jakarta.jms.Connection;
+import jakarta.jms.Session;
+import jakarta.jms.TopicSubscriber;
 import javax.transaction.xa.XAResource;
 
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.ActiveMQTopicSubscriber;
+import org.apache.activemq.broker.BrokerService;
+import org.apache.activemq.broker.TransportConnector;
+import org.apache.activemq.util.Wait;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -51,7 +55,7 @@ public class ActiveMQConnectionFactoryTest {
         info.setServerUrl(url);
         info.setUserName(user);
         info.setPassword(pwd);
-        info.setAllPrefetchValues(new Integer(100));
+        info.setAllPrefetchValues(100);
     }
 
     @Test(timeout = 60000)
@@ -96,11 +100,13 @@ public class ActiveMQConnectionFactoryTest {
         assertEquals(0, ((ActiveMQTopicSubscriber) sub).getPrefetchNumber());
 
         con.close();
+        ra.stop();
     }
 
     @Test(timeout = 60000)
     public void testGetXAResource() throws Exception {
         ActiveMQResourceAdapter ra = new ActiveMQResourceAdapter();
+        ra.start(null);
         ra.setServerUrl(url);
         ra.setUserName(user);
         ra.setPassword(pwd);
@@ -114,6 +120,212 @@ public class ActiveMQConnectionFactoryTest {
         XAResource[] resource2 = ra.getXAResources(null);
         assertEquals("one resource", 1, resource2.length);
         assertTrue("isSameRM true", resources[0].isSameRM(resource2[0]));
-        assertFalse("no tthe same instance", resources[0].equals(resource2[0]));
+        assertTrue("the same instance", resources[0].equals(resource2[0]));
+
+        ra.stop();
+    }
+
+
+    @Test(timeout = 60_000)
+    public void testXAResourceReconnect() throws Exception {
+
+        BrokerService brokerService = new BrokerService();
+        brokerService.setPersistent(false);
+        brokerService.addConnector("tcp://localhost:0");
+        brokerService.start();
+
+        try {
+            final TransportConnector transportConnector = brokerService.getTransportConnectors().get(0);
+
+            String failoverUrl = String.format("failover:(%s)?startupMaxReconnectAttempts=10&maxReconnectAttempts=2&initialReconnectDelay=100&timeout=2000", transportConnector.getConnectUri());
+
+            ActiveMQResourceAdapter ra = new ActiveMQResourceAdapter();
+            ra.start(null);
+            ra.setServerUrl(failoverUrl);
+            ra.setUserName(user);
+            ra.setPassword(pwd);
+
+            XAResource[] resources = ra.getXAResources(null);
+            assertEquals("one resource", 1, resources.length);
+
+            assertEquals("no pending transactions", 0, resources[0].recover(100).length);
+
+            transportConnector.stop();
+            assertTrue("no connections", Wait.waitFor(new Wait.Condition() {
+                @Override
+                public boolean isSatisified() throws Exception {
+                    return transportConnector.getConnections().isEmpty();
+                }
+            }));
+
+            try {
+                resources[0].recover(100);
+                fail("Expect error on broken connection");
+            } catch (Exception expected) {
+            }
+
+            transportConnector.start();
+
+            // Wait for failover to reconnect and recover() to succeed
+            // The ReconnectingXAResource should handle reconnection transparently
+            // Timeout: 30s accounts for startupMaxReconnectAttempts=10 with exponential backoff
+            // up to the default maxReconnectDelay (30s per attempt)
+            // Poll interval: 500ms balances responsiveness without overwhelming the system
+            final XAResource resource = resources[0];
+            assertTrue("connection re-established and can recover", Wait.waitFor(new Wait.Condition() {
+                @Override
+                public boolean isSatisified() throws Exception {
+                    try {
+                        resource.recover(100);
+                        return true;
+                    } catch (Exception e) {
+                        // Still reconnecting
+                        return false;
+                    }
+                }
+            }, TimeUnit.SECONDS.toMillis(30), TimeUnit.MILLISECONDS.toMillis(500)));
+
+            // should recover ok
+            assertEquals("no pending transactions", 0, resources[0].recover(100).length);
+
+            ra.stop();
+        } finally {
+            brokerService.stop();
+        }
+    }
+
+    @Test
+    public void testXAResourceFailoverFailBack() throws Exception {
+
+        BrokerService brokerService = new BrokerService();
+        brokerService.setPersistent(false);
+        brokerService.addConnector("tcp://localhost:0");
+        brokerService.addConnector("tcp://localhost:0");
+        brokerService.start();
+
+        try {
+
+            final TransportConnector primary = brokerService.getTransportConnectors().get(0);
+            final TransportConnector secondary = brokerService.getTransportConnectors().get(1);
+
+            String failoverUrl = String.format("failover:(%s,%s)?maxReconnectAttempts=1&randomize=false", primary.getConnectUri(), secondary.getConnectUri());
+
+            ActiveMQResourceAdapter ra = new ActiveMQResourceAdapter();
+            ra.start(null);
+            ra.setServerUrl(failoverUrl);
+            ra.setUserName(user);
+            ra.setPassword(pwd);
+
+            XAResource[] resources = ra.getXAResources(null);
+            assertEquals("one resource", 1, resources.length);
+
+            assertEquals("no pending transactions", 0, resources[0].recover(100).length);
+
+            primary.stop();
+
+            // should recover ok
+            assertEquals("no pending transactions", 0, resources[0].recover(100).length);
+
+            primary.start();
+
+            // should be ok
+            assertEquals("no pending transactions", 0, resources[0].recover(100).length);
+
+            secondary.stop();
+
+            // should recover ok
+            assertEquals("no pending transactions", 0, resources[0].recover(100).length);
+
+            ra.stop();
+
+        } finally {
+            brokerService.stop();
+        }
+
+    }
+
+    @Test
+    public void testXAResourceRefAfterStop() throws Exception {
+
+        BrokerService brokerService = new BrokerService();
+        brokerService.setPersistent(false);
+        brokerService.addConnector("tcp://localhost:0");
+        brokerService.start();
+
+        try {
+
+            final TransportConnector primary = brokerService.getTransportConnectors().get(0);
+
+            String failoverUrl = String.format("failover:(%s)?maxReconnectAttempts=1&randomize=false", primary.getConnectUri());
+
+            ActiveMQResourceAdapter ra = new ActiveMQResourceAdapter();
+            ra.start(null);
+            ra.setServerUrl(failoverUrl);
+            ra.setUserName(user);
+            ra.setPassword(pwd);
+
+            XAResource[] resources = ra.getXAResources(null);
+            assertEquals("one resource", 1, resources.length);
+
+            assertEquals("no pending transactions", 0, resources[0].recover(100).length);
+
+            ra.stop();
+
+            try {
+                resources[0].recover(100);
+                fail("Expect error on call after stop b/c of no reconnection");
+            } catch (Exception expected) {
+            }
+
+        } finally {
+            brokerService.stop();
+        }
+    }
+
+    @Test
+    public void testXAResourceRefAfterFailAndStop() throws Exception {
+
+        BrokerService brokerService = new BrokerService();
+        brokerService.setPersistent(false);
+        brokerService.addConnector("tcp://localhost:0");
+        brokerService.start();
+
+        try {
+
+            final TransportConnector primary = brokerService.getTransportConnectors().get(0);
+
+            String failoverUrl = String.format("failover:(%s)?maxReconnectAttempts=1&randomize=false", primary.getConnectUri());
+
+            ActiveMQResourceAdapter ra = new ActiveMQResourceAdapter();
+            ra.start(null);
+            ra.setServerUrl(failoverUrl);
+            ra.setUserName(user);
+            ra.setPassword(pwd);
+
+            XAResource[] resources = ra.getXAResources(null);
+            assertEquals("one resource", 1, resources.length);
+
+            assertEquals("no pending transactions", 0, resources[0].recover(100).length);
+
+            primary.stop();
+
+            assertTrue("no connections", Wait.waitFor(new Wait.Condition() {
+                @Override
+                public boolean isSatisified() throws Exception {
+                    return primary.getConnections().isEmpty();
+                }
+            }));
+
+            ra.stop();
+
+            try {
+                resources[0].recover(100);
+                fail("Expect error on call after stop b/c of no reconnection");
+            } catch (Exception expected) {
+            }
+
+        } finally {
+            brokerService.stop();
+        }
     }
 }

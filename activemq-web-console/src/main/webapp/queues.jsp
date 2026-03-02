@@ -14,8 +14,6 @@
     See the License for the specific language governing permissions and
     limitations under the License.
 --%>
-<%-- Workaround for https://ops4j1.jira.com/browse/PAXWEB-1070 --%>
-<%@include file="WEB-INF/jspf/headertags.jspf" %>
 <html>
 <head>
 <c:set var="pageTitle" value="Queues"/>
@@ -46,7 +44,7 @@
 <div>
 <form action="queues.jsp" method="get">
     <label name="destination">Queue Name Filter</label>
-    <input type="text" name="QueueFilter" value="${param.QueueFilter}"/>
+    <input type="text" name="QueueFilter" value="<c:out value='${param.QueueFilter}'/>"/>
 
     <input type="submit" value="Filter"/>
 </form>
@@ -54,7 +52,7 @@
 </tr>
 </table>
 
-<h2>Queues:<c:if test="${null != param.QueueFilter && param.QueueFilter != ''}"> (filter='${param.QueueFilter}')</c:if></h2>
+<h2>Queues:<c:if test="${null != param.QueueFilter && param.QueueFilter != ''}"> (filter="<c:out value='${param.QueueFilter}'/>")</c:if></h2>
 
 <table id="queues" class="sortable autostripe">
 <thead>
@@ -101,6 +99,20 @@
                     <c:param name="JMSDestination" value="${row.name}" />
                     <c:param name="JMSDestinationType" value="queue"   />
                     <c:param name="secret" value='${sessionScope["secret"]}'/></c:url>">Delete</a>
+    <c:choose>
+    <c:when test="${row.isPaused()}">
+    <a href="<c:url value="resumeDestination.action">
+                    <c:param name="JMSDestination" value="${row.name}" />
+                    <c:param name="JMSDestinationType" value="queue"   />
+                    <c:param name="secret" value='${sessionScope["secret"]}'/></c:url>">Resume</a>
+    </c:when>
+    <c:otherwise>
+    <a href="<c:url value="pauseDestination.action">
+                    <c:param name="JMSDestination" value="${row.name}" />
+                    <c:param name="JMSDestinationType" value="queue"   />
+                    <c:param name="secret" value='${sessionScope["secret"]}'/></c:url>">Pause</a>
+    </c:otherwise>
+    </c:choose>
 </td>
 </tr>
 

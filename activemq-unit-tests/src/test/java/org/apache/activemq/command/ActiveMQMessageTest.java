@@ -20,21 +20,24 @@ import java.io.IOException;
 import java.util.Enumeration;
 import java.util.Map;
 
-import javax.jms.DeliveryMode;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageFormatException;
-import javax.jms.MessageNotWriteableException;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageFormatException;
+import jakarta.jms.MessageNotWriteableException;
 
 import junit.framework.TestCase;
 
 import org.apache.activemq.openwire.OpenWireFormat;
 import org.apache.activemq.state.CommandVisitor;
+import org.apache.activemq.test.annotations.ParallelTest;
 import org.apache.activemq.util.ByteSequence;
 import org.apache.activemq.wireformat.WireFormat;
+import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+@Category(ParallelTest.class)
 public class ActiveMQMessageTest extends TestCase {
 
     private static final Logger LOG = LoggerFactory.getLogger(ActiveMQMessageTest.class);
@@ -351,7 +354,7 @@ public class ActiveMQMessageTest extends TestCase {
         String name = "floatProperty";
         msg.setFloatProperty(name, 1.3f);
         assertTrue(msg.getObjectProperty(name) instanceof Float);
-        assertTrue(((Float) msg.getObjectProperty(name)).floatValue() == 1.3f);
+        assertTrue((Float) msg.getObjectProperty(name) == 1.3f);
     }
 
     public void testSetJMSDeliveryModeProperty() throws JMSException {
@@ -519,8 +522,8 @@ public class ActiveMQMessageTest extends TestCase {
         assertEquals(((Short) properties.get("shortProperty")).shortValue(), 1);
         assertEquals(((Integer) properties.get("intProperty")).intValue(), 1);
         assertEquals(((Long) properties.get("longProperty")).longValue(), 1);
-        assertEquals(((Float) properties.get("floatProperty")).floatValue(), 1.1f, 0);
-        assertEquals(((Double) properties.get("doubleProperty")).doubleValue(), 1.1, 0);
+        assertEquals((Float) properties.get("floatProperty"), 1.1f, 0);
+        assertEquals((Double) properties.get("doubleProperty"), 1.1, 0);
         assertEquals(((Boolean) properties.get("booleanProperty")).booleanValue(), true);
         assertNull(properties.get("nullProperty"));
     }
@@ -751,7 +754,7 @@ public class ActiveMQMessageTest extends TestCase {
         ActiveMQMessage msg = new ActiveMQMessage();
         String propertyName = "property";
         msg.setFloatProperty(propertyName, (float) 1.5);
-        assertEquals(((Float) msg.getObjectProperty(propertyName)).floatValue(), 1.5, 0);
+        assertEquals((Float) msg.getObjectProperty(propertyName), 1.5, 0);
         assertEquals(msg.getFloatProperty(propertyName), 1.5, 0);
         assertEquals(msg.getDoubleProperty(propertyName), 1.5, 0);
         assertEquals(msg.getStringProperty(propertyName), "1.5");
@@ -786,7 +789,7 @@ public class ActiveMQMessageTest extends TestCase {
         ActiveMQMessage msg = new ActiveMQMessage();
         String propertyName = "property";
         msg.setDoubleProperty(propertyName, 1.5);
-        assertEquals(((Double) msg.getObjectProperty(propertyName)).doubleValue(), 1.5, 0);
+        assertEquals((Double) msg.getObjectProperty(propertyName), 1.5, 0);
         assertEquals(msg.getDoubleProperty(propertyName), 1.5, 0);
         assertEquals(msg.getStringProperty(propertyName), "1.5");
         try {

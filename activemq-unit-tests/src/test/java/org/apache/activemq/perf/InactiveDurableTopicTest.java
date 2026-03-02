@@ -16,14 +16,16 @@
  */
 package org.apache.activemq.perf;
 
-import javax.jms.Connection;
-import javax.jms.JMSException;
-import javax.jms.MapMessage;
-import javax.jms.Message;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.Topic;
-import javax.jms.TopicSubscriber;
+import java.util.concurrent.TimeUnit;
+
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
+import jakarta.jms.MapMessage;
+import jakarta.jms.Message;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.Topic;
+import jakarta.jms.TopicSubscriber;
 
 import junit.framework.AssertionFailedError;
 import junit.framework.TestCase;
@@ -39,14 +41,18 @@ import org.slf4j.LoggerFactory;
 public class InactiveDurableTopicTest extends TestCase {
     private static final transient Logger LOG = LoggerFactory.getLogger(InactiveDurableTopicTest.class);
 
-    private static final int MESSAGE_COUNT = 2000;
+    /**
+     * Keep the payload small so that the test completes quickly but still
+     * exercises durable subscription behaviour.
+     */
+    private static final int MESSAGE_COUNT = 500;
     private static final String DEFAULT_PASSWORD = "";
     private static final String USERNAME = "testuser";
     private static final String CLIENTID = "mytestclient";
     private static final String TOPIC_NAME = "testevent";
     private static final String SUBID = "subscription1";
-    private static final int DELIVERY_MODE = javax.jms.DeliveryMode.PERSISTENT;
-    private static final int DELIVERY_PRIORITY = javax.jms.Message.DEFAULT_PRIORITY;
+    private static final int DELIVERY_MODE = jakarta.jms.DeliveryMode.PERSISTENT;
+    private static final int DELIVERY_PRIORITY = jakarta.jms.Message.DEFAULT_PRIORITY;
     private Connection connection;
     private MessageProducer publisher;
     private TopicSubscriber subscriber;
@@ -55,28 +61,28 @@ public class InactiveDurableTopicTest extends TestCase {
     private ActiveMQConnectionFactory connectionFactory;
     private BrokerService broker;
 
+    private static final int SEND_TIMEOUT_MILLIS = (int) TimeUnit.SECONDS.toMillis(30);
+    private static final long SEND_LOOP_TIMEOUT_MILLIS = TimeUnit.MINUTES.toMillis(2);
+    private static final long RECEIVE_TIMEOUT_MILLIS = TimeUnit.SECONDS.toMillis(5);
+    private static final String BROKER_NAME = "inactiveDurableTopicTest";
+
     @Override
     protected void setUp() throws Exception {
         super.setUp();
         broker = new BrokerService();
-
-        //broker.setPersistenceAdapter(new KahaPersistenceAdapter());
-        /*
-         * JournalPersistenceAdapterFactory factory = new
-         * JournalPersistenceAdapterFactory();
-         * factory.setDataDirectoryFile(broker.getDataDirectory());
-         * factory.setTaskRunnerFactory(broker.getTaskRunnerFactory());
-         * factory.setUseJournal(false); broker.setPersistenceFactory(factory);
-         */
-        broker.addConnector(ActiveMQConnectionFactory.DEFAULT_BROKER_BIND_URL);
+        broker.setUseJmx(false);
+        broker.setBrokerName(BROKER_NAME);
+        // broker.addConnector(ActiveMQConnectionFactory.DEFAULT_BROKER_BIND_URL);
         broker.start();
-        connectionFactory = new ActiveMQConnectionFactory(ActiveMQConnectionFactory.DEFAULT_BROKER_URL);
+        // connectionFactory = new ActiveMQConnectionFactory(ActiveMQConnectionFactory.DEFAULT_BROKER_URL);
+        connectionFactory = new ActiveMQConnectionFactory("vm://" + BROKER_NAME);
         /*
          * Doesn't matter if you enable or disable these, so just leaving them
          * out for this test case connectionFactory.setAlwaysSessionAsync(true);
          * connectionFactory.setAsyncDispatch(true);
          */
         connectionFactory.setUseAsyncSend(true);
+        connectionFactory.setSendTimeout(SEND_TIMEOUT_MILLIS);
     }
 
     @Override
@@ -95,7 +101,7 @@ public class InactiveDurableTopicTest extends TestCase {
             assertNotNull(connection);
             connection.setClientID(CLIENTID);
             connection.start();
-            session = connection.createSession(false, javax.jms.Session.CLIENT_ACKNOWLEDGE);
+            session = connection.createSession(false, jakarta.jms.Session.CLIENT_ACKNOWLEDGE);
             assertNotNull(session);
             topic = session.createTopic(TOPIC_NAME);
             assertNotNull(topic);
@@ -121,7 +127,7 @@ public class InactiveDurableTopicTest extends TestCase {
         try {
             connection = connectionFactory.createConnection(USERNAME, DEFAULT_PASSWORD);
             assertNotNull(connection);
-            session = connection.createSession(false, javax.jms.Session.CLIENT_ACKNOWLEDGE);
+            session = connection.createSession(false, jakarta.jms.Session.CLIENT_ACKNOWLEDGE);
             assertNotNull(session);
             topic = session.createTopic(TOPIC_NAME);
             assertNotNull(topic);
@@ -131,9 +137,13 @@ public class InactiveDurableTopicTest extends TestCase {
             assertNotNull(msg);
             msg.setString("key1", "value1");
             int loop;
+            long start = System.currentTimeMillis();
             for (loop = 0; loop < MESSAGE_COUNT; loop++) {
                 msg.setInt("key2", loop);
                 publisher.send(msg, DELIVERY_MODE, DELIVERY_PRIORITY, Message.DEFAULT_TIME_TO_LIVE);
+                if (System.currentTimeMillis() - start > SEND_LOOP_TIMEOUT_MILLIS) {
+                    throw new AssertionFailedError("Timed out sending messages at loop: " + loop);
+                }
                 if (loop % 5000 == 0) {
                     LOG.info("Sent " + loop + " messages");
                 }
@@ -162,7 +172,7 @@ public class InactiveDurableTopicTest extends TestCase {
             assertNotNull(connection);
             connection.setClientID(CLIENTID);
             connection.start();
-            session = connection.createSession(false, javax.jms.Session.AUTO_ACKNOWLEDGE);
+            session = connection.createSession(false, jakarta.jms.Session.AUTO_ACKNOWLEDGE);
             assertNotNull(session);
             topic = session.createTopic(TOPIC_NAME);
             assertNotNull(topic);
@@ -170,7 +180,10 @@ public class InactiveDurableTopicTest extends TestCase {
             assertNotNull(subscriber);
             int loop;
             for (loop = 0; loop < MESSAGE_COUNT; loop++) {
-                subscriber.receive();
+                Message message = subscriber.receive(RECEIVE_TIMEOUT_MILLIS);
+                if (message == null) {
+                    throw new AssertionFailedError("Timed out waiting for message " + loop);
+                }
                 if (loop % 500 == 0) {
                     LOG.debug("Received " + loop + " messages");
                 }

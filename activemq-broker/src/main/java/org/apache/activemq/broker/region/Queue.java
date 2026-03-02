@@ -39,15 +39,18 @@ import java.util.concurrent.DelayQueue;
 import java.util.concurrent.Delayed;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-import javax.jms.InvalidSelectorException;
-import javax.jms.JMSException;
-import javax.jms.ResourceAllocationException;
+import jakarta.jms.InvalidSelectorException;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageFormatException;
+import jakarta.jms.MessageFormatRuntimeException;
+import jakarta.jms.ResourceAllocationException;
 
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.BrokerStoppedException;
@@ -68,6 +71,7 @@ import org.apache.activemq.broker.region.policy.DispatchPolicy;
 import org.apache.activemq.broker.region.policy.RoundRobinDispatchPolicy;
 import org.apache.activemq.broker.util.InsertionCountList;
 import org.apache.activemq.command.ActiveMQDestination;
+import org.apache.activemq.command.ActiveMQMessage;
 import org.apache.activemq.command.ConsumerId;
 import org.apache.activemq.command.ExceptionResponse;
 import org.apache.activemq.command.Message;
@@ -143,10 +147,21 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
             asyncWakeup();
         }
     };
-    private final Runnable expireMessagesTask = new Runnable() {
+    private final AtomicBoolean expiryTaskInProgress = new AtomicBoolean(false);
+    private final Runnable expireMessagesWork = new Runnable() {
         @Override
         public void run() {
             expireMessages();
+            expiryTaskInProgress.set(false);
+        }
+    };
+
+    private final Runnable expireMessagesTask = new Runnable() {
+        @Override
+        public void run() {
+            if (expiryTaskInProgress.compareAndSet(false, true)) {
+                taskFactory.execute(expireMessagesWork);
+            }
         }
     };
 
@@ -206,7 +221,7 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
                             if (messagesWaitingForSpace.remove(timeout.message.getMessageId()) != null) {
                                 ExceptionResponse response = new ExceptionResponse(
                                         new ResourceAllocationException(
-                                                "Usage Manager Memory Limit reached. Stopping producer ("
+                                                "Usage Manager Memory Limit Wait Timeout. Stopping producer ("
                                                         + timeout.message.getProducerId()
                                                         + ") to prevent flooding "
                                                         + getActiveMQDestination().getQualifiedName()
@@ -219,7 +234,7 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
                     }
                 }
             } catch (InterruptedException e) {
-                LOG.debug(getName() + "Producer Flow Control Timeout Task is stopping");
+                LOG.debug("{} Producer Flow Control Timeout Task is stopping", getName());
             }
         }
     }
@@ -289,7 +304,9 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
         public boolean recoverMessage(Message message) {
             recoveredAccumulator++;
             if ((recoveredAccumulator % 10000) == 0) {
-                LOG.info("cursor for {} has recovered {} messages. {}% complete", new Object[]{ getActiveMQDestination().getQualifiedName(), recoveredAccumulator, new Integer((int) (recoveredAccumulator * 100 / totalMessageCount))});
+                LOG.info("cursor for {} has recovered {} messages. {}% complete",
+                        getActiveMQDestination().getQualifiedName(), recoveredAccumulator,
+                        (int) (recoveredAccumulator * 100 / totalMessageCount));
             }
             // Message could have expired while it was being
             // loaded..
@@ -404,29 +421,16 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
         }
     }
 
-    /*
-     * Holder for subscription that needs attention on next iterate browser
-     * needs access to existing messages in the queue that have already been
-     * dispatched
-     */
-    class BrowserDispatch {
-        QueueBrowserSubscription browser;
-
-        public BrowserDispatch(QueueBrowserSubscription browserSubscription) {
-            browser = browserSubscription;
-            browser.incrementQueueRef();
-        }
-
-        public QueueBrowserSubscription getBrowser() {
-            return browser;
-        }
-    }
-
-    ConcurrentLinkedQueue<BrowserDispatch> browserDispatches = new ConcurrentLinkedQueue<BrowserDispatch>();
+    ConcurrentLinkedQueue<QueueBrowserSubscription> browserSubscriptions = new ConcurrentLinkedQueue<>();
 
     @Override
     public void addSubscription(ConnectionContext context, Subscription sub) throws Exception {
-        LOG.debug("{} add sub: {}, dequeues: {}, dispatched: {}, inflight: {}", new Object[]{ getActiveMQDestination().getQualifiedName(), sub, getDestinationStatistics().getDequeues().getCount(), getDestinationStatistics().getDispatched().getCount(), getDestinationStatistics().getInflight().getCount() });
+        LOG.debug("{} add sub: {}, dequeues: {}, dispatched: {}, inflight: {}",
+                getActiveMQDestination().getQualifiedName(),
+                sub,
+                getDestinationStatistics().getDequeues().getCount(),
+                getDestinationStatistics().getDispatched().getCount(),
+                getDestinationStatistics().getInflight().getCount());
 
         super.addSubscription(context, sub);
         // synchronize with dispatch method so that no new messages are sent
@@ -471,8 +475,8 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
             if (sub instanceof QueueBrowserSubscription) {
                 // tee up for dispatch in next iterate
                 QueueBrowserSubscription browserSubscription = (QueueBrowserSubscription) sub;
-                BrowserDispatch browserDispatch = new BrowserDispatch(browserSubscription);
-                browserDispatches.add(browserDispatch);
+                browserSubscription.incrementQueueRef();
+                browserSubscriptions.add(browserSubscription);
             }
 
             if (!this.optimizedDispatch) {
@@ -585,7 +589,7 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
                 dispatchPendingList.addForRedelivery(unAckedMessages, strictOrderDispatch && consumers.isEmpty());
                 if (sub instanceof QueueBrowserSubscription) {
                     ((QueueBrowserSubscription)sub).decrementQueueRef();
-                    browserDispatches.remove(sub);
+                    browserSubscriptions.remove(sub);
                 }
                 // AMQ-5107: don't resend if the broker is shutting down
                 if (dispatchPendingList.hasRedeliveries() && (! this.brokerService.isStopping())) {
@@ -608,6 +612,7 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
         }
     }
 
+    private volatile ResourceAllocationException sendMemAllocationException = null;
     @Override
     public void send(final ProducerBrokerExchange producerExchange, final Message message) throws Exception {
         final ConnectionContext context = producerExchange.getConnectionContext();
@@ -622,6 +627,15 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
         final ProducerInfo producerInfo = producerExchange.getProducerState().getInfo();
         final boolean sendProducerAck = !message.isResponseRequired() && producerInfo.getWindowSize() > 0
                 && !context.isInRecoveryMode();
+
+        if(getMessageInterceptorStrategy() != null) {
+            try {
+                getMessageInterceptorStrategy().process(producerExchange, message);
+            } catch (MessageFormatRuntimeException e) {
+                throw new MessageFormatException(e.getMessage(), e.getErrorCode());
+            }
+        }
+
         if (message.isExpired()) {
             // message not stored - or added to stats yet - so chuck here
             broker.getRoot().messageExpired(context, message, null);
@@ -636,15 +650,25 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
             fastProducer(context, producerInfo);
             if (isProducerFlowControl() && context.isProducerFlowControl()) {
                 if (isFlowControlLogRequired()) {
-                    LOG.info("Usage Manager Memory Limit ({}) reached on {}, size {}. Producers will be throttled to the rate at which messages are removed from this destination to prevent flooding it. See http://activemq.apache.org/producer-flow-control.html for more info.",
+                    LOG.warn("Usage Manager Memory Limit ({}) reached on {}, size {}. Producers will be throttled to the rate at which messages are removed from this destination to prevent flooding it. See http://activemq.apache.org/producer-flow-control.html for more info.",
                                 memoryUsage.getLimit(), getActiveMQDestination().getQualifiedName(), destinationStatistics.getMessages().getCount());
-
+                } else {
+                    LOG.debug("Usage Manager Memory Limit ({}) reached on {}, size {}. Producers will be throttled to the rate at which messages are removed from this destination to prevent flooding it. See http://activemq.apache.org/producer-flow-control.html for more info.",
+                            memoryUsage.getLimit(), getActiveMQDestination().getQualifiedName(), destinationStatistics.getMessages().getCount());
                 }
                 if (!context.isNetworkConnection() && systemUsage.isSendFailIfNoSpace()) {
-                    throw new ResourceAllocationException("Usage Manager Memory Limit reached. Stopping producer ("
-                            + message.getProducerId() + ") to prevent flooding "
-                            + getActiveMQDestination().getQualifiedName() + "."
-                            + " See http://activemq.apache.org/producer-flow-control.html for more info");
+                    ResourceAllocationException resourceAllocationException = sendMemAllocationException;
+                    if (resourceAllocationException == null) {
+                        synchronized (this) {
+                            resourceAllocationException = sendMemAllocationException;
+                            if (resourceAllocationException == null) {
+                                sendMemAllocationException = resourceAllocationException = new ResourceAllocationException("Usage Manager Memory Limit reached on "
+                                        + getActiveMQDestination().getQualifiedName() + "."
+                                        + " See http://activemq.apache.org/producer-flow-control.html for more info");
+                            }
+                        }
+                    }
+                    throw resourceAllocationException;
                 }
 
                 // We can avoid blocking due to low usage if the producer is
@@ -670,7 +694,7 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
                                     // While waiting for space to free up... the
                                     // transaction may be done
                                     if (message.isInTransaction()) {
-                                        if (context.getTransaction().getState() > IN_USE_STATE) {
+                                        if (context.getTransaction() == null || context.getTransaction().getState() > IN_USE_STATE) {
                                             throw new JMSException("Send transaction completed while waiting for space");
                                         }
                                     }
@@ -765,6 +789,21 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
         }
     }
 
+    public void rollbackPendingCursorAdditions(MessageId messageId) {
+        synchronized (indexOrderedCursorUpdates) {
+            for (int i = indexOrderedCursorUpdates.size() - 1; i >= 0; i--) {
+                MessageContext mc = indexOrderedCursorUpdates.get(i);
+                if (mc.message.getMessageId().equals(messageId)) {
+                    indexOrderedCursorUpdates.remove(mc);
+                    if (mc.onCompletion != null) {
+                        mc.onCompletion.run();
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
     private void doPendingCursorAdditions() throws Exception {
         LinkedList<MessageContext> orderedUpdates = new LinkedList<>();
         sendLock.lockInterruptibly();
@@ -829,6 +868,9 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
 
         @Override
         public void afterRollback() throws Exception {
+            if (store != null && messageContext.message.isPersistent()) {
+                rollbackPendingCursorAdditions(messageContext.message.getMessageId());
+            }
             messageContext.message.decrementReferenceCount();
         }
     }
@@ -861,6 +903,7 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
                     // before restarting normal broker operations
                     resetNeeded = true;
                     pendingSends.decrementAndGet();
+                    rollbackPendingCursorAdditions(message.getMessageId());
                     throw e;
                 }
             }
@@ -925,6 +968,11 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
     }
 
     private void expireMessages() {
+        if(isDispatchPaused()) {
+            LOG.debug("{} dispatchPaused, skipping expire messages check", getActiveMQDestination().getQualifiedName());
+            return;
+        }
+
         LOG.debug("{} expiring messages ..", getActiveMQDestination().getQualifiedName());
 
         // just track the insertion count
@@ -987,6 +1035,9 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
             if (systemUsage.getStoreUsage() != null) {
                 systemUsage.getStoreUsage().start();
             }
+            if (systemUsage.getTempUsage() != null) {
+                systemUsage.getTempUsage().start();
+            }
             systemUsage.getMemoryUsage().addUsageListener(this);
             messages.start();
             if (getExpireMessagesPeriod() > 0) {
@@ -1028,6 +1079,9 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
             }
             if (systemUsage.getStoreUsage() != null) {
                 systemUsage.getStoreUsage().stop();
+            }
+            if (this.systemUsage.getTempUsage() != null) {
+                this.systemUsage.getTempUsage().stop();
             }
             if (store != null) {
                 store.stop();
@@ -1206,10 +1260,11 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
             messagesLock.readLock().unlock();
         }
 
-        LOG.trace("max {}, alreadyPagedIn {}, messagesCount {}, memoryUsage {}%", new Object[]{max, alreadyPagedIn, messagesInQueue, memoryUsage.getPercentUsage()});
-        return (alreadyPagedIn < max)
+        LOG.trace("max {}, alreadyPagedIn {}, messagesCount {}, memoryUsage {}%",
+                max, alreadyPagedIn, messagesInQueue, memoryUsage.getPercentUsage());
+        return (alreadyPagedIn == 0 || (alreadyPagedIn < max)
                 && (alreadyPagedIn < messagesInQueue)
-                && messages.hasSpace();
+                && messages.hasSpace());
     }
 
     private void addAll(Collection<? extends MessageReference> refs, List<Message> l, int max,
@@ -1218,7 +1273,7 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
             QueueMessageReference ref = (QueueMessageReference) i.next();
             if (ref.isExpired() && (ref.getLockOwner() == null)) {
                 toExpire.add(ref);
-            } else if (l.contains(ref.getMessage()) == false) {
+            } else if (!ref.isAcked() && l.contains(ref.getMessage()) == false) {
                 l.add(ref.getMessage());
             }
         }
@@ -1260,8 +1315,8 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
     public void purge() throws Exception {
         ConnectionContext c = createConnectionContext();
         List<MessageReference> list = null;
+        sendLock.lock();
         try {
-            sendLock.lock();
             long originalMessageCount = this.destinationStatistics.getMessages().getCount();
             do {
                 doPageIn(true, false, getMaxPageSize());  // signal no expiry processing needed.
@@ -1276,16 +1331,13 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
                     try {
                         QueueMessageReference r = (QueueMessageReference) ref;
                         removeMessage(c, r);
+                        messages.rollback(r.getMessageId());
                     } catch (IOException e) {
                     }
                 }
                 // don't spin/hang if stats are out and there is nothing left in the
                 // store
             } while (!list.isEmpty() && this.destinationStatistics.getMessages().getCount() > 0);
-
-            if (getMessages().getMessageAudit() != null) {
-                getMessages().getMessageAudit().clear();
-            }
 
             if (this.destinationStatistics.getMessages().getCount() > 0) {
                 LOG.warn("{} after purge of {} messages, message count stats report: {}", getActiveMQDestination().getQualifiedName(), originalMessageCount, this.destinationStatistics.getMessages().getCount());
@@ -1296,9 +1348,19 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
     }
 
     @Override
-    public void clearPendingMessages() {
+    public void clearPendingMessages(int pendingAdditionsCount) {
         messagesLock.writeLock().lock();
         try {
+            final ActiveMQMessage dummyPersistent = new ActiveMQMessage();
+            dummyPersistent.setPersistent(true);
+            for (int i=0; i<pendingAdditionsCount; i++) {
+                try {
+                    // track the increase in the cursor size w/o reverting to the store
+                    messages.addMessageFirst(dummyPersistent);
+                } catch (Exception ignored) {
+                    LOG.debug("Unexpected exception on tracking pending message additions", ignored);
+                }
+            }
             if (resetNeeded) {
                 messages.gc();
                 messages.reset();
@@ -1352,7 +1414,10 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
             doPageIn(true);
             pagedInMessagesLock.readLock().lock();
             try {
-                set.addAll(pagedInMessages.values());
+                if (!set.addAll(pagedInMessages.values())) {
+                    // nothing new to check - mem constraint on page in
+                    return movedCounter;
+                };
             } finally {
                 pagedInMessagesLock.readLock().unlock();
             }
@@ -1418,13 +1483,13 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
         int count = 0;
         Set<MessageReference> set = new LinkedHashSet<MessageReference>();
         do {
-            int oldMaxSize = getMaxPageSize();
-            setMaxPageSize((int) this.destinationStatistics.getMessages().getCount());
-            doPageIn(true);
-            setMaxPageSize(oldMaxSize);
+            doPageIn(true, false, (messages.isCacheEnabled() || !broker.getBrokerService().isPersistent()) ? messages.size() : getMaxBrowsePageSize());
             pagedInMessagesLock.readLock().lock();
             try {
-                set.addAll(pagedInMessages.values());
+                if (!set.addAll(pagedInMessages.values())) {
+                    // nothing new to check - mem constraint on page in
+                    return movedCounter;
+                }
             } finally {
                 pagedInMessagesLock.readLock().unlock();
             }
@@ -1462,18 +1527,38 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
      * @throws Exception
      */
     public boolean moveMessageTo(ConnectionContext context, QueueMessageReference m, ActiveMQDestination dest) throws Exception {
-        BrokerSupport.resend(context, m.getMessage(), dest);
-        removeMessage(context, m);
-        messagesLock.writeLock().lock();
+        Set<Destination> destsToPause = regionBroker.getDestinations(dest);
         try {
-            messages.rollback(m.getMessageId());
-            if (isDLQ()) {
-                DeadLetterStrategy stratagy = getDeadLetterStrategy();
-                stratagy.rollback(m.getMessage());
+            for (Destination d: destsToPause) {
+                if (d instanceof Queue) {
+                    ((Queue)d).pauseDispatch();
+                }
+            }
+            BrokerSupport.resend(context, m.getMessage(), dest);
+            removeMessage(context, m);
+            messagesLock.writeLock().lock();
+            try {
+                messages.rollback(m.getMessageId());
+                if (isDLQ()) {
+                    ActiveMQDestination originalDestination = m.getMessage().getOriginalDestination();
+                    if (originalDestination != null) {
+                        for (Destination destination : regionBroker.getDestinations(originalDestination)) {
+                            DeadLetterStrategy strategy = destination.getDeadLetterStrategy();
+                            strategy.rollback(m.getMessage());
+                        }
+                    }
+                }
+            } finally {
+                messagesLock.writeLock().unlock();
             }
         } finally {
-            messagesLock.writeLock().unlock();
+            for (Destination d: destsToPause) {
+                if (d instanceof Queue) {
+                    ((Queue)d).resumeDispatch();
+                }
+            }
         }
+
         return true;
     }
 
@@ -1521,7 +1606,10 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
             doPageIn(true);
             pagedInMessagesLock.readLock().lock();
             try {
-                set.addAll(pagedInMessages.values());
+                if (!set.addAll(pagedInMessages.values())) {
+                    // nothing new to check - mem constraint on page in
+                    return movedCounter;
+                }
             } finally {
                 pagedInMessagesLock.readLock().unlock();
             }
@@ -1545,17 +1633,24 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
             throw new Exception("Retry of message is only possible on Dead Letter Queues!");
         }
         int restoredCounter = 0;
+        // ensure we deal with a snapshot to avoid potential duplicates in the event of messages
+        // getting immediate dlq'ed
+        long numberOfRetryAttemptsToCheckAllMessagesOnce = this.destinationStatistics.getMessages().getCount();
         Set<MessageReference> set = new LinkedHashSet<MessageReference>();
         do {
             doPageIn(true);
             pagedInMessagesLock.readLock().lock();
             try {
-                set.addAll(pagedInMessages.values());
+                if (!set.addAll(pagedInMessages.values())) {
+                    // nothing new to check - mem constraint on page in
+                    return restoredCounter;
+                }
             } finally {
                 pagedInMessagesLock.readLock().unlock();
             }
             List<MessageReference> list = new ArrayList<MessageReference>(set);
             for (MessageReference ref : list) {
+                numberOfRetryAttemptsToCheckAllMessagesOnce--;
                 if (ref.getMessage().getOriginalDestination() != null) {
 
                     moveMessageTo(context, (QueueMessageReference)ref, ref.getMessage().getOriginalDestination());
@@ -1565,7 +1660,7 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
                     }
                 }
             }
-        } while (set.size() < this.destinationStatistics.getMessages().getCount() && set.size() < maximumMessages);
+        } while (numberOfRetryAttemptsToCheckAllMessagesOnce > 0 && set.size() < this.destinationStatistics.getMessages().getCount());
         return restoredCounter;
     }
 
@@ -1637,7 +1732,7 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
                 pagedInPendingDispatchLock.readLock().unlock();
             }
 
-            boolean hasBrowsers = !browserDispatches.isEmpty();
+            boolean hasBrowsers = !browserSubscriptions.isEmpty();
 
             if (pageInMoreMessages || hasBrowsers || !dispatchPendingList.hasRedeliveries()) {
                 try {
@@ -1657,14 +1752,12 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
                     pagedInMessagesLock.readLock().unlock();
                 }
 
-                Iterator<BrowserDispatch> browsers = browserDispatches.iterator();
+                Iterator<QueueBrowserSubscription> browsers = browserSubscriptions.iterator();
                 while (browsers.hasNext()) {
-                    BrowserDispatch browserDispatch = browsers.next();
+                    QueueBrowserSubscription browser = browsers.next();
                     try {
                         MessageEvaluationContext msgContext = new NonCachedMessageEvaluationContext();
                         msgContext.setDestination(destination);
-
-                        QueueBrowserSubscription browser = browserDispatch.getBrowser();
 
                         LOG.debug("dispatch to browser: {}, already dispatched/paged count: {}", browser, messagesInMemory.size());
                         boolean added = false;
@@ -1680,10 +1773,12 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
                         // are we done browsing? no new messages paged
                         if (!added || browser.atMax()) {
                             browser.decrementQueueRef();
-                            browserDispatches.remove(browserDispatch);
+                            browsers.remove();
+                        } else {
+                            wakeup();
                         }
                     } catch (Exception e) {
-                        LOG.warn("exception on dispatch to browser: {}", browserDispatch.getBrowser(), e);
+                        LOG.warn("exception on dispatch to browser: {}", browser, e);
                     }
                 }
             }
@@ -1778,7 +1873,7 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
         // This sends the ack the the journal..
         if (!ack.isInTransaction()) {
             acknowledge(context, sub, ack, reference);
-            dropMessage(reference);
+            dropMessage(context, reference);
         } else {
             try {
                 acknowledge(context, sub, ack, reference);
@@ -1787,7 +1882,7 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
 
                     @Override
                     public void afterCommit() throws Exception {
-                        dropMessage(reference);
+                        dropMessage(context, reference);
                         wakeup();
                     }
 
@@ -1815,11 +1910,22 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
         reference.setAcked(true);
     }
 
-    private void dropMessage(QueueMessageReference reference) {
+    private void dropMessage(ConnectionContext context, QueueMessageReference reference) {
         //use dropIfLive so we only process the statistics at most one time
         if (reference.dropIfLive()) {
-            getDestinationStatistics().getDequeues().increment();
-            getDestinationStatistics().getMessages().decrement();
+            destinationStatistics.getDequeues().increment();
+            destinationStatistics.getMessages().decrement();
+
+            final var tmpMessageFlowStats = destinationStatistics.getMessageFlowStats();
+            if(tmpMessageFlowStats != null) {
+                Message tmpMessage = reference.getMessage();
+                tmpMessageFlowStats.dequeueStats(context.getClientId(), tmpMessage.getMessageId().toString(), tmpMessage.getTimestamp(), tmpMessage.getBrokerInTime(), tmpMessage.getBrokerOutTime()); 
+            }
+
+            if(isAdvancedNetworkStatisticsEnabled() && context.getConnection() != null && context.getConnection().isNetworkConnection()) {
+                destinationStatistics.getNetworkDequeues().increment();
+            }
+
             pagedInMessagesLock.writeLock().lock();
             try {
                 pagedInMessages.remove(reference);
@@ -1871,9 +1977,20 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
 
     final void messageSent(final ConnectionContext context, final Message msg) throws Exception {
         pendingSends.decrementAndGet();
+
         destinationStatistics.getEnqueues().increment();
         destinationStatistics.getMessages().increment();
         destinationStatistics.getMessageSize().addSize(msg.getSize());
+
+        final var tmpMessageFlowStats = destinationStatistics.getMessageFlowStats();
+        if(tmpMessageFlowStats != null) {
+            tmpMessageFlowStats.enqueueStats(context.getClientId(), msg.getMessageId().toString(), msg.getTimestamp(), msg.getBrokerInTime());
+        }
+
+        if(isAdvancedNetworkStatisticsEnabled() && context.getConnection() != null && context.getConnection().isNetworkConnection()) {
+            destinationStatistics.getNetworkEnqueues().increment();
+        }
+
         messageDelivered(context, msg);
         consumersLock.readLock().lock();
         try {
@@ -1883,7 +2000,7 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
         }finally {
             consumersLock.readLock().unlock();
         }
-        LOG.debug("{} Message {} sent to {}", new Object[]{ broker.getBrokerName(), msg.getMessageId(), this.destination });
+        LOG.debug("{} Message {} sent to {}",broker.getBrokerName(), msg.getMessageId(), this.destination);
         wakeup();
     }
 
@@ -1955,18 +2072,16 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
 
         if (LOG.isDebugEnabled()) {
             LOG.debug("{} toPageIn: {}, force:{}, Inflight: {}, pagedInMessages.size {}, pagedInPendingDispatch.size {}, enqueueCount: {}, dequeueCount: {}, memUsage:{}, maxPageSize:{}",
-                    new Object[]{
-                            this,
-                            toPageIn,
-                            force,
-                            destinationStatistics.getInflight().getCount(),
-                            pagedInMessages.size(),
-                            pagedInPendingSize,
-                            destinationStatistics.getEnqueues().getCount(),
-                            destinationStatistics.getDequeues().getCount(),
-                            getMemoryUsage().getUsage(),
-                            maxPageSize
-                    });
+                    this,
+                    toPageIn,
+                    force,
+                    destinationStatistics.getInflight().getCount(),
+                    pagedInMessages.size(),
+                    pagedInPendingSize,
+                    destinationStatistics.getEnqueues().getCount(),
+                    destinationStatistics.getDequeues().getCount(),
+                    getMemoryUsage().getUsage(),
+                    maxPageSize);
         }
 
         if (toPageIn > 0 && (force || (haveRealConsumer() && pagedInPendingSize < maxPageSize))) {
@@ -1999,49 +2114,56 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
             } finally {
                 messagesLock.writeLock().unlock();
             }
-            // Only add new messages, not already pagedIn to avoid multiple
-            // dispatch attempts
-            pagedInMessagesLock.writeLock().lock();
-            try {
-                if(isPrioritizedMessages()) {
-                    resultList = new PrioritizedPendingList();
-                } else {
-                    resultList = new OrderedPendingList();
-                }
-                for (QueueMessageReference ref : result) {
-                    if (!pagedInMessages.contains(ref)) {
-                        pagedInMessages.addMessageLast(ref);
-                        resultList.addMessageLast(ref);
+
+            if (count > 0) {
+                // Only add new messages, not already pagedIn to avoid multiple
+                // dispatch attempts
+                pagedInMessagesLock.writeLock().lock();
+                try {
+                    if (isPrioritizedMessages()) {
+                        resultList = new PrioritizedPendingList();
                     } else {
-                        ref.decrementReferenceCount();
-                        // store should have trapped duplicate in it's index, or cursor audit trapped insert
-                        // or producerBrokerExchange suppressed send.
-                        // note: jdbc store will not trap unacked messages as a duplicate b/c it gives each message a unique sequence id
-                        LOG.warn("{}, duplicate message {} - {} from cursor, is cursor audit disabled or too constrained? Redirecting to dlq", this, ref.getMessageId(), ref.getMessage().getMessageId().getFutureOrSequenceLong());
-                        if (store != null) {
-                            ConnectionContext connectionContext = createConnectionContext();
-                            dropMessage(ref);
-                            if (gotToTheStore(ref.getMessage())) {
-                                LOG.debug("Duplicate message {} from cursor, removing from store", this, ref.getMessage());
-                                store.removeMessage(connectionContext, new MessageAck(ref.getMessage(), MessageAck.POSION_ACK_TYPE, 1));
+                        resultList = new OrderedPendingList();
+                    }
+                    for (QueueMessageReference ref : result) {
+                        if (!pagedInMessages.contains(ref)) {
+                            pagedInMessages.addMessageLast(ref);
+                            resultList.addMessageLast(ref);
+                        } else {
+                            ref.decrementReferenceCount();
+                            // store should have trapped duplicate in it's index, or cursor audit trapped insert
+                            // or producerBrokerExchange suppressed send.
+                            // note: jdbc store will not trap unacked messages as a duplicate b/c it gives each message a unique sequence id
+                            LOG.warn("{}, duplicate message {} - {} from cursor, is cursor audit disabled or too constrained? Redirecting to dlq", this, ref.getMessageId(), ref.getMessage().getMessageId().getFutureOrSequenceLong());
+                            if (store != null) {
+                                ConnectionContext connectionContext = createConnectionContext();
+                                dropMessage(connectionContext, ref);
+                                if (gotToTheStore(ref.getMessage())) {
+                                    LOG.debug("Duplicate message {} from cursor, removing from store", ref.getMessage());
+                                    store.removeMessage(connectionContext, new MessageAck(ref.getMessage(), MessageAck.POISON_ACK_TYPE, 1));
+                                }
+                                broker.getRoot().sendToDeadLetterQueue(connectionContext, ref.getMessage(), null, new Throwable("duplicate paged in from cursor for " + destination));
                             }
-                            broker.getRoot().sendToDeadLetterQueue(connectionContext, ref.getMessage(), null, new Throwable("duplicate paged in from cursor for " + destination));
                         }
                     }
+                } finally {
+                    pagedInMessagesLock.writeLock().unlock();
                 }
-            } finally {
-                pagedInMessagesLock.writeLock().unlock();
+            } else if (!messages.hasSpace()) {
+                if (isFlowControlLogRequired()) {
+                    LOG.warn("{} cursor blocked, no space available to page in messages; usage: {}", this, this.systemUsage.getMemoryUsage());
+                } else {
+                    LOG.debug("{} cursor blocked, no space available to page in messages; usage: {}", this, this.systemUsage.getMemoryUsage());
+                }
             }
-        } else {
-            // Avoid return null list, if condition is not validated
-            resultList = new OrderedPendingList();
         }
 
-        return resultList;
+        // Avoid return null list, if condition is not validated
+        return resultList != null ? resultList : new OrderedPendingList();
     }
 
     private final boolean haveRealConsumer() {
-        return consumers.size() - browserDispatches.size() > 0;
+        return consumers.size() - browserSubscriptions.size() > 0;
     }
 
     private void doDispatch(PendingList list) throws Exception {
@@ -2126,6 +2248,16 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
                         // no further dispatch of list to a full consumer to
                         // avoid out of order message receipt
                         fullConsumers.add(s);
+
+                        //For full consumers we need to mark that they are slow and
+                        // then call the broker.slowConsumer() hook if implemented
+                        if (s instanceof PrefetchSubscription) {
+                            final PrefetchSubscription sub = (PrefetchSubscription) s;
+                            if (!sub.isSlowConsumer()) {
+                                sub.setSlowConsumer(true);
+                                broker.slowConsumer(sub.getContext(), this, sub);
+                            }
+                        }
                         LOG.trace("Subscription full {}", s);
                     }
                 }

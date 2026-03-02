@@ -32,15 +32,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
+import org.apache.activemq.store.kahadb.ParallelTest;
 import org.apache.activemq.store.kahadb.disk.page.PageFile;
 import org.apache.activemq.store.kahadb.disk.page.Transaction;
 import org.apache.activemq.store.kahadb.disk.util.LongMarshaller;
 import org.apache.activemq.store.kahadb.disk.util.StringMarshaller;
 import org.apache.activemq.store.kahadb.disk.util.VariableMarshaller;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+@Category(ParallelTest.class)
 public class BTreeIndexTest extends IndexTestSupport {
     private static final Logger LOG = LoggerFactory.getLogger(BTreeIndexTest.class);
     private NumberFormat nf;
@@ -57,11 +60,12 @@ public class BTreeIndexTest extends IndexTestSupport {
     protected Index<String, Long> createIndex() throws Exception {
 
         long id = tx.allocate().getPageId();
-        tx.commit();
 
         BTreeIndex<String, Long> index = new BTreeIndex<String,Long>(pf, id);
         index.setKeyMarshaller(StringMarshaller.INSTANCE);
         index.setValueMarshaller(LongMarshaller.INSTANCE);
+        index.load(tx);
+        tx.commit();
 
         return index;
     }
@@ -231,8 +235,6 @@ public class BTreeIndexTest extends IndexTestSupport {
         this.index.load(tx);
 
         long id = tx.allocate().getPageId();
-        tx.commit();
-
         BTreeIndex<String, String> sindex = new BTreeIndex<String,String>(pf, id);
         sindex.setKeyMarshaller(StringMarshaller.INSTANCE);
         sindex.setValueMarshaller(StringMarshaller.INSTANCE);
@@ -273,7 +275,6 @@ public class BTreeIndexTest extends IndexTestSupport {
         this.index.load(tx);
 
         long id = tx.allocate().getPageId();
-        tx.commit();
 
         BTreeIndex<String, String> sindex = new BTreeIndex<String,String>(pf, id);
         sindex.setKeyMarshaller(StringMarshaller.INSTANCE);
@@ -364,7 +365,6 @@ public class BTreeIndexTest extends IndexTestSupport {
         pf.load();
         tx = pf.tx();
         long id = tx.allocate().getPageId();
-        tx.commit();
 
         BTreeIndex<Long, HashSet<String>> test = new BTreeIndex<Long, HashSet<String>>(pf, id);
         test.setKeyMarshaller(LongMarshaller.INSTANCE);

@@ -17,30 +17,39 @@
 package org.apache.activemq.plugin;
 
 import java.net.URI;
+import java.util.Set;
+import java.util.stream.Collectors;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.MapMessage;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Queue;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.MapMessage;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
 
 import junit.framework.TestCase;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerFactory;
 import org.apache.activemq.broker.BrokerPlugin;
+import org.apache.activemq.broker.BrokerPluginSupport;
 import org.apache.activemq.broker.BrokerService;
+import org.apache.activemq.broker.region.Destination;
+import org.apache.activemq.broker.region.DestinationFilter;
+import org.apache.activemq.command.ActiveMQDestination;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  * A BrokerStatisticsPluginTest
  * A testcase for https://issues.apache.org/activemq/browse/AMQ-2379
  *
  */
+@Category(ParallelTest.class)
 public class BrokerStatisticsPluginTest extends TestCase{
     private static final Logger LOG = LoggerFactory.getLogger(BrokerStatisticsPluginTest.class);
 
@@ -153,6 +162,77 @@ public class BrokerStatisticsPluginTest extends TestCase{
         */
     }
 
+    public void testDestinationStatsWithNullTermination() throws Exception {
+        Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+        Queue replyTo = session.createTemporaryQueue();
+        MessageConsumer consumer = session.createConsumer(replyTo);
+        Queue testQueue = session.createQueue("Test.Queue");
+        MessageProducer producer = session.createProducer(null);
+        Queue query = session.createQueue(StatisticsBroker.STATS_DESTINATION_PREFIX + "." + testQueue.getQueueName());
+        Message msg = session.createMessage();
+        // Instruct to terminate query reply with a null-message
+        msg.setBooleanProperty(StatisticsBroker.STATS_DENOTE_END_LIST, true);
+
+        producer.send(testQueue, msg);
+
+        msg.setJMSReplyTo(replyTo);
+        producer.send(query, msg);
+        MapMessage reply = (MapMessage) consumer.receive(10 * 1000);
+        assertNotNull(reply);
+        assertTrue(reply.getMapNames().hasMoreElements());
+        assertEquals(1, reply.getLong("size"));
+        assertTrue(reply.getJMSTimestamp() > 0);
+        assertEquals(Message.DEFAULT_PRIORITY, reply.getJMSPriority());
+
+        /*
+        for (Enumeration e = reply.getMapNames(); e.hasMoreElements();) {
+            String name = e.nextElement().toString();
+            System.err.println(name+"="+reply.getObject(name));
+        }
+         */
+
+        // Assert that we got a null-termination
+        MapMessage nullReply = (MapMessage) consumer.receive(10 * 1000);
+        assertNotNull(nullReply);
+        // No props in null-message
+        assertFalse(nullReply.getMapNames().hasMoreElements());
+        assertTrue(nullReply.getJMSTimestamp() > 0);
+        assertEquals(Message.DEFAULT_PRIORITY, nullReply.getJMSPriority());
+    }
+
+    public void testDestinationStatsWithFirstMessageTimestamp() throws Exception {
+        Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+        Queue replyTo = session.createTemporaryQueue();
+        MessageConsumer consumer = session.createConsumer(replyTo);
+        Queue testQueue = session.createQueue("Test.Queue");
+        MessageProducer producer = session.createProducer(null);
+        Queue query = session.createQueue(StatisticsBroker.STATS_DESTINATION_PREFIX + "." + testQueue.getQueueName());
+        Message msg = session.createMessage();
+        // Instruct to include timestamp of first message in the queue
+        msg.setBooleanProperty(StatisticsBroker.STATS_FIRST_MESSAGE_TIMESTAMP, true);
+
+        producer.send(testQueue, msg);
+
+        msg.setJMSReplyTo(replyTo);
+        producer.send(query, msg);
+        MapMessage reply = (MapMessage) consumer.receive(10 * 1000);
+        assertNotNull(reply);
+        assertTrue(reply.getMapNames().hasMoreElements());
+        assertEquals(1, reply.getLong("size"));
+        assertTrue(reply.getJMSTimestamp() > 0);
+        assertTrue(reply.getLong("firstMessageTimestamp") > 0);
+        // Assert that we got the brokerInTime for the first message in queue as value of key "firstMessageTimestamp"
+        assertTrue(System.currentTimeMillis() >= reply.getLong("firstMessageTimestamp"));
+        assertEquals(Message.DEFAULT_PRIORITY, reply.getJMSPriority());
+
+        /*
+        for (Enumeration e = reply.getMapNames(); e.hasMoreElements();) {
+            String name = e.nextElement().toString();
+            System.err.println(name+"="+reply.getObject(name));
+        }
+         */
+    }
+
     @SuppressWarnings("unused")
     public void testSubscriptionStats() throws Exception{
         Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
@@ -200,8 +280,15 @@ public class BrokerStatisticsPluginTest extends TestCase{
 
     protected BrokerService createBroker() throws Exception {
         BrokerService answer = new BrokerService();
-        BrokerPlugin[] plugins = new BrokerPlugin[1];
-        plugins[0] = new StatisticsBrokerPlugin();
+        BrokerPlugin[] plugins = new BrokerPlugin[2];
+        //AMQ-9452: proxy destinations with DestinationFilter
+        plugins[0] = new BrokerPluginSupport() {
+            @Override
+            public Set<Destination> getDestinations(ActiveMQDestination destination) {
+                return super.getDestinations(destination).stream().map(DestinationFilter::new).collect(Collectors.toSet());
+            }
+        };
+        plugins[1] = new StatisticsBrokerPlugin();
         answer.setPlugins(plugins);
         answer.setDeleteAllMessagesOnStartup(true);
         answer.addConnector("tcp://localhost:0");

@@ -16,11 +16,12 @@
  */
 package org.apache.activemq.selector;
 
-import javax.jms.InvalidSelectorException;
-import javax.jms.JMSException;
-import javax.jms.Message;
+import jakarta.jms.InvalidSelectorException;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
 
 import org.apache.activemq.command.ActiveMQMessage;
+import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.command.ActiveMQTopic;
 import org.apache.activemq.filter.BooleanExpression;
@@ -39,7 +40,10 @@ public class SelectorTest extends TestCase {
         assertSelector(message, "(trueProp OR falseProp) AND trueProp", true);
         assertSelector(message, "(trueProp OR falseProp) AND falseProp", false);
         assertSelector(message, "trueProp", true);
-
+        assertSelector(message, "(falseProp OR falseProp OR falseProp OR falseProp OR falseProp OR falseProp OR trueProp)", true);
+        assertSelector(message, "(falseProp OR falseProp OR falseProp OR falseProp OR falseProp OR falseProp OR falseProp)", false);
+        assertSelector(message, "(trueProp AND trueProp AND trueProp AND trueProp AND trueProp AND trueProp AND falseProp)", false);
+        assertSelector(message, "(trueProp AND trueProp AND trueProp AND trueProp AND trueProp AND trueProp AND trueProp)", true);
     }
 
     public void testXPathSelectors() throws Exception {
@@ -364,6 +368,15 @@ public class SelectorTest extends TestCase {
         assertSelector(message, "REGEX('connection1111', REPLACE(JMSMessageID,':',''))", true);
     }
 
+    public void testMatchOriginalDestinationAttribute() throws Exception {
+
+        ActiveMQMessage activeMQMessage = (ActiveMQMessage) createMessage();
+        ActiveMQQueue originalDest = new ActiveMQQueue("QQ");
+        activeMQMessage.setOriginalDestination(originalDest);
+        assertSelector(activeMQMessage, "JMSDestination='" + originalDest.getQualifiedName() +"'", true);
+    }
+
+
     protected Message createMessage() throws JMSException {
         Message message = createMessage("FOO.BAR");
         message.setJMSType("selector-test");
@@ -405,7 +418,9 @@ public class SelectorTest extends TestCase {
         MessageEvaluationContext context = new MessageEvaluationContext();
         context.setMessageReference((org.apache.activemq.command.Message)message);
         boolean value = selector.matches(context);
+        context.clear();
         assertEquals("Selector for: " + text, expected, value);
+        assertEquals("ref 0", 0, ((ActiveMQMessage)message).getReferenceCount());
     }
 
     protected Message createMessage(String subject) throws JMSException {

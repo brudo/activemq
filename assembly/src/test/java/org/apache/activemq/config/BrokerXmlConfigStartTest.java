@@ -20,15 +20,17 @@ import java.io.File;
 import java.io.FileFilter;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import javax.jms.Connection;
+import jakarta.jms.Connection;
 
 import junit.framework.TestCase;
 import org.apache.activemq.ActiveMQConnectionFactory;
@@ -93,15 +95,8 @@ public class BrokerXmlConfigStartTest {
         LOG.info("Broker config: " + configUrl);
         System.err.println("Broker config: " + configUrl);
         broker = BrokerFactory.createBroker(configUrl);
-        if ("activemq-leveldb-replicating.xml".equals(shortName)) {
-            try {
-                broker.start();
-            } catch (TimeoutException expectedWithNoZk) {
-                return;
-            }
-        } else {
-            broker.start();
-        }
+        broker.start();
+        broker.waitUntilStarted(5000l);
         // alive, now try connect to connect
         try {
             for (TransportConnector transport : broker.getTransportConnectors()) {
@@ -142,10 +137,26 @@ public class BrokerXmlConfigStartTest {
         System.setProperty("activemq.conf", "target/conf");
         secProps = new Properties();
         secProps.load(new FileInputStream(new File("target/conf/credentials.properties")));
+        // AMQ-9239 - setEnv doesn't work w/ JDK 17
+        // This is only needed for running in IDE. surefire plugin sets this during mvn builds
+        // setEnv("ACTIVEMQ_ENCRYPTION_PASSWORD", "activemq");
     }
 
     @After
     public void tearDown() throws Exception {
         TimeUnit.SECONDS.sleep(1);
+    }
+
+    private void setEnv(String key, String value) {
+        try {
+            Map<String, String> env = System.getenv();
+            Class<?> cl = env.getClass();
+            Field field = cl.getDeclaredField("m");
+            field.setAccessible(true);
+            Map<String, String> writableEnv = (Map<String, String>) field.get(env);
+            writableEnv.put(key, value);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to set environment variable", e);
+        }
     }
 }

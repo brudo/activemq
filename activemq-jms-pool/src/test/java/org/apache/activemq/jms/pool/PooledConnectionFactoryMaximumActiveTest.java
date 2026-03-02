@@ -25,12 +25,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
-import javax.jms.Connection;
-import javax.jms.JMSException;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
+import jakarta.jms.Session;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.junit.Test;
 
 /**
@@ -40,7 +41,7 @@ import org.junit.Test;
  */
 public class PooledConnectionFactoryMaximumActiveTest extends JmsPoolTestSupport {
 
-    public final static Logger LOG = Logger.getLogger(PooledConnectionFactoryMaximumActiveTest.class);
+    public final static Logger LOG = LogManager.getLogger(PooledConnectionFactoryMaximumActiveTest.class);
     public static Connection conn = null;
     public static int sleepTimeout = 5000;
 
@@ -94,7 +95,7 @@ public class PooledConnectionFactoryMaximumActiveTest extends JmsPoolTestSupport
 
     static class TestRunner2 implements Callable<Boolean> {
 
-        public final static Logger TASK_LOG = Logger.getLogger(TestRunner2.class);
+        public final static Logger TASK_LOG = LogManager.getLogger(TestRunner2.class);
 
         /**
          * @return true if test succeeded, false otherwise
@@ -109,7 +110,7 @@ public class PooledConnectionFactoryMaximumActiveTest extends JmsPoolTestSupport
 
                 if (PooledConnectionFactoryMaximumActiveTest.conn == null) {
                     TASK_LOG.error("Connection not yet initialized. Aborting test.");
-                    return new Boolean(false);
+                    return Boolean.FALSE;
                 }
 
                 one = PooledConnectionFactoryMaximumActiveTest.conn.createSession(false, Session.AUTO_ACKNOWLEDGE);
@@ -118,7 +119,7 @@ public class PooledConnectionFactoryMaximumActiveTest extends JmsPoolTestSupport
                 Thread.sleep(2 * PooledConnectionFactoryMaximumActiveTest.sleepTimeout);
             } catch (Exception ex) {
                 TASK_LOG.error(ex.getMessage());
-                return new Boolean(false);
+                return Boolean.FALSE;
             } finally {
                 if (one != null)
                     try {
@@ -129,7 +130,7 @@ public class PooledConnectionFactoryMaximumActiveTest extends JmsPoolTestSupport
             }
 
             // all good, test succeeded
-            return new Boolean(true);
+            return Boolean.TRUE;
         }
     }
 }

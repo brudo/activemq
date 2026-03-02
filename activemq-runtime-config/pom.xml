@@ -22,7 +22,7 @@
   <parent>
     <groupId>org.apache.activemq</groupId>
     <artifactId>activemq-parent</artifactId>
-    <version>5.16.0-SNAPSHOT</version>
+    <version>6.3.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>activemq-runtime-config</artifactId>
@@ -68,9 +68,13 @@
       <artifactId>spring-context</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.jvnet.jaxb2_commons</groupId>
-      <artifactId>jaxb2-basics-runtime</artifactId>
-      <version>${jaxb-basics-version}</version>
+      <groupId>jakarta.xml.bind</groupId>
+      <artifactId>jakarta.xml.bind-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.jvnet.jaxb</groupId>
+      <artifactId>jaxb-plugins-runtime</artifactId>
+      <version>${jaxb-tools-version}</version>
     </dependency>
     <dependency>
       <groupId>junit</groupId>
@@ -78,13 +82,13 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-log4j12</artifactId>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-slf4j2-impl</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>log4j</groupId>
-      <artifactId>log4j</artifactId>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-core</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -94,7 +98,16 @@
       <classifier>tests</classifier>
       <scope>test</scope>
     </dependency>
-
+    <dependency>
+      <groupId>com.sun.xml.bind</groupId>
+      <artifactId>jaxb-impl</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.sun.istack</groupId>
+      <artifactId>istack-commons-runtime</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
@@ -102,7 +115,7 @@
       <plugin>
         <groupId>org.apache.cxf</groupId>
         <artifactId>cxf-xjc-plugin</artifactId>
-        <version>3.0.1</version>
+        <version>4.1.2</version>
         <executions>
           <execution>
             <id>compile-xsd</id>
@@ -114,13 +127,14 @@
         </executions>
         <configuration>
           <extensions>
-              <extension>org.jvnet.jaxb2_commons:jaxb2-basics:${jaxb-basics-version}</extension>
+              <extension>org.jvnet.jaxb:jaxb-plugins:${jaxb-tools-version}</extension>
           </extensions>
           <xsdOptions>
               <xsdOption>
                  <xsd>${basedir}/../activemq-spring/target/classes/activemq.xsd</xsd>
                  <bindingFile>${basedir}/src/main/resources/binding.xjb</bindingFile>
                  <extensionArgs>
+            		<extensionArgs>-no-header</extensionArgs>
             		<extensionArgs>-XtoString</extensionArgs>
             		<extensionArgs>-XhashCode</extensionArgs>
             		<extensionArgs>-Xequals</extensionArgs>
@@ -134,18 +148,14 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
           <forkCount>1</forkCount>
-          <reuseForks>false</reuseForks>
           <argLine>-Xmx512M -Djava.awt.headless=true</argLine>
-          <systemProperties>
-            <property>
-              <name>org.apache.activemq.default.directory.prefix</name>
-              <value>target/</value>
-            </property>
+          <systemPropertyVariables>
+            <org.apache.activemq.default.directory.prefix>target</org.apache.activemq.default.directory.prefix>
             <property>
               <name>log4j.configuration</name>
               <value>file:target/test-classes/log4j.properties</value>
             </property>
-          </systemProperties>
+          </systemPropertyVariables>
           <includes>
             <include>**/*Test.*</include>
           </includes>

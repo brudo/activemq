@@ -36,9 +36,11 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLEngineResult;
 import javax.net.ssl.SSLEngineResult.HandshakeStatus;
+import javax.net.ssl.SSLParameters;
 import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.net.ssl.SSLSession;
 
+import org.apache.activemq.MaxFrameSizeExceededException;
 import org.apache.activemq.command.ConnectionInfo;
 import org.apache.activemq.openwire.OpenWireFormat;
 import org.apache.activemq.thread.TaskRunnerFactory;
@@ -56,6 +58,7 @@ public class NIOSSLTransport extends NIOTransport {
     protected boolean wantClientAuth;
     protected String[] enabledCipherSuites;
     protected String[] enabledProtocols;
+    protected boolean verifyHostName = false;
 
     protected SSLContext sslContext;
     protected SSLEngine sslEngine;
@@ -117,6 +120,12 @@ public class NIOSSLTransport extends NIOTransport {
                     sslEngine = sslContext.createSSLEngine(remoteHost, remotePort);
                 } else {
                     sslEngine = sslContext.createSSLEngine();
+                }
+
+                if (verifyHostName) {
+                    SSLParameters sslParams = new SSLParameters();
+                    sslParams.setEndpointIdentificationAlgorithm("HTTPS");
+                    sslEngine.setSSLParameters(sslParams);
                 }
 
                 sslEngine.setUseClientMode(false);
@@ -206,19 +215,27 @@ public class NIOSSLTransport extends NIOTransport {
     }
 
     //Only used for the auto transport to abort the openwire init method early if already initialized
-    boolean openWireInititialized = false;
+    boolean openWireInitialized = false;
 
     protected void doOpenWireInit() throws Exception {
         //Do this later to let wire format negotiation happen
-        if (initBuffer != null && !openWireInititialized && this.wireFormat instanceof OpenWireFormat) {
+        if (initBuffer != null && !openWireInitialized && this.wireFormat instanceof OpenWireFormat) {
             initBuffer.buffer.flip();
             if (initBuffer.buffer.hasRemaining()) {
                 nextFrameSize = -1;
-                receiveCounter += initBuffer.readSize;
-                processCommand(initBuffer.buffer);
-                processCommand(initBuffer.buffer);
+                receiveCounter.addAndGet(initBuffer.readSize);
+                do {
+                    // This should almost always just be called 2 times, the first call reads
+                    // the size and allocates space for the frame. The second call reads
+                    // in the frame to process. This is enough to read in the initial WireFormatInfo
+                    // frame that will be sent. However, it's technically possible for
+                    // there to be extra data after that if more bytes came in during the initial
+                    // socket read if a client sends more, so keep calling until we process the
+                    // entire initial buffer before we continue so we do not miss any bytes.
+                    processCommand(initBuffer.buffer);
+                } while (initBuffer.buffer.hasRemaining());
                 initBuffer.buffer.clear();
-                openWireInititialized = true;
+                openWireInitialized = true;
             }
         }
     }
@@ -248,6 +265,11 @@ public class NIOSSLTransport extends NIOTransport {
             plain.position(plain.limit());
 
             while (true) {
+                //If the transport was already stopped then break
+                if (this.isStopped()) {
+                    return;
+                }
+
                 if (!plain.hasRemaining()) {
 
                     int readCount = secureRead(plain);
@@ -263,7 +285,7 @@ public class NIOSSLTransport extends NIOTransport {
                         break;
                     }
 
-                    receiveCounter += readCount;
+                    receiveCounter.addAndGet(readCount);
                 }
 
                 if (status == SSLEngineResult.Status.OK && handshakeStatus != SSLEngineResult.HandshakeStatus.NEED_UNWRAP) {
@@ -322,9 +344,11 @@ public class NIOSSLTransport extends NIOTransport {
             }
 
             if (wireFormat instanceof OpenWireFormat) {
-                long maxFrameSize = ((OpenWireFormat) wireFormat).getMaxFrameSize();
-                if (nextFrameSize > maxFrameSize) {
-                    throw new IOException("Frame size of " + (nextFrameSize / (1024 * 1024)) +
+                OpenWireFormat openWireFormat = (OpenWireFormat) wireFormat;
+                long maxFrameSize = openWireFormat.getMaxFrameSize();
+
+                if (openWireFormat.isMaxFrameSizeEnabled() && nextFrameSize > maxFrameSize) {
+                    throw new MaxFrameSizeExceededException("Frame size of " + (nextFrameSize / (1024 * 1024)) +
                                           " MB larger than max allowed " + (maxFrameSize / (1024 * 1024)) + " MB");
                 }
             }
@@ -360,7 +384,8 @@ public class NIOSSLTransport extends NIOTransport {
         }
     }
 
-    protected int secureRead(ByteBuffer plain) throws Exception {
+    //Prevent concurrent access while reading from the channel
+    protected synchronized int secureRead(ByteBuffer plain) throws Exception {
 
         if (!(inputBuffer.position() != 0 && inputBuffer.hasRemaining()) || status == SSLEngineResult.Status.BUFFER_UNDERFLOW) {
             int bytesRead = channel.read(inputBuffer);
@@ -542,5 +567,13 @@ public class NIOSSLTransport extends NIOTransport {
 
     public void setEnabledProtocols(String[] enabledProtocols) {
         this.enabledProtocols = enabledProtocols;
+    }
+
+    public boolean isVerifyHostName() {
+        return verifyHostName;
+    }
+
+    public void setVerifyHostName(boolean verifyHostName) {
+        this.verifyHostName = verifyHostName;
     }
 }

@@ -22,7 +22,7 @@
   <parent>
     <groupId>org.apache.activemq</groupId>
     <artifactId>activemq-parent</artifactId>
-    <version>5.16.0-SNAPSHOT</version>
+    <version>6.3.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>activemq-jaas</artifactId>
@@ -39,23 +39,18 @@
           <useFile>true</useFile>
           <argLine>-Xmx512M</argLine>
 
-          <systemProperties>
-            <property>
-              <name>org.apache.activemq.default.directory.prefix</name>
-              <value>target/</value>
-            </property>
+          <systemPropertyVariables>
+            <org.apache.activemq.default.directory.prefix>target</org.apache.activemq.default.directory.prefix>
             <!-- Uncomment the following if you want to configure custom logging (using src/test/resources/log4j.properties)
                  while running mvn:test
                  Note: if you want to see log messages on the console window remove
                        "redirectTestOutputToFile" from the parent pom
             -->
-            <!--
-            <property>
-              <name>log4j.configuration</name>
-              <value>file:target/test-classes/log4j.properties</value>
-            </property>
-            -->
-          </systemProperties>
+            <!-- <log4j.configuration>file:target/test-classes/log4j.properties</log4j.configuration> -->
+          </systemPropertyVariables>
+          <environmentVariables>
+              <ACTIVEMQ_ENCRYPTION_PASSWORD>activemq</ACTIVEMQ_ENCRYPTION_PASSWORD>
+          </environmentVariables>
         </configuration>
       </plugin>
     </plugins>
@@ -64,26 +59,9 @@
 
   <dependencies>
     <dependency>
-      <groupId>commons-collections</groupId>
-      <artifactId>commons-collections</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
       <groupId>org.apache.directory.server</groupId>
       <artifactId>apacheds-core-integ</artifactId>
       <version>${directory-version}</version>
-      <scope>test</scope>
-      <exclusions>
-        <exclusion>
-          <groupId>bouncycastle</groupId>
-          <artifactId>bcprov-jdk15</artifactId>
-        </exclusion>
-      </exclusions>
-    </dependency>
-    <dependency>
-      <groupId>org.bouncycastle</groupId>
-      <artifactId>bcprov-jdk15</artifactId>
-      <version>1.46</version>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -91,6 +69,12 @@
       <artifactId>apacheds-server-integ</artifactId>
       <version>${directory-version}</version>
       <scope>test</scope>
+      <exclusions>
+        <exclusion>
+          <groupId>log4j</groupId>
+          <artifactId>log4j</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>junit</groupId>
@@ -104,8 +88,8 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>log4j</groupId>
-      <artifactId>log4j</artifactId>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-core</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -113,8 +97,8 @@
       <artifactId>slf4j-api</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-log4j12</artifactId>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-slf4j2-impl</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>

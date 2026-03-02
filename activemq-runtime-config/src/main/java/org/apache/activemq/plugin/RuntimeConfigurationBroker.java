@@ -24,10 +24,10 @@ import java.util.Properties;
 import javax.management.JMException;
 import javax.management.ObjectName;
 import javax.xml.XMLConstants;
-import javax.xml.bind.JAXBContext;
-import javax.xml.bind.JAXBElement;
-import javax.xml.bind.JAXBException;
-import javax.xml.bind.Unmarshaller;
+import jakarta.xml.bind.JAXBContext;
+import jakarta.xml.bind.JAXBElement;
+import jakarta.xml.bind.JAXBException;
+import jakarta.xml.bind.Unmarshaller;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
@@ -42,6 +42,7 @@ import org.apache.activemq.broker.jmx.ManagementContext;
 import org.apache.activemq.plugin.jmx.RuntimeConfigurationView;
 import org.apache.activemq.schema.core.DtoBroker;
 import org.apache.activemq.spring.Utils;
+import org.apache.activemq.util.XmlFactories;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
@@ -173,13 +174,14 @@ public class RuntimeConfigurationBroker extends AbstractRuntimeConfigurationBrok
         DtoBroker jaxbConfig = null;
         if (configToMonitor != null) {
             try {
-                JAXBContext context = JAXBContext.newInstance(DtoBroker.class);
+                JAXBContext context = JAXBContext.newInstance(DtoBroker.class.getPackageName(), DtoBroker.class.getClassLoader());
                 Unmarshaller unMarshaller = context.createUnmarshaller();
                 unMarshaller.setSchema(getSchema());
 
                 // skip beans and pull out the broker node to validate
-                DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+                DocumentBuilderFactory dbf = XmlFactories.getSafeDocumentBuilderFactory();
                 dbf.setNamespaceAware(true);
+
                 DocumentBuilder db = dbf.newDocumentBuilder();
                 Document doc = db.parse(configToMonitor.getInputStream());
                 Node brokerRootNode = doc.getElementsByTagNameNS("*","broker").item(0);
@@ -225,12 +227,17 @@ public class RuntimeConfigurationBroker extends AbstractRuntimeConfigurationBrok
 
     private Schema getSchema() throws SAXException, IOException {
         if (schema == null) {
-            SchemaFactory schemaFactory = SchemaFactory.newInstance(
-                    XMLConstants.W3C_XML_SCHEMA_NS_URI);
+            SchemaFactory schemaFactory = SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);
+            schemaFactory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            schemaFactory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
 
             ArrayList<StreamSource> schemas = new ArrayList<StreamSource>();
             schemas.add(new StreamSource(getClass().getResource("/activemq.xsd").toExternalForm()));
-            schemas.add(new StreamSource(getClass().getResource("/org/springframework/beans/factory/xml/spring-beans-3.0.xsd").toExternalForm()));
+            if (getClass().getResource("/org/springframework/beans/factory/xml/spring-beans-3.0.xsd") != null) {
+                schemas.add(new StreamSource(getClass().getResource("/org/springframework/beans/factory/xml/spring-beans-3.0.xsd").toExternalForm()));
+            } else {
+                schemas.add(new StreamSource(getClass().getResource("/org/springframework/beans/factory/xml/spring-beans.xsd").toExternalForm()));
+            }
             schema = schemaFactory.newSchema(schemas.toArray(new Source[]{}));
         }
         return schema;

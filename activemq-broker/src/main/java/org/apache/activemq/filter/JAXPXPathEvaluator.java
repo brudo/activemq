@@ -21,9 +21,9 @@ import org.apache.activemq.util.ByteArrayInputStream;
 import org.w3c.dom.Document;
 import org.xml.sax.InputSource;
 
-import javax.jms.BytesMessage;
-import javax.jms.JMSException;
-import javax.jms.TextMessage;
+import jakarta.jms.BytesMessage;
+import jakarta.jms.JMSException;
+import jakarta.jms.TextMessage;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.xpath.XPath;
 import javax.xml.xpath.XPathConstants;
@@ -63,7 +63,7 @@ public class JAXPXPathEvaluator implements XPathExpression.XPathEvaluator {
         try {
             InputSource inputSource = new InputSource(new ByteArrayInputStream(data));
             Document inputDocument = builder.parse(inputSource);
-            return ((Boolean)xpath.evaluate(xpathExpression, inputDocument, XPathConstants.BOOLEAN)).booleanValue();
+            return (Boolean) xpath.evaluate(xpathExpression, inputDocument, XPathConstants.BOOLEAN);
         } catch (Exception e) {
             return false;
         }
@@ -73,7 +73,7 @@ public class JAXPXPathEvaluator implements XPathExpression.XPathEvaluator {
         try {
             InputSource inputSource = new InputSource(new StringReader(text));
             Document inputDocument = builder.parse(inputSource);
-            return ((Boolean)xpath.evaluate(xpathExpression, inputDocument, XPathConstants.BOOLEAN)).booleanValue();
+            return (Boolean) xpath.evaluate(xpathExpression, inputDocument, XPathConstants.BOOLEAN);
         } catch (Exception e) {
             return false;
         }

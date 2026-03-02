@@ -20,8 +20,11 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InvalidClassException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.ObjectStreamClass;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
@@ -66,7 +69,7 @@ public class SubQueueSelectorCacheBroker extends BrokerFilter implements Runnabl
      * The subscription's selector cache. We cache compiled expressions keyed
      * by the target destination.
      */
-    private ConcurrentMap<String, Set<String>> subSelectorCache = new ConcurrentHashMap<String, Set<String>>();
+    private ConcurrentMap<String, Set<String>> subSelectorCache = new ConcurrentHashMap<>();
 
     private final File persistFile;
     private boolean singleSelectorPerDestination = false;
@@ -131,8 +134,10 @@ public class SubQueueSelectorCacheBroker extends BrokerFilter implements Runnabl
 
     @Override
     public Subscription addConsumer(ConnectionContext context, ConsumerInfo info) throws Exception {
-        // don't track selectors for advisory topics or temp destinations
-        if (!AdvisorySupport.isAdvisoryTopic(info.getDestination()) && !info.getDestination().isTemporary()) {
+		// don't track selectors for advisory topics, temp destinations or console
+		// related consumers
+		if (!AdvisorySupport.isAdvisoryTopic(info.getDestination()) && !info.getDestination().isTemporary()
+				&& !info.isBrowser()) {
             String destinationName = info.getDestination().getQualifiedName();
             LOG.debug("Caching consumer selector [{}] on  '{}'", info.getSelector(), destinationName);
 
@@ -175,7 +180,7 @@ public class SubQueueSelectorCacheBroker extends BrokerFilter implements Runnabl
             if (singleSelectorPerDestination) {
                 String destinationName = info.getDestination().getQualifiedName();
                 Set<String> selectors = subSelectorCache.get(destinationName);
-                if (info.getSelector() == null && selectors.size() > 1) {
+                if (info.getSelector() == null && (selectors != null && selectors.size() > 1)) {
                     boolean removed = selectors.remove(MATCH_EVERYTHING);
                     LOG.debug("A non-selector consumer has dropped. Removing the catchall matching pattern 'TRUE'. Successful? " + removed);
                 }
@@ -190,9 +195,22 @@ public class SubQueueSelectorCacheBroker extends BrokerFilter implements Runnabl
         if (persistFile != null && persistFile.exists()) {
             try {
                 try (FileInputStream fis = new FileInputStream(persistFile);) {
-                    ObjectInputStream in = new ObjectInputStream(fis);
+                    ObjectInputStream in = new SubSelectorClassObjectInputStream(fis);
                     try {
+                        LOG.debug("Reading selector cache....");
                         subSelectorCache = (ConcurrentHashMap<String, Set<String>>) in.readObject();
+
+                        if (LOG.isDebugEnabled()) {
+                            final StringBuilder sb = new StringBuilder();
+                            sb.append("Selector cache data loaded from: ").append(persistFile.getAbsolutePath()).append("\n");
+                            sb.append("The following entries were loaded from the cache file: \n");
+
+                            subSelectorCache.forEach((k,v) -> {
+                                sb.append("\t").append(k).append(": ").append(v).append("\n");
+                            });
+
+                            LOG.debug(sb.toString());
+                        }
                     } catch (ClassNotFoundException ex) {
                         LOG.error("Invalid selector cache data found. Please remove file.", ex);
                     } finally {
@@ -231,13 +249,6 @@ public class SubQueueSelectorCacheBroker extends BrokerFilter implements Runnabl
     }
 
     /**
-     * @return The JMS selector for the specified {@code destination}
-     */
-    public Set<String> getSelector(final String destination) {
-        return subSelectorCache.get(destination);
-    }
-
-    /**
      * Persist the selector cache every {@code MAX_PERSIST_INTERVAL}ms.
      *
      * @see java.lang.Runnable#run()
@@ -264,8 +275,11 @@ public class SubQueueSelectorCacheBroker extends BrokerFilter implements Runnabl
 
     @SuppressWarnings("unchecked")
     public Set<String> getSelectorsForDestination(String destinationName) {
-        if (subSelectorCache.containsKey(destinationName)) {
-            return new HashSet<String>(subSelectorCache.get(destinationName));
+        final Set<String> cachedSelectors = subSelectorCache.get(destinationName);
+        if (cachedSelectors != null) {
+            synchronized(cachedSelectors) {
+                return new HashSet<>(cachedSelectors);
+            }
         }
 
         return Collections.EMPTY_SET;
@@ -280,17 +294,13 @@ public class SubQueueSelectorCacheBroker extends BrokerFilter implements Runnabl
     }
 
     public boolean deleteSelectorForDestination(String destinationName, String selector) {
-        if (subSelectorCache.containsKey(destinationName)) {
-            Set<String> cachedSelectors = subSelectorCache.get(destinationName);
-            return cachedSelectors.remove(selector);
-        }
-
-        return false;
+        final Set<String> cachedSelectors = subSelectorCache.get(destinationName);
+        return cachedSelectors != null ? cachedSelectors.remove(selector) : false;
     }
 
     public boolean deleteAllSelectorsForDestination(String destinationName) {
-        if (subSelectorCache.containsKey(destinationName)) {
-            Set<String> cachedSelectors = subSelectorCache.get(destinationName);
+        final Set<String> cachedSelectors = subSelectorCache.get(destinationName);
+        if (cachedSelectors != null) {
             cachedSelectors.clear();
         }
         return true;
@@ -348,6 +358,25 @@ public class SubQueueSelectorCacheBroker extends BrokerFilter implements Runnabl
                 }
             }
             return false;
+        }
+    }
+
+    private static class SubSelectorClassObjectInputStream extends ObjectInputStream {
+
+        public SubSelectorClassObjectInputStream(InputStream is) throws IOException {
+            super(is);
+        }
+
+        @Override
+        protected Class<?> resolveClass(ObjectStreamClass desc) throws IOException, ClassNotFoundException {
+            if (!(desc.getName().startsWith("java.lang.")
+                    || desc.getName().startsWith("com.thoughtworks.xstream")
+                    || desc.getName().startsWith("java.util.")
+                    || desc.getName().length() > 2 && desc.getName().substring(2).startsWith("java.util.") // Allow arrays
+                    || desc.getName().startsWith("org.apache.activemq."))) {
+                throw new InvalidClassException("Unauthorized deserialization attempt", desc.getName());
+            }
+            return super.resolveClass(desc);
         }
     }
 }

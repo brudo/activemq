@@ -25,11 +25,11 @@ import static org.junit.Assert.fail;
 import java.util.Date;
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.Session;
 import javax.management.ObjectName;
 
 import org.apache.activemq.broker.jmx.JobSchedulerViewMBean;
@@ -41,12 +41,15 @@ import org.apache.activemq.transport.amqp.client.AmqpMessage;
 import org.apache.activemq.transport.amqp.client.AmqpReceiver;
 import org.apache.activemq.transport.amqp.client.AmqpSender;
 import org.apache.activemq.transport.amqp.client.AmqpSession;
+import org.apache.activemq.transport.amqp.ParallelTest;
 import org.apache.activemq.util.Wait;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 
 /**
  * Test for scheduled message support using AMQP message annotations.
  */
+@Category(ParallelTest.class)
 public class AmqpScheduledMessageTest extends AmqpClientTestSupport {
 
     @Override

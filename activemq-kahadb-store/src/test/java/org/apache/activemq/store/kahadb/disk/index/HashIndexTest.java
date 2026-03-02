@@ -16,22 +16,24 @@
  */
 package org.apache.activemq.store.kahadb.disk.index;
 
+import org.apache.activemq.store.kahadb.ParallelTest;
 import org.apache.activemq.store.kahadb.disk.util.LongMarshaller;
 import org.apache.activemq.store.kahadb.disk.util.StringMarshaller;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class HashIndexTest extends IndexTestSupport {
 
     @Override
     protected Index<String, Long> createIndex() throws Exception {
         
         long id = tx.allocate().getPageId();
-        tx.commit();
-
         HashIndex<String, Long> index = new HashIndex<String,Long>(pf, id);
         index.setBinCapacity(12);
         index.setKeyMarshaller(StringMarshaller.INSTANCE);
         index.setValueMarshaller(LongMarshaller.INSTANCE);
-        
+        index.load(tx);
+        tx.commit();
         return index;
     }
 

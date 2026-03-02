@@ -26,12 +26,12 @@ import java.util.List;
 import java.util.Set;
 import java.util.Vector;
 
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
 import javax.net.ServerSocketFactory;
@@ -51,6 +51,7 @@ import org.apache.activemq.broker.jmx.TopicViewMBean;
 import org.apache.activemq.spring.SpringSslContext;
 import org.apache.activemq.store.kahadb.KahaDBStore;
 import org.apache.activemq.transport.amqp.protocol.AmqpConnection;
+import org.apache.activemq.util.IOHelper;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -61,7 +62,6 @@ import org.slf4j.LoggerFactory;
 public class AmqpTestSupport {
 
     public static final String MESSAGE_NUMBER = "MessageNumber";
-    public static final String KAHADB_DIRECTORY = "target/activemq-data/";
 
     @Rule public TestName name = new TestName();
 
@@ -71,6 +71,7 @@ public class AmqpTestSupport {
     protected Vector<Throwable> exceptions = new Vector<>();
     protected int numberOfMessages;
 
+    protected boolean advisorySupport = false;
     protected URI amqpURI;
     protected int amqpPort;
     protected URI amqpSslURI;
@@ -97,6 +98,11 @@ public class AmqpTestSupport {
     protected URI openwireURI;
     protected int openwirePort;
 
+    static {
+        System.setProperty("jetty.ssl.sniRequired", "false");
+        System.setProperty("jetty.ssl.sniHostCheck", "false");
+    }
+
     @Before
     public void setUp() throws Exception {
         LOG.info("========== start " + getTestName() + " ==========");
@@ -114,11 +120,11 @@ public class AmqpTestSupport {
         brokerService.setDeleteAllMessagesOnStartup(deleteAllMessages);
         if (isPersistent()) {
             KahaDBStore kaha = new KahaDBStore();
-            kaha.setDirectory(new File(KAHADB_DIRECTORY + getTestName()));
+            kaha.setDirectory(new File(IOHelper.getDefaultDataDirectory() + getTestName()));
             brokerService.setPersistenceAdapter(kaha);
         }
         brokerService.setSchedulerSupport(isSchedulerEnabled());
-        brokerService.setAdvisorySupport(false);
+        brokerService.setAdvisorySupport(advisorySupport);
         brokerService.setUseJmx(isUseJmx());
         brokerService.getManagementContext().setCreateConnector(false);
 
@@ -351,11 +357,14 @@ public class AmqpTestSupport {
 
     public Connection createJMSConnection() throws JMSException {
         if (!isUseOpenWireConnector()) {
-            throw new javax.jms.IllegalStateException("OpenWire TransportConnector was not configured.");
+            throw new jakarta.jms.IllegalStateException("OpenWire TransportConnector was not configured.");
         }
 
         ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory(openwireURI);
-
+        List<String> trustedPackages = new ArrayList<>();
+        trustedPackages.addAll(factory.getTrustedPackages());
+        trustedPackages.add("java.util");
+        factory.setTrustedPackages(trustedPackages);
         return factory.createConnection();
     }
 

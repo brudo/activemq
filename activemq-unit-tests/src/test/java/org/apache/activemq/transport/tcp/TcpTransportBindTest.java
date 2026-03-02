@@ -19,14 +19,17 @@ package org.apache.activemq.transport.tcp;
 import java.util.Timer;
 import java.util.TimerTask;
 
-import javax.jms.Connection;
-import javax.jms.MessageConsumer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.Session;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.EmbeddedBrokerTestSupport;
 import org.apache.activemq.broker.BrokerService;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class TcpTransportBindTest extends EmbeddedBrokerTestSupport {
     String addr = "tcp://localhost:0";
 

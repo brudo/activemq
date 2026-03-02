@@ -26,12 +26,12 @@ import java.util.Arrays;
 import java.util.zip.Deflater;
 import java.util.zip.Inflater;
 
-import javax.jms.BytesMessage;
-import javax.jms.JMSException;
-import javax.jms.MessageEOFException;
-import javax.jms.MessageFormatException;
-import javax.jms.MessageNotReadableException;
-import javax.jms.MessageNotWriteableException;
+import jakarta.jms.BytesMessage;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageEOFException;
+import jakarta.jms.MessageFormatException;
+import jakarta.jms.MessageNotReadableException;
+import jakarta.jms.MessageNotWriteableException;
 
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.util.ByteArrayInputStream;
@@ -84,12 +84,12 @@ import org.apache.activemq.util.JMSExceptionSupport;
  * <CODE>MessageNotWriteableException</CODE> is thrown.
  *
  * @openwire:marshaller code=24
- * @see javax.jms.Session#createBytesMessage()
- * @see javax.jms.MapMessage
- * @see javax.jms.Message
- * @see javax.jms.ObjectMessage
- * @see javax.jms.StreamMessage
- * @see javax.jms.TextMessage
+ * @see jakarta.jms.Session#createBytesMessage()
+ * @see jakarta.jms.MapMessage
+ * @see jakarta.jms.Message
+ * @see jakarta.jms.ObjectMessage
+ * @see jakarta.jms.StreamMessage
+ * @see jakarta.jms.TextMessage
  */
 public class ActiveMQBytesMessage extends ActiveMQMessage implements BytesMessage {
 
@@ -149,6 +149,11 @@ public class ActiveMQBytesMessage extends ActiveMQMessage implements BytesMessag
                 }
             }
         }
+    }
+
+    @Override
+    public boolean isContentMarshalled() {
+        return content != null || dataOut == null;
     }
 
     @Override
@@ -773,21 +778,21 @@ public class ActiveMQBytesMessage extends ActiveMQMessage implements BytesMessag
         }
         initializeWriting();
         if (value instanceof Boolean) {
-            writeBoolean(((Boolean)value).booleanValue());
+            writeBoolean((Boolean) value);
         } else if (value instanceof Character) {
-            writeChar(((Character)value).charValue());
+            writeChar((Character) value);
         } else if (value instanceof Byte) {
-            writeByte(((Byte)value).byteValue());
+            writeByte((Byte) value);
         } else if (value instanceof Short) {
-            writeShort(((Short)value).shortValue());
+            writeShort((Short) value);
         } else if (value instanceof Integer) {
-            writeInt(((Integer)value).intValue());
+            writeInt((Integer) value);
         } else if (value instanceof Long) {
-            writeLong(((Long)value).longValue());
+            writeLong((Long) value);
         } else if (value instanceof Float) {
-            writeFloat(((Float)value).floatValue());
+            writeFloat((Float) value);
         } else if (value instanceof Double) {
-            writeDouble(((Double)value).doubleValue());
+            writeDouble((Double) value);
         } else if (value instanceof String) {
             writeUTF(value.toString());
         } else if (value instanceof byte[]) {
@@ -827,6 +832,10 @@ public class ActiveMQBytesMessage extends ActiveMQMessage implements BytesMessag
 
     private void initializeWriting() throws JMSException {
         checkReadOnlyBody();
+        initializeWritingNoCheck();
+    }
+
+    private void initializeWritingNoCheck() throws JMSException {
         if (this.dataOut == null) {
             this.bytesOut = new ByteArrayOutputStream();
             OutputStream os = bytesOut;
@@ -909,7 +918,8 @@ public class ActiveMQBytesMessage extends ActiveMQMessage implements BytesMessag
 
     @Override
     public void setObjectProperty(String name, Object value) throws JMSException {
-        initializeWriting();
+        checkReadOnlyProperties();
+        initializeWritingNoCheck();
         super.setObjectProperty(name, value);
     }
 
@@ -945,5 +955,22 @@ public class ActiveMQBytesMessage extends ActiveMQMessage implements BytesMessag
                 compressed.close();
             }
         }
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public boolean isBodyAssignableTo(Class c) {
+        return getContent() == null || c.isAssignableFrom(byte[].class);
+    }
+
+    @SuppressWarnings("unchecked")
+    protected <T> T doGetBody(Class<T> asType) {
+        //Make sure the bytes are stored before trying to copy and return
+        if (dataOut != null && getContent() == null) {
+            storeContent();
+        }
+
+        final ByteSequence content = getContent();
+        return content != null ? (T) content.toArray() : null;
     }
 }

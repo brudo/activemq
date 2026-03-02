@@ -58,12 +58,12 @@ public class makeListFunction implements FilterFunction {
      * a list containing the evaluated results of its argument expressions.
      *
      * @param    expr - the expression consisting of a call to this function.
-     * @param    message_ctx - the context in which the call is being evaluated.
+     * @param    message - the context in which the call is being evaluated.
      * @return java.util.List - the result of the evaluation.
      */
 
     public Object evaluate(FunctionCallExpression expr, MessageEvaluationContext message)
-            throws javax.jms.JMSException {
+            throws jakarta.jms.JMSException {
         java.util.ArrayList ele_arr;
         int num_arg;
         int cur;

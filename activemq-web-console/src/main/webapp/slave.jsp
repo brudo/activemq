@@ -14,8 +14,6 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 -->
-<%-- Workaround for https://ops4j1.jira.com/browse/PAXWEB-1070 --%>
-<%@include file="WEB-INF/jspf/headertags.jspf" %>
 
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 
@@ -23,13 +21,7 @@
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
     <title>Apache ActiveMQ</title>
-    <style type="text/css" media="screen">
-        @import url('${pageContext.request.contextPath}/styles/type-settings.css');
-        @import url('${pageContext.request.contextPath}/styles/site.css');
-    </style>
-
-
-
+    <link rel="stylesheet" media="screen" href="/styles/head.css" />
 </head>
 
 <body>
@@ -51,10 +43,10 @@
                     <!-- Banner -->
                     <div id="asf_logo">
                         <div id="activemq_logo">
-                            <a style="float:left; width:280px;display:block;text-indent:-5000px;text-decoration:none;line-height:60px; margin-top:10px; margin-left:100px;"
+                            <a class="header-logo-active-mq"
                                href="http://activemq.apache.org/"
                                title="The most popular and powerful open source Message Broker">ActiveMQ</a>
-                            <a style="float:right; width:210px;display:block;text-indent:-5000px;text-decoration:none;line-height:60px; margin-top:15px; margin-right:10px;"
+                            <a class="header-logo-apache"
                                href="http://www.apache.org/" title="The Apache Software Foundation">ASF</a>
                         </div>
                     </div>
@@ -72,7 +64,7 @@
                     <table border="0">
                         <tbody>
                             <tr>
-                                <td valign="top" width="100%" style="overflow:hidden;">
+                                <td valign="top" width="100%" class="body-container">
                                     <div class="body-content">
                                         <p align="center">Broker is currently in <b>slave</b> mode!</p>
                                     </div>
@@ -112,7 +104,7 @@
             <div class="footer_l">
                 <div class="footer_r">
                     <div>
-                        Copyright 2005-2013 The Apache Software Foundation.
+                        Copyright 2005-2024 The Apache Software Foundation.
 
                         (<a href="?printable=true">printable version</a>)
                     </div>

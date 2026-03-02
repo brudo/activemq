@@ -24,10 +24,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import javax.jms.JMSException;
+import jakarta.jms.JMSException;
+import jakarta.jms.ResourceAllocationException;
+
 import javax.transaction.xa.XAException;
 
-import org.apache.activemq.ActiveMQMessageAudit;
 import org.apache.activemq.broker.jmx.ManagedRegionBroker;
 import org.apache.activemq.broker.region.Destination;
 import org.apache.activemq.command.ActiveMQDestination;
@@ -64,6 +65,7 @@ public class TransactionBroker extends BrokerFilter {
     // The prepared XA transactions.
     private TransactionStore transactionStore;
     private Map<TransactionId, XATransaction> xaTransactions = new LinkedHashMap<TransactionId, XATransaction>();
+    final ConnectionContext context = new ConnectionContext();
 
     public TransactionBroker(Broker next, TransactionStore transactionStore) {
         super(next);
@@ -82,7 +84,6 @@ public class TransactionBroker extends BrokerFilter {
     public void start() throws Exception {
         transactionStore.start();
         try {
-            final ConnectionContext context = new ConnectionContext();
             context.setBroker(this);
             context.setInRecoveryMode(true);
             context.setTransactions(new ConcurrentHashMap<TransactionId, Transaction>());
@@ -128,12 +129,11 @@ public class TransactionBroker extends BrokerFilter {
 
     private void forceDestinationWakeupOnCompletion(ConnectionContext context, Transaction transaction,
                                                     ActiveMQDestination amqDestination, BaseCommand ack) throws Exception {
-        Destination destination =  addDestination(context, amqDestination, false);
-        registerSync(destination, transaction, ack);
+        registerSync(amqDestination, transaction, ack);
     }
 
-    private void registerSync(Destination destination, Transaction transaction, BaseCommand command) {
-        Synchronization sync = new PreparedDestinationCompletion(destination, command.isMessage());
+    private void registerSync(ActiveMQDestination destination, Transaction transaction, BaseCommand command) {
+        Synchronization sync = new PreparedDestinationCompletion(this, destination, command.isMessage());
         // ensure one per destination in the list
         Synchronization existing = transaction.findMatching(sync);
         if (existing != null) {
@@ -144,10 +144,13 @@ public class TransactionBroker extends BrokerFilter {
     }
 
     static class PreparedDestinationCompletion extends Synchronization {
-        final Destination destination;
+        private final TransactionBroker transactionBroker;
+        final ActiveMQDestination destination;
         final boolean messageSend;
         int opCount = 1;
-        public PreparedDestinationCompletion(final Destination destination, boolean messageSend) {
+
+        public PreparedDestinationCompletion(final TransactionBroker transactionBroker, ActiveMQDestination destination, boolean messageSend) {
+            this.transactionBroker = transactionBroker;
             this.destination = destination;
             // rollback relevant to acks, commit to sends
             this.messageSend = messageSend;
@@ -160,7 +163,7 @@ public class TransactionBroker extends BrokerFilter {
         @Override
         public int hashCode() {
             return System.identityHashCode(destination) +
-                    System.identityHashCode(Boolean.valueOf(messageSend));
+                    System.identityHashCode(messageSend);
         }
 
         @Override
@@ -173,21 +176,30 @@ public class TransactionBroker extends BrokerFilter {
         @Override
         public void afterRollback() throws Exception {
             if (!messageSend) {
-                destination.clearPendingMessages();
+                Destination dest = transactionBroker.addDestination(transactionBroker.context, destination, false);
+                dest.clearPendingMessages(opCount);
+                dest.getDestinationStatistics().getMessages().add(opCount);
                 LOG.debug("cleared pending from afterRollback: {}", destination);
             }
         }
 
         @Override
         public void afterCommit() throws Exception {
+            Destination dest = transactionBroker.addDestination(transactionBroker.context, destination, false);
             if (messageSend) {
-                destination.clearPendingMessages();
-                destination.getDestinationStatistics().getEnqueues().add(opCount);
-                destination.getDestinationStatistics().getMessages().add(opCount);
+                dest.clearPendingMessages(opCount);
+                dest.getDestinationStatistics().getEnqueues().add(opCount);
+                dest.getDestinationStatistics().getMessages().add(opCount);
+
+                if(dest.isAdvancedNetworkStatisticsEnabled() && transactionBroker.context != null && transactionBroker.context.isNetworkConnection()) {
+                    dest.getDestinationStatistics().getNetworkEnqueues().add(opCount);
+                }
                 LOG.debug("cleared pending from afterCommit: {}", destination);
             } else {
-                destination.getDestinationStatistics().getDequeues().add(opCount);
-                destination.getDestinationStatistics().getMessages().subtract(opCount);
+                dest.getDestinationStatistics().getDequeues().add(opCount);
+                if(dest.isAdvancedNetworkStatisticsEnabled() && transactionBroker.context != null && transactionBroker.context.isNetworkConnection()) {
+                    dest.getDestinationStatistics().getNetworkDequeues().add(opCount);
+                }
             }
         }
     }
@@ -289,10 +301,36 @@ public class TransactionBroker extends BrokerFilter {
             transaction = getTransaction(context, message.getTransactionId(), false);
         }
         context.setTransaction(transaction);
+
         try {
+            // [AMQ-9344] Limit uncommitted transactions by count
+            verifyUncommittedCount(producerExchange, transaction, message);
             next.send(producerExchange, message);
         } finally {
             context.setTransaction(originalTx);
+        }
+    }
+
+    protected void verifyUncommittedCount(ProducerBrokerExchange producerExchange, Transaction transaction, Message message) throws Exception {
+        // maxUncommittedCount <= 0 disables
+        int maxUncommittedCount = this.getBrokerService().getMaxUncommittedCount();
+        if (maxUncommittedCount > 0 && transaction.size() >= maxUncommittedCount) {
+
+            try {
+                // Rollback as we are throwing an error the client as throwing the error will cause
+                // the client to reset to a new transaction so we need to clean up
+                transaction.rollback();
+
+                // Send ResourceAllocationException which will translate to a JMSException
+                final ResourceAllocationException e = new ResourceAllocationException(
+                    "Can not send message on transaction with id: '" + transaction.getTransactionId().toString()
+                      + "', Transaction has reached the maximum allowed number of pending send operations before commit of '"
+                      + maxUncommittedCount + "'", "42900");
+                LOG.warn("ConnectionId:{} exceeded maxUncommittedCount:{} for destination:{} in transactionId:{}", (producerExchange.getConnectionContext() != null ? producerExchange.getConnectionContext().getConnectionId() : "<not set>"), maxUncommittedCount, message.getDestination().getQualifiedName(), transaction.getTransactionId().toString());
+                throw e;
+            } finally {
+                producerExchange.getRegionDestination().getDestinationStatistics().getMaxUncommittedExceededCount().increment();
+            }
         }
     }
 

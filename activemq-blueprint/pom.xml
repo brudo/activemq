@@ -22,21 +22,13 @@
   <parent>
     <groupId>org.apache.activemq</groupId>
     <artifactId>activemq-parent</artifactId>
-    <version>5.16.0-SNAPSHOT</version>
+    <version>6.3.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>activemq-blueprint</artifactId>
   <packaging>bundle</packaging>
   <name>ActiveMQ :: Blueprint</name>
   <description>The ActiveMQ Message Broker and Client implementations</description>
-
-  <properties>
-    <activemq.osgi.import.pkg>
-        org.apache.xbean*;version="[3.13,5)",
-        org.apache.aries.blueprint.*;version="[1.0,2)",
-          *
-    </activemq.osgi.import.pkg>
-  </properties>
 
     <dependencies>
         <dependency>
@@ -55,13 +47,21 @@
   <build>
     <plugins>
       <plugin>
-        <groupId>org.apache.felix</groupId>
-        <artifactId>maven-bundle-plugin</artifactId>
-        <configuration>
-          <instructions>
-            <Fragment-Host>org.apache.activemq.activemq-osgi</Fragment-Host>
-          </instructions>
-        </configuration>
+          <groupId>org.apache.felix</groupId>
+          <artifactId>maven-bundle-plugin</artifactId>
+          <extensions>true</extensions>
+          <inherited>true</inherited>
+          <configuration>
+              <instructions>
+                  <Import-Package>
+                      org.apache.xbean*;version="[3.13,5)",
+                      org.apache.aries.blueprint.*;version="[1.0,2)",
+                      *
+                  </Import-Package>
+                  <Fragment-Host>org.apache.activemq.activemq-osgi</Fragment-Host>
+                  <_noee>true</_noee>
+              </instructions>
+          </configuration>
       </plugin>
     <plugin>
       <artifactId>maven-resources-plugin</artifactId>

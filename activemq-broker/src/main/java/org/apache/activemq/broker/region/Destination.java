@@ -33,6 +33,7 @@ import org.apache.activemq.command.ProducerInfo;
 import org.apache.activemq.store.MessageStore;
 import org.apache.activemq.thread.Task;
 import org.apache.activemq.usage.MemoryUsage;
+import org.apache.activemq.usage.TempUsage;
 import org.apache.activemq.usage.Usage;
 
 /**
@@ -69,6 +70,8 @@ public interface Destination extends Service, Task, Message.MessageDestination {
     MemoryUsage getMemoryUsage();
 
     void setMemoryUsage(MemoryUsage memoryUsage);
+
+    TempUsage getTempUsage();
 
     void dispose(ConnectionContext context) throws IOException;
 
@@ -188,6 +191,15 @@ public interface Destination extends Service, Task, Message.MessageDestination {
     void messageDelivered(ConnectionContext context, MessageReference messageReference);
 
     /**
+     * Called when message is dispatched to a consumer
+     *
+     * @param context
+     * @param sub
+     * @param messageReference
+     */
+    void messageDispatched(ConnectionContext context, Subscription sub, MessageReference messageReference);
+
+    /**
      * Called when a message is discarded - e.g. running low on memory This will
      * happen only if the policy is enabled - e.g. non durable topics
      *
@@ -239,7 +251,20 @@ public interface Destination extends Service, Task, Message.MessageDestination {
     boolean isDoOptimzeMessageStorage();
     void setDoOptimzeMessageStorage(boolean doOptimzeMessageStorage);
 
-    public void clearPendingMessages();
+    public void clearPendingMessages(int pendingAdditionsCount);
 
     void duplicateFromStore(Message message, Subscription subscription);
+
+    boolean isSendDuplicateFromStoreToDLQ();
+
+    void setSendDuplicateFromStoreToDLQ(boolean sendDuplicateFromStoreToDLQ);
+
+    boolean isAdvancedNetworkStatisticsEnabled();
+
+    void setAdvancedNetworkStatisticsEnabled(boolean advancedNetworkStatisticsEnabled);
+
+    boolean isAdvancedMessageStatisticsEnabled();
+
+    void setAdvancedMessageStatisticsEnabled(boolean advancedMessageStatisticsEnabled);
+
 }

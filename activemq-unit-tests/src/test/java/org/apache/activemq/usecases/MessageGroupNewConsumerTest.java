@@ -18,19 +18,21 @@ package org.apache.activemq.usecases;
 
 import java.util.concurrent.CountDownLatch;
 
-import javax.jms.Connection;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Queue;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import junit.framework.TestCase;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /*
  * Test plan:
@@ -41,6 +43,7 @@ import junit.framework.TestCase;
  * All three groups are handled by to consumer1, so consumer2 should not get any messages.
  * See bug AMQ-2016: Message grouping fails when consumers are added
  */
+@Category(ParallelTest.class)
 public class MessageGroupNewConsumerTest extends TestCase {
     private static final Logger LOG = LoggerFactory.getLogger(MessageGroupNewConsumerTest.class);
     private Connection connection;

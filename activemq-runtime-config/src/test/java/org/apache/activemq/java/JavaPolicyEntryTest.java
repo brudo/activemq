@@ -25,7 +25,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.Session;
+import jakarta.jms.Session;
 
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.ActiveMQConnectionFactory;
@@ -458,6 +458,54 @@ public class JavaPolicyEntryTest extends RuntimeConfigTestSupport {
     }
 
     @Test
+    public void testModWithChildWildcardPolicies() throws Exception {
+        BrokerService brokerService = new BrokerService();
+        PolicyMap policyMap = new PolicyMap();
+        PolicyEntry entry = new PolicyEntry();
+        entry.setQueue(">");
+        entry.setMemoryLimit(1024);
+        PolicyEntry entry2 = new PolicyEntry();
+        entry2.setQueue("queue.child.>");
+        entry2.setMemoryLimit(2048);
+        PolicyEntry entry3 = new PolicyEntry();
+        entry3.setQueue("queue.child.one.>");
+        entry3.setMemoryLimit(4096);
+
+        policyMap.setPolicyEntries(Arrays.asList(entry, entry2, entry3));
+        brokerService.setDestinationPolicy(policyMap);
+
+        startBroker(brokerService);
+        assertTrue("broker alive", brokerService.isStarted());
+
+        brokerService.getBroker().addDestination(
+                brokerService.getAdminConnectionContext(), new ActiveMQQueue("queue.>"), false);
+        brokerService.getBroker().addDestination(
+                brokerService.getAdminConnectionContext(), new ActiveMQQueue("queue.child.>"), false);
+        brokerService.getBroker().addDestination(
+                brokerService.getAdminConnectionContext(), new ActiveMQQueue("queue.child.one.>"), false);
+        brokerService.getBroker().addDestination(
+                brokerService.getAdminConnectionContext(), new ActiveMQQueue("queue.child.one"), false);
+
+        //check destinations before policy updates
+        verifyQueueLimit("queue.>", 1024);
+        verifyQueueLimit("queue.child.>", 2048);
+        verifyQueueLimit("queue.child.one", 4096);
+
+        //Reapply new limit to policy 2
+        entry2.setMemoryLimit(4194304);
+        javaConfigBroker.modifyPolicyEntry(entry2);
+        TimeUnit.SECONDS.sleep(SLEEP);
+
+        //verify that destination at a higher level policy is not affected
+        verifyQueueLimit("queue.>", 1024);
+
+        verifyQueueLimit("queue.child.>", 4194304);
+
+        verifyQueueLimit("queue.child.one.>", 4096);
+        verifyQueueLimit("queue.child.one", 4096);
+    }
+
+    @Test
     public void testModParentPolicy() throws Exception {
         BrokerService brokerService = new BrokerService();
         PolicyMap policyMap = new PolicyMap();
@@ -615,7 +663,7 @@ public class JavaPolicyEntryTest extends RuntimeConfigTestSupport {
         //initial config
         setAllDestPolicyProperties(entry, true, true, 10,
                 100, 200, 1000, 400, 40, 30, true, true, 1000, true, true,
-                30, true, true, true, true, true, true, true, true);
+                30, true, true, true, true, true, true, true, true, true);
         setAllQueuePolicyProperties(entry, 10000, true, true, true, true, 100,
                 100, true, true);
 
@@ -628,7 +676,7 @@ public class JavaPolicyEntryTest extends RuntimeConfigTestSupport {
         //validate config
         assertAllDestPolicyProperties(getQueue("Before"), true, true, 10,
                 100, 200, 1000, 400, 40, 30, true, true, 1000, true, true,
-                30, true, true, true, true, true, true, true, true);
+                30, true, true, true,true, true, true, true, true, true);
         assertAllQueuePolicyProperties(getQueue("Before"), 10000, true, true, true, true, 100,
                 100, true, true);
 
@@ -636,7 +684,7 @@ public class JavaPolicyEntryTest extends RuntimeConfigTestSupport {
         //change config
         setAllDestPolicyProperties(entry, false, false, 100,
                 1000, 2000, 10000, 4000, 400, 300, false, false, 1000, false, false,
-                300, false, false, false, false, false, false, false, false);
+                300, false, false, false,false, false, false, false, false, false);
         setAllQueuePolicyProperties(entry, 100000, false, false, false, false, 1000,
                 1000, false, false);
 
@@ -645,14 +693,14 @@ public class JavaPolicyEntryTest extends RuntimeConfigTestSupport {
 
         assertAllDestPolicyProperties(getQueue("Before"), false, false, 100,
                 1000, 2000, 10000, 4000, 400, 300, false, false, 1000, false, false,
-                300, false, false, false, false, false, false, false, false);
+                300, false, false, false,false, false, false, false, false, false);
         assertAllQueuePolicyProperties(getQueue("Before"), 100000, false, false, false, false, 1000,
                 1000, false, false);
 
         //check new dest
         assertAllDestPolicyProperties(getQueue("After"), false, false, 100,
                 1000, 2000, 10000, 4000, 400, 300, false, false, 1000, false, false,
-                300, false, false, false, false, false, false, false, false);
+                300, false, false, false, false, false, false, false, false, false);
         assertAllQueuePolicyProperties(getQueue("After"), 100000, false, false, false, false, 1000,
                 1000, false, false);
     }
@@ -666,7 +714,7 @@ public class JavaPolicyEntryTest extends RuntimeConfigTestSupport {
         //initial config
         setAllDestPolicyProperties(entry, true, true, 10,
                 100, 200, 1000, 400, 40, 30, true, true, 1000, true, true,
-                30, true, true, true, true, true, true, true, true);
+                30, true, true, true, true, true, true, true, true, true);
         setAllTopicPolicyProperties(entry, 10000, true);
 
         policyMap.setPolicyEntries(Arrays.asList(entry));
@@ -678,14 +726,14 @@ public class JavaPolicyEntryTest extends RuntimeConfigTestSupport {
         //validate config
         assertAllDestPolicyProperties(getTopic("Before"), true, true, 10,
                 100, 200, 1000, 400, 40, 30, true, true, 1000, true, true,
-                30, true, true, true, true, true, true, true, true);
+                30, true, true, true, true, true, true, true, true, true);
         assertAllTopicPolicyProperties(getTopic("Before"), 10000, true);
 
 
         //change config
         setAllDestPolicyProperties(entry, false, false, 100,
                 1000, 2000, 10000, 4000, 400, 300, false, false, 1000, false, false,
-                300, false, false, false, false, false, false, false, false);
+                300, false, false, false, false, false, false, false, false, false);
         setAllTopicPolicyProperties(entry, 100000, false);
 
         javaConfigBroker.modifyPolicyEntry(entry, false, properties);
@@ -693,13 +741,13 @@ public class JavaPolicyEntryTest extends RuntimeConfigTestSupport {
 
         assertAllDestPolicyProperties(getTopic("Before"), false, false, 100,
                 1000, 2000, 10000, 4000, 400, 300, false, false, 1000, false, false,
-                300, false, false, false, false, false, false, false, false);
+                300, false, false, false, false, false, false, false, false, false);
         assertAllTopicPolicyProperties(getTopic("Before"), 100000, false);
 
         //check new dest
         assertAllDestPolicyProperties(getTopic("After"), false, false, 100,
                 1000, 2000, 10000, 4000, 400, 300, false, false, 1000, false, false,
-                300, false, false, false, false, false, false, false, false);
+                300, false, false, false, false, false, false, false, false, false);
         assertAllTopicPolicyProperties(getTopic("After"), 100000, false);
     }
 
@@ -779,6 +827,7 @@ public class JavaPolicyEntryTest extends RuntimeConfigTestSupport {
         properties.add("optimizeMessageStoreInFlightLimit");
         properties.add("advisoryForConsumed");
         properties.add("advisoryForDelivery");
+        properties.add("advisoryForDispatched");
         properties.add("advisoryForDiscardingMessages");
         properties.add("advisoryForSlowConsumers");
         properties.add("advisoryForFastProducers");
@@ -816,8 +865,9 @@ public class JavaPolicyEntryTest extends RuntimeConfigTestSupport {
             int storeUsageHighWaterMark, boolean gcInactiveDestinations, boolean gcWithNetworkConsumers,
             long inactiveTimeoutBeforeGC,boolean reduceMemoryFootprint, boolean doOptimizeMessageStore,
             int optimizeMessageStoreInFlightLimit, boolean advisoryForConsumed, boolean advisoryForDelivery,
-            boolean advisoryForDiscardingMessages, boolean advisoryForSlowConsumers, boolean advisoryForFastProducers,
-            boolean advisoryWhenFull, boolean includeBodyForAdvisory, boolean sendAdvisoryIfNoConsumers) {
+            boolean advisoryForDispatched, boolean advisoryForDiscardingMessages, boolean advisoryForSlowConsumers,
+            boolean advisoryForFastProducers, boolean advisoryWhenFull, boolean includeBodyForAdvisory,
+            boolean sendAdvisoryIfNoConsumers) {
 
         entry.setProducerFlowControl(producerFlowControl);
         entry.setAlwaysRetroactive(alwaysRetroactive);
@@ -836,6 +886,7 @@ public class JavaPolicyEntryTest extends RuntimeConfigTestSupport {
         entry.setOptimizeMessageStoreInFlightLimit(optimizeMessageStoreInFlightLimit);
         entry.setAdvisoryForConsumed(advisoryForConsumed);
         entry.setAdvisoryForDelivery(advisoryForDelivery);
+        entry.setAdvisoryForDispatched(advisoryForDispatched);
         entry.setAdvisoryForDiscardingMessages(advisoryForDiscardingMessages);
         entry.setAdvisoryForSlowConsumers(advisoryForSlowConsumers);
         entry.setAdvisoryForFastProducers(advisoryForFastProducers);
@@ -872,8 +923,9 @@ public class JavaPolicyEntryTest extends RuntimeConfigTestSupport {
             int storeUsageHighWaterMark, boolean gcInactiveDestinations, boolean gcWithNetworkConsumers,
             long inactiveTimeoutBeforeGC,boolean reduceMemoryFootprint, boolean doOptimizeMessageStore,
             int optimizeMessageStoreInFlightLimit, boolean advisoryForConsumed, boolean advisoryForDelivery,
-            boolean advisoryForDiscardingMessages, boolean advisoryForSlowConsumers, boolean advisoryForFastProducers,
-            boolean advisoryWhenFull, boolean includeBodyForAdvisory, boolean sendAdvisoryIfNoConsumers) {
+            boolean advisoryForDispatched, boolean advisoryForDiscardingMessages, boolean advisoryForSlowConsumers,
+            boolean advisoryForFastProducers, boolean advisoryWhenFull, boolean includeBodyForAdvisory,
+            boolean sendAdvisoryIfNoConsumers) {
 
 
         assertEquals(producerFlowControl, dest.isProducerFlowControl());
@@ -893,6 +945,7 @@ public class JavaPolicyEntryTest extends RuntimeConfigTestSupport {
         assertEquals(optimizeMessageStoreInFlightLimit, dest.getOptimizeMessageStoreInFlightLimit());
         assertEquals(advisoryForConsumed, dest.isAdvisoryForConsumed());
         assertEquals(advisoryForDelivery, dest.isAdvisoryForDelivery());
+        assertEquals(advisoryForDispatched, dest.isAdvisoryForDispatched());
         assertEquals(advisoryForDiscardingMessages, dest.isAdvisoryForDiscardingMessages());
         assertEquals(advisoryForSlowConsumers, dest.isAdvisoryForSlowConsumers());
         assertEquals(advisoryForFastProducers, dest.isAdvisoryForFastProducers());

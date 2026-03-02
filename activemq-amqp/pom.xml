@@ -22,7 +22,7 @@
   <parent>
     <groupId>org.apache.activemq</groupId>
     <artifactId>activemq-parent</artifactId>
-    <version>5.16.0-SNAPSHOT</version>
+    <version>6.3.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>activemq-amqp</artifactId>
@@ -30,6 +30,10 @@
 
   <name>ActiveMQ :: AMQP</name>
   <description>ActiveMQ implementaiton of AMQP messaging protocol</description>
+
+  <properties>
+    <surefire.argLine>-Xmx512M -Djava.awt.headless=true</surefire.argLine>
+  </properties>
 
   <dependencies>
     <dependency>
@@ -71,15 +75,19 @@
 
     <!--  Joram JMS conformance tests -->
     <dependency>
-      <groupId>org.fusesource.joram-jms-tests</groupId>
-      <artifactId>joram-jms-tests</artifactId>
-      <version>1.0</version>
+      <groupId>org.apache.activemq.tooling</groupId>
+      <artifactId>activemq-joram-jms-tests</artifactId>
+      <version>${project.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <!-- using it for Jetty's JNDI context to work /w Joram tests. -->
-      <groupId>org.eclipse.jetty.aggregate</groupId>
-      <artifactId>jetty-all</artifactId>
+      <groupId>org.eclipse.jetty</groupId>
+      <artifactId>jetty-server</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.eclipse.jetty</groupId>
+      <artifactId>jetty-jndi</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -95,6 +103,11 @@
     </dependency>
     <dependency>
       <groupId>org.apache.activemq</groupId>
+      <artifactId>activemq-stomp</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.activemq</groupId>
       <artifactId>activemq-http</artifactId>
       <scope>test</scope>
     </dependency>
@@ -105,17 +118,12 @@
     </dependency>
     <dependency>
       <groupId>org.eclipse.jetty.websocket</groupId>
-      <artifactId>websocket-server</artifactId>
+      <artifactId>websocket-jetty-server</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.springframework</groupId>
       <artifactId>spring-context</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.activemq</groupId>
-      <artifactId>activemq-leveldb-store</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -134,47 +142,120 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-log4j12</artifactId>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-slf4j2-impl</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>io.netty</groupId>
       <artifactId>netty-buffer</artifactId>
-      <version>${netty-all-version}</version>
+      <version>${netty-version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>io.netty</groupId>
       <artifactId>netty-common</artifactId>
-      <version>${netty-all-version}</version>
+      <version>${netty-version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>io.netty</groupId>
       <artifactId>netty-handler</artifactId>
-      <version>${netty-all-version}</version>
+      <version>${netty-version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>io.netty</groupId>
       <artifactId>netty-codec-http</artifactId>
-      <version>${netty-all-version}</version>
+      <version>${netty-version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>io.netty</groupId>
       <artifactId>netty-transport</artifactId>
-      <version>${netty-all-version}</version>
+      <version>${netty-version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>org.fusesource.stompjms</groupId>
+      <groupId>io.hyte.stompjms</groupId>
       <artifactId>stompjms-client</artifactId>
       <version>${stompjms-version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>${surefire.version}</version>
+        <configuration>
+          <argLine>${surefire.argLine}</argLine>
+          <runOrder>alphabetical</runOrder>
+          <reportFormat>plain</reportFormat>
+          <failIfNoTests>false</failIfNoTests>
+          <excludedGroups>org.apache.activemq.transport.amqp.ParallelTest</excludedGroups>
+          <systemPropertyVariables>
+            <org.apache.activemq.default.directory.prefix>${project.build.directory}/</org.apache.activemq.default.directory.prefix>
+          </systemPropertyVariables>
+          <consoleOutputReporter>
+            <disable>true</disable>
+          </consoleOutputReporter>
+          <statelessTestsetInfoReporter
+            implementation="org.apache.maven.plugin.surefire.extensions.junit5.JUnit5StatelessTestsetInfoTreeReporter">
+            <printStacktraceOnError>true</printStacktraceOnError>
+            <printStacktraceOnFailure>true</printStacktraceOnFailure>
+            <printStdoutOnError>true</printStdoutOnError>
+            <printStdoutOnFailure>true</printStdoutOnFailure>
+            <printStderrOnError>true</printStderrOnError>
+            <printStderrOnFailure>true</printStderrOnFailure>
+          </statelessTestsetInfoReporter>
+          <includes>
+            <include>**/*Test.*</include>
+          </includes>
+          <excludes>
+            <exclude>**/*LoadTest.java</exclude>
+            <exclude>**/*StressTest.java</exclude>
+          </excludes>
+        </configuration>
+        <executions>
+          <execution>
+            <id>parallel</id>
+            <phase>test</phase>
+            <goals>
+              <goal>test</goal>
+            </goals>
+            <configuration>
+              <!-- drop the default excludedGroups -->
+              <excludedGroups combine.self="override"/>
+              <groups>org.apache.activemq.transport.amqp.ParallelTest</groups>
+              <forkCount>2C</forkCount>
+              <forkedProcessTimeoutInSeconds>600</forkedProcessTimeoutInSeconds>
+              <failIfNoTests>false</failIfNoTests>
+              <systemPropertyVariables>
+                <org.apache.activemq.default.directory.prefix>${project.build.directory}/parallel-tests-${surefire.forkNumber}/</org.apache.activemq.default.directory.prefix>
+                <!-- when running tests in parallel in the CI (quite slow) we need to bump the wireformat negotiation timeout (5s by default) -->
+                <org.apache.activemq.transport.wireFormatNegotiationTimeout>30000</org.apache.activemq.transport.wireFormatNegotiationTimeout>
+              </systemPropertyVariables>
+            </configuration>
+          </execution>
+        </executions>
+        <dependencies>
+          <dependency>
+            <groupId>org.apache.maven.surefire</groupId>
+            <artifactId>surefire-junit47</artifactId>
+            <version>${surefire.version}</version>
+          </dependency>
+          <dependency>
+            <groupId>me.fabriciorby</groupId>
+            <artifactId>maven-surefire-junit5-tree-reporter</artifactId>
+            <version>1.5.1</version>
+          </dependency>
+        </dependencies>
+      </plugin>
+    </plugins>
+  </build>
 
   <profiles>
     <profile>
@@ -205,7 +286,6 @@
           <plugin>
             <groupId>org.codehaus.mojo</groupId>
             <artifactId>build-helper-maven-plugin</artifactId>
-            <version>1.7</version>
             <executions>
               <execution>
                 <id>add-test-source</id>
@@ -225,8 +305,6 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <forkCount>1</forkCount>
-                    <reuseForks>false</reuseForks>
-                    <surefire.argLine>-Xmx512M -Djava.awt.headless=true</surefire.argLine>
                     <runOrder>alphabetical</runOrder>
                     <forkedProcessTimeoutInSeconds>120</forkedProcessTimeoutInSeconds>
                     <includes>
@@ -300,29 +378,6 @@
                               <exclude>**/JoramJmsNioTest.*</exclude>
                               <exclude>**/JoramSslTest.*</exclude>
                               <exclude>**/JoramJmsNioPlusSslTest.*</exclude>
-                          </excludes>
-                      </configuration>
-                  </plugin>
-              </plugins>
-          </build>
-      </profile>
-      <profile>
-          <id>activemq.tests.solaris.excludes</id>
-          <activation>
-              <property>
-                  <name>os.name</name>
-                  <value>SunOS</value>
-              </property>
-          </activation>
-          <build>
-              <plugins>
-                  <plugin>
-                      <artifactId>maven-surefire-plugin</artifactId>
-                      <configuration>
-                          <excludes combine.children="append">
-                              <exclude>**/JoramJmsTest.*</exclude>
-                              <exclude>**/JMSClientSslTest.*</exclude>
-                              <exclude>**/JMSClientNioTest.*</exclude>
                           </excludes>
                       </configuration>
                   </plugin>

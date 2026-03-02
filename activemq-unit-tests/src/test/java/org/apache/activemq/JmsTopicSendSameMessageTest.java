@@ -16,11 +16,14 @@
  */
 package org.apache.activemq;
 
-import javax.jms.TextMessage;
+import jakarta.jms.TextMessage;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  * 
  */
+@Category(ParallelTest.class)
 public class JmsTopicSendSameMessageTest extends JmsTopicSendReceiveWithTwoConnectionsTest {
 
     private static final org.apache.commons.logging.Log LOG = org.apache.commons.logging.LogFactory

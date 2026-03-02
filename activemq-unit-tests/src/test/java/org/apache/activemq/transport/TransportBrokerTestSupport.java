@@ -30,16 +30,19 @@ public abstract class TransportBrokerTestSupport extends BrokerTest {
 
     protected TransportConnector connector;
     private ArrayList<StubConnection> connections = new ArrayList<StubConnection>();
+    private URI bindURI;
 
     @Override
     protected void setUp() throws Exception {
         super.setUp();
+        bindURI = connector.getPublishableConnectURI();
     }
 
     @Override
     protected BrokerService createBroker() throws Exception {
         BrokerService service = super.createBroker();
         connector = service.addConnector(getBindLocation());
+        service.setBrokerName("localhost-" + System.nanoTime()); // avoid potential timing issues between stop / start with JMX
         return service;
     }
 
@@ -67,7 +70,7 @@ public abstract class TransportBrokerTestSupport extends BrokerTest {
     }
 
     protected URI getBindURI() throws URISyntaxException {
-        return new URI(getBindLocation());
+        return bindURI;
     }
 
     @Override

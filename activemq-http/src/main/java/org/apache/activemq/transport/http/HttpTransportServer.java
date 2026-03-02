@@ -18,6 +18,7 @@ package org.apache.activemq.transport.http;
 
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.activemq.command.BrokerInfo;
@@ -27,8 +28,9 @@ import org.apache.activemq.transport.util.TextWireFormat;
 import org.apache.activemq.transport.xstream.XStreamWireFormat;
 import org.apache.activemq.util.ServiceStopper;
 import org.eclipse.jetty.security.ConstraintSecurityHandler;
+import org.eclipse.jetty.server.ConnectionFactory;
 import org.eclipse.jetty.server.Connector;
-import org.eclipse.jetty.server.Handler;
+import org.eclipse.jetty.server.HttpConnectionFactory;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.HandlerWrapper;
 import org.eclipse.jetty.servlet.ServletContextHandler;
@@ -38,6 +40,7 @@ public class HttpTransportServer extends WebTransportServerSupport {
 
     private TextWireFormat wireFormat;
     private final HttpTransportFactory transportFactory;
+    private Map<String, Object> wireFormatOptions = new HashMap<>();
 
     public HttpTransportServer(URI uri, HttpTransportFactory factory) {
         super(uri);
@@ -80,6 +83,12 @@ public class HttpTransportServer extends WebTransportServerSupport {
             connector = socketConnectorFactory.createConnector(server);
         }
 
+        for(ConnectionFactory cf  : connector.getConnectionFactories()) {
+            if(HttpConnectionFactory.class.isAssignableFrom(cf.getClass())) {
+                HttpConnectionFactory.class.cast(cf).getHttpConfiguration().setSendServerVersion(false);
+            }
+        }
+
         URI boundTo = bind();
 
         ServletContextHandler contextHandler =
@@ -93,6 +102,7 @@ public class HttpTransportServer extends WebTransportServerSupport {
         contextHandler.setAttribute("wireFormat", getWireFormat());
         contextHandler.setAttribute("transportFactory", transportFactory);
         contextHandler.setAttribute("transportOptions", transportOptions);
+        contextHandler.setAttribute("wireFormatOptions", wireFormatOptions);
 
         //AMQ-6182 - disabling trace by default
         configureTraceMethod((ConstraintSecurityHandler) contextHandler.getSecurityHandler(),
@@ -127,9 +137,9 @@ public class HttpTransportServer extends WebTransportServerSupport {
     private void addGzipHandler(ServletContextHandler contextHandler) throws Exception {
         HandlerWrapper handler = null;
         try {
-            handler = (HandlerWrapper) forName("org.eclipse.jetty.servlets.gzip.GzipHandler").newInstance();
+            handler = (HandlerWrapper) forName("org.eclipse.jetty.servlets.gzip.GzipHandler").getConstructor().newInstance();
         } catch (Throwable t) {
-            handler = (HandlerWrapper) forName("org.eclipse.jetty.server.handler.gzip.GzipHandler").newInstance();
+            handler = (HandlerWrapper) forName("org.eclipse.jetty.server.handler.gzip.GzipHandler").getConstructor().newInstance();
         }
         contextHandler.insertHandler(handler);
     }
@@ -171,8 +181,23 @@ public class HttpTransportServer extends WebTransportServerSupport {
         super.setTransportOption(transportOptions);
     }
 
+    public void setWireFormatOptions(Map<String, Object> wireFormatOptions) {
+        this.wireFormatOptions = wireFormatOptions;
+    }
+
     @Override
     public boolean isSslServer() {
         return false;
+    }
+
+    @Override
+    public long getMaxConnectionExceededCount() {
+        // Max Connection Count not supported for http
+        return -1l;
+    }
+
+    @Override
+    public void resetStatistics() {
+        // Statistics not implemented for http
     }
 }

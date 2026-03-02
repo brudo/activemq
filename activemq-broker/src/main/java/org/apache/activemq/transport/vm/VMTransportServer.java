@@ -19,6 +19,7 @@ package org.apache.activemq.transport.vm;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.activemq.command.BrokerInfo;
@@ -35,7 +36,7 @@ public class VMTransportServer implements TransportServer {
 
     private TransportAcceptListener acceptListener;
     private final URI location;
-    private boolean disposed;
+    private AtomicBoolean disposed = new AtomicBoolean(false);
 
     private final AtomicInteger connectionCount = new AtomicInteger(0);
     private final boolean disposeOnDisconnect;
@@ -64,7 +65,7 @@ public class VMTransportServer implements TransportServer {
     public VMTransport connect() throws IOException {
         TransportAcceptListener al;
         synchronized (this) {
-            if (disposed) {
+            if (disposed.get()) {
                 throw new IOException("Server has been disposed.");
             }
             al = acceptListener;
@@ -117,7 +118,9 @@ public class VMTransportServer implements TransportServer {
     }
 
     public void stop() throws IOException {
-        VMTransportFactory.stopped(this);
+        if (disposed.compareAndSet(false, true)) {
+            VMTransportFactory.stopped(this);
+        }
     }
 
     public URI getConnectURI() {
@@ -151,5 +154,16 @@ public class VMTransportServer implements TransportServer {
 
     public void setAllowLinkStealing(boolean allowLinkStealing) {
         this.allowLinkStealing = allowLinkStealing;
+    }
+
+    @Override
+    public long getMaxConnectionExceededCount() {
+        // VM transport is not limited
+        return -1l;
+    }
+
+    @Override
+    public void resetStatistics() {
+        // VM transport does not implement statistics
     }
 }

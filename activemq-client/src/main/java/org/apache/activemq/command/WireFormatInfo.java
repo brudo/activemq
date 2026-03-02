@@ -281,29 +281,29 @@ public class WireFormatInfo implements Command, MarshallAware {
      */
     public long getMaxInactivityDuration() throws IOException {
         Long l = (Long)getProperty("MaxInactivityDuration");
-        return l == null ? 0 : l.longValue();
+        return l == null ? 0 : l;
     }
 
     public void setMaxInactivityDuration(long maxInactivityDuration) throws IOException {
-        setProperty("MaxInactivityDuration", new Long(maxInactivityDuration));
+        setProperty("MaxInactivityDuration", maxInactivityDuration);
     }
 
     public long getMaxInactivityDurationInitalDelay() throws IOException {
         Long l = (Long)getProperty("MaxInactivityDurationInitalDelay");
-        return l == null ? 0 : l.longValue();
+        return l == null ? 0 : l;
     }
 
     public void setMaxInactivityDurationInitalDelay(long maxInactivityDurationInitalDelay) throws IOException {
-        setProperty("MaxInactivityDurationInitalDelay", new Long(maxInactivityDurationInitalDelay));
+        setProperty("MaxInactivityDurationInitalDelay", maxInactivityDurationInitalDelay);
     }
 
     public long getMaxFrameSize() throws IOException {
         Long l = (Long)getProperty("MaxFrameSize");
-        return l == null ? 0 : l.longValue();
+        return l == null ? 0 : l;
     }
 
     public void setMaxFrameSize(long maxFrameSize) throws IOException {
-        setProperty("MaxFrameSize", new Long(maxFrameSize));
+        setProperty("MaxFrameSize", maxFrameSize);
     }
 
     /**
@@ -311,11 +311,11 @@ public class WireFormatInfo implements Command, MarshallAware {
      */
     public int getCacheSize() throws IOException {
         Integer i = (Integer)getProperty("CacheSize");
-        return i == null ? 0 : i.intValue();
+        return i == null ? 0 : i;
     }
 
     public void setCacheSize(int cacheSize) throws IOException {
-        setProperty("CacheSize", new Integer(cacheSize));
+        setProperty("CacheSize", cacheSize);
     }
 
     /**
@@ -354,6 +354,14 @@ public class WireFormatInfo implements Command, MarshallAware {
         setProperty("PlatformDetails", platformDetails);
     }
 
+    public boolean isMaxFrameSizeEnabled() throws IOException {
+        return Boolean.TRUE == getProperty("MaxFrameSizeEnabled");
+    }
+
+    public void setMaxFrameSizeEnabled(boolean maxFrameSizeEnabled) throws IOException {
+        setProperty("MaxFrameSizeEnabled", maxFrameSizeEnabled ? Boolean.TRUE : Boolean.FALSE);
+    }
+
     @Override
     public Response visit(CommandVisitor visitor) throws Exception {
         return visitor.processWireFormat(this);
@@ -370,7 +378,7 @@ public class WireFormatInfo implements Command, MarshallAware {
     }
 
     private String toString(byte[] data) {
-        StringBuffer sb = new StringBuffer();
+        StringBuilder sb = new StringBuilder();
         sb.append('[');
         for (int i = 0; i < data.length; i++) {
             if (i != 0) {

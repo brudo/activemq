@@ -17,6 +17,8 @@
 
 package org.apache.activemq.util;
 
+import java.util.Arrays;
+
 public class ByteSequence {
 
     public byte[] data;
@@ -75,7 +77,11 @@ public class ByteSequence {
 
     public void reset() {
         length = remaining();
-        System.arraycopy(data, offset, data, 0, length);
+        if (length > 0) {
+            System.arraycopy(data, offset, data, 0, length);
+        } else {
+            length = 0;
+        }
         offset = 0;
     }
 
@@ -121,5 +127,15 @@ public class ByteSequence {
             }
         }
         return true;
+    }
+
+    /**
+     * Makes a deep copy of the data into a new byte array
+     * starting at the offset.
+     *
+     * @return
+     */
+    public byte[] toArray() {
+        return Arrays.copyOfRange(getData(), getOffset(), getLength());
     }
 }

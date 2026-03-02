@@ -22,6 +22,7 @@ import java.util.Set;
 import javax.management.ObjectName;
 
 import org.apache.activemq.broker.Connection;
+import org.apache.activemq.broker.TransportConnection;
 import org.apache.activemq.util.IOExceptionSupport;
 
 public class ConnectionView implements ConnectionViewMBean {
@@ -104,6 +105,7 @@ public class ConnectionView implements ConnectionViewMBean {
         return connection.getConnectionId();
     }
 
+    @Override
     public String getConnectionId() {
         return connection.getConnectionId();
     }
@@ -175,5 +177,33 @@ public class ConnectionView implements ConnectionViewMBean {
     @Override
     public Long getOldestActiveTransactionDuration() {
         return connection.getOldestActiveTransactionDuration();
+    }
+
+    @Override
+    public boolean isFaultTolerantConnection() {
+        return connection.isFaultTolerantConnection();
+    }
+
+    @Override
+    public boolean isManageable() {
+        return connection.isManageable();
+    }
+
+    @Override
+    public boolean isNetworkConnection() {
+        return connection.isNetworkConnection();
+    }
+
+    @Override
+    public long getConnectedTimestamp() {
+        return connection.getConnectedTimestamp();
+    }
+
+    @Override
+    public String getWireFormatInfo() {
+        if(connection instanceof TransportConnection) {
+            return ((TransportConnection)connection).getRemoteWireFormatInfo().toString();
+        }
+        return "WireFormatInfo not available";
     }
 }

@@ -18,13 +18,13 @@ package org.apache.activemq.broker.ft;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.ExceptionListener;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.ExceptionListener;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.JmsTopicSendReceiveWithTwoConnectionsTest;
 import org.apache.activemq.broker.BrokerService;
@@ -36,7 +36,10 @@ import org.apache.derby.jdbc.EmbeddedDataSource;
 import org.junit.After;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class DbRestartJDBCQueueTest extends JmsTopicSendReceiveWithTwoConnectionsTest implements ExceptionListener {
     private static final transient Logger LOG = LoggerFactory.getLogger(DbRestartJDBCQueueTest.class);
 
@@ -106,6 +109,7 @@ public class DbRestartJDBCQueueTest extends JmsTopicSendReceiveWithTwoConnection
             LOG.info("STOPPING DB!@!!!!");
             final EmbeddedDataSource ds = sharedDs;
             ds.setShutdownDatabase("shutdown");
+            ds.setCreateDatabase("not_any_more");
             try {
                 ds.getConnection();
             } catch (Exception ignored) {

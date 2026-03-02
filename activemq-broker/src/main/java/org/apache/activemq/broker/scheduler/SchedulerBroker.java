@@ -19,6 +19,8 @@ package org.apache.activemq.broker.scheduler;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import jakarta.jms.MessageFormatException;
+
 import org.apache.activemq.ScheduledMessage;
 import org.apache.activemq.advisory.AdvisorySupport;
 import org.apache.activemq.broker.Broker;
@@ -55,6 +57,11 @@ import org.slf4j.LoggerFactory;
 public class SchedulerBroker extends BrokerFilter implements JobListener {
     private static final Logger LOG = LoggerFactory.getLogger(SchedulerBroker.class);
     private static final IdGenerator ID_GENERATOR = new IdGenerator();
+    private static final LongSequenceGenerator longGenerator = new LongSequenceGenerator();
+    /**
+     * The max repeat value allowed to prevent clients from causing DoS issues with huge repeat counts
+     */
+    private static final int MAX_REPEAT_ALLOWED = 1000;
     private final LongSequenceGenerator messageIdGenerator = new LongSequenceGenerator();
     private final AtomicBoolean started = new AtomicBoolean();
     private final WireFormat wireFormat = new OpenWireFormat();
@@ -64,6 +71,7 @@ public class SchedulerBroker extends BrokerFilter implements JobListener {
 
     private final JobSchedulerStore store;
     private JobScheduler scheduler;
+    private int maxRepeatAllowed = MAX_REPEAT_ALLOWED;
 
     public SchedulerBroker(BrokerService brokerService, Broker next, JobSchedulerStore store) throws Exception {
         super(next);
@@ -73,6 +81,9 @@ public class SchedulerBroker extends BrokerFilter implements JobListener {
         this.context.setSecurityContext(SecurityContext.BROKER_SECURITY_CONTEXT);
         // we only get response on unexpected error
         this.context.setConnection(new Connection() {
+
+            private final long connectedTimestamp = System.currentTimeMillis();
+
             @Override
             public Connector getConnector() {
                 return null;
@@ -81,14 +92,14 @@ public class SchedulerBroker extends BrokerFilter implements JobListener {
             @Override
             public void dispatchSync(Command message) {
                 if (message instanceof ExceptionResponse) {
-                    LOG.warn("Unexpected response: " + message);
+                    LOG.warn("Unexpected response: {}", message);
                 }
             }
 
             @Override
             public void dispatchAsync(Command command) {
                 if (command instanceof ExceptionResponse) {
-                    LOG.warn("Unexpected response: " + command);
+                    LOG.warn("Unexpected response: {}", command);
                 }
             }
 
@@ -99,7 +110,7 @@ public class SchedulerBroker extends BrokerFilter implements JobListener {
 
             @Override
             public void serviceException(Throwable error) {
-                LOG.warn("Unexpected exception: " + error, error);
+                LOG.warn("Unexpected exception", error);
             }
 
             @Override
@@ -144,7 +155,7 @@ public class SchedulerBroker extends BrokerFilter implements JobListener {
 
             @Override
             public void serviceExceptionAsync(IOException e) {
-                LOG.warn("Unexpected async ioexception: " + e, e);
+                LOG.warn("Unexpected async ioexception", e);
             }
 
             @Override
@@ -173,6 +184,12 @@ public class SchedulerBroker extends BrokerFilter implements JobListener {
             @Override
             public Long getOldestActiveTransactionDuration() {
                 return null;
+            }
+
+            
+            @Override
+            public Long getConnectedTimestamp() {
+                return connectedTimestamp;
             }
 
             @Override
@@ -223,10 +240,10 @@ public class SchedulerBroker extends BrokerFilter implements JobListener {
         final Object delayValue = messageSend.getProperty(ScheduledMessage.AMQ_SCHEDULED_DELAY);
 
         String physicalName = messageSend.getDestination().getPhysicalName();
-        boolean schedularManage = physicalName.regionMatches(true, 0, ScheduledMessage.AMQ_SCHEDULER_MANAGEMENT_DESTINATION, 0,
+        boolean schedulerManage = physicalName.regionMatches(true, 0, ScheduledMessage.AMQ_SCHEDULER_MANAGEMENT_DESTINATION, 0,
             ScheduledMessage.AMQ_SCHEDULER_MANAGEMENT_DESTINATION.length());
 
-        if (schedularManage == true) {
+        if (schedulerManage == true) {
 
             JobScheduler scheduler = getInternalScheduler();
             ActiveMQDestination replyTo = messageSend.getReplyTo();
@@ -291,7 +308,7 @@ public class SchedulerBroker extends BrokerFilter implements JobListener {
 
                         long now = System.currentTimeMillis();
                         if (now >= nextWarn) {
-                            LOG.info("" + usage + ": " + logMessage + " (blocking for: " + (now - start) / 1000 + "s)");
+                            LOG.info("{}: {} (blocking for: {}s)", usage, logMessage, (now - start) / 1000);
                             nextWarn = now + 30000l;
                         }
                     }
@@ -335,10 +352,16 @@ public class SchedulerBroker extends BrokerFilter implements JobListener {
         Object repeatValue = msg.getProperty(ScheduledMessage.AMQ_SCHEDULED_REPEAT);
         if (repeatValue != null) {
             repeat = (Integer) TypeConversionSupport.convert(repeatValue, Integer.class);
+            if (repeat > maxRepeatAllowed) {
+                throw new MessageFormatException("The scheduled repeat value is too large");
+            }
         }
 
-        getInternalScheduler().schedule(msg.getMessageId().toString(),
-            new ByteSequence(packet.data, packet.offset, packet.length), cronEntry, delay, period, repeat);
+        //job id should be unique for every job (Same format as MessageId)
+        MessageId jobId = new MessageId(messageSend.getMessageId().getProducerId(), longGenerator.getNextSequenceId());
+
+        getInternalScheduler().schedule(jobId.toString(),
+                new ByteSequence(packet.data, packet.offset, packet.length), cronEntry, delay, period, repeat);
     }
 
     @Override
@@ -353,6 +376,9 @@ public class SchedulerBroker extends BrokerFilter implements JobListener {
             int repeat = 0;
             if (repeatValue != null) {
                 repeat = (Integer) TypeConversionSupport.convert(repeatValue, Integer.class);
+                if (repeat > maxRepeatAllowed) {
+                    throw new MessageFormatException("The scheduled repeat value is too large");
+                }
             }
 
             if (repeat != 0 || cronStr != null && cronStr.length() > 0) {
@@ -388,7 +414,8 @@ public class SchedulerBroker extends BrokerFilter implements JobListener {
                         messageSend.setExpiration(expiration);
                     }
                     messageSend.setTimestamp(newTimeStamp);
-                    LOG.debug("Set message {} timestamp from {} to {}", new Object[]{ messageSend.getMessageId(), oldTimestamp, newTimeStamp });
+                    LOG.debug("Set message {} timestamp from {} to {}",
+                            messageSend.getMessageId(), oldTimestamp, newTimeStamp);
                 }
             }
 
@@ -426,6 +453,10 @@ public class SchedulerBroker extends BrokerFilter implements JobListener {
             msg.setPersistent(false);
             msg.setType(AdvisorySupport.ADIVSORY_MESSAGE_TYPE);
             msg.setMessageId(new MessageId(this.producerId, this.messageIdGenerator.getNextSequenceId()));
+
+            // Preserve original destination
+            msg.setOriginalDestination(msg.getDestination());
+
             msg.setDestination(replyTo);
             msg.setResponseRequired(false);
             msg.setProducerId(this.producerId);
@@ -447,5 +478,13 @@ public class SchedulerBroker extends BrokerFilter implements JobListener {
         } catch (Exception e) {
             LOG.error("Failed to send scheduled message {}", job.getJobId(), e);
         }
+    }
+
+    public int getMaxRepeatAllowed() {
+        return maxRepeatAllowed;
+    }
+
+    public void setMaxRepeatAllowed(int maxRepeatAllowed) {
+        this.maxRepeatAllowed = maxRepeatAllowed;
     }
 }

@@ -34,6 +34,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import javax.net.SocketFactory;
@@ -130,10 +131,10 @@ public class TcpTransport extends TransportThreadSupport implements Transport, S
     protected boolean useLocalHost = false;
     protected int minmumWireFormatVersion;
     protected SocketFactory socketFactory;
-    protected final AtomicReference<CountDownLatch> stoppedLatch = new AtomicReference<CountDownLatch>();
-    protected volatile int receiveCounter;
+    protected final AtomicReference<CountDownLatch> stoppedLatch = new AtomicReference<>();
+    protected final AtomicInteger receiveCounter = new AtomicInteger();
 
-    private Map<String, Object> socketOptions;
+    protected Map<String, Object> socketOptions;
     private int soLinger = Integer.MIN_VALUE;
     private Boolean keepAlive;
     private Boolean tcpNoDelay;
@@ -211,7 +212,7 @@ public class TcpTransport extends TransportThreadSupport implements Transport, S
         LOG.trace("TCP consumer thread for " + this + " starting");
         this.runnerThread=Thread.currentThread();
         try {
-            while (!isStopped()) {
+            while (!isStopped() && !isStopping()) {
                 doRun();
             }
         } catch (IOException e) {
@@ -467,7 +468,7 @@ public class TcpTransport extends TransportThreadSupport implements Transport, S
         sock.setSoTimeout(soTimeout);
 
         if (keepAlive != null) {
-            sock.setKeepAlive(keepAlive.booleanValue());
+            sock.setKeepAlive(keepAlive);
         }
 
         if (soLinger > -1) {
@@ -476,7 +477,7 @@ public class TcpTransport extends TransportThreadSupport implements Transport, S
             sock.setSoLinger(false, 0);
         }
         if (tcpNoDelay != null) {
-            sock.setTcpNoDelay(tcpNoDelay.booleanValue());
+            sock.setTcpNoDelay(tcpNoDelay);
         }
         if (!this.trafficClassSet) {
             this.trafficClassSet = setTrafficClass(sock);
@@ -615,22 +616,22 @@ public class TcpTransport extends TransportThreadSupport implements Transport, S
         TcpBufferedInputStream buffIn = new TcpBufferedInputStream(socket.getInputStream(), ioBufferSize) {
             @Override
             public int read() throws IOException {
-                receiveCounter++;
+                receiveCounter.incrementAndGet();
                 return super.read();
             }
             @Override
             public int read(byte[] b, int off, int len) throws IOException {
-                receiveCounter++;
+                receiveCounter.incrementAndGet();
                 return super.read(b, off, len);
             }
             @Override
             public long skip(long n) throws IOException {
-                receiveCounter++;
+                receiveCounter.incrementAndGet();
                 return super.skip(n);
             }
             @Override
             protected void fill() throws IOException {
-                receiveCounter++;
+                receiveCounter.incrementAndGet();
                 super.fill();
             }
         };
@@ -684,7 +685,7 @@ public class TcpTransport extends TransportThreadSupport implements Transport, S
 
     @Override
     public int getReceiveCounter() {
-        return receiveCounter;
+        return receiveCounter.get();
     }
 
     public static class InitBuffer {
@@ -751,6 +752,7 @@ public class TcpTransport extends TransportThreadSupport implements Transport, S
         return true;
     }
 
+    @Override
     public WireFormat getWireFormat() {
         return wireFormat;
     }

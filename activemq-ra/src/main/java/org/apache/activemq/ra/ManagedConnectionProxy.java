@@ -19,22 +19,22 @@ package org.apache.activemq.ra;
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionConsumer;
-import javax.jms.ConnectionMetaData;
-import javax.jms.Destination;
-import javax.jms.ExceptionListener;
-import javax.jms.IllegalStateException;
-import javax.jms.JMSException;
-import javax.jms.Queue;
-import javax.jms.QueueConnection;
-import javax.jms.QueueSession;
-import javax.jms.ServerSessionPool;
-import javax.jms.Session;
-import javax.jms.Topic;
-import javax.jms.TopicConnection;
-import javax.jms.TopicSession;
-import javax.resource.spi.ConnectionRequestInfo;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionConsumer;
+import jakarta.jms.ConnectionMetaData;
+import jakarta.jms.Destination;
+import jakarta.jms.ExceptionListener;
+import jakarta.jms.IllegalStateException;
+import jakarta.jms.JMSException;
+import jakarta.jms.Queue;
+import jakarta.jms.QueueConnection;
+import jakarta.jms.QueueSession;
+import jakarta.jms.ServerSessionPool;
+import jakarta.jms.Session;
+import jakarta.jms.Topic;
+import jakarta.jms.TopicConnection;
+import jakarta.jms.TopicSession;
+import jakarta.resource.spi.ConnectionRequestInfo;
 import org.apache.activemq.ActiveMQQueueSession;
 import org.apache.activemq.ActiveMQSession;
 import org.apache.activemq.ActiveMQTopicSession;
@@ -91,7 +91,7 @@ public class ManagedConnectionProxy implements Connection, QueueConnection, Topi
 
     /**
      * @return "physical" underlying activemq connection, if proxy is associated with a managed connection
-     * @throws javax.jms.JMSException if managed connection is null
+     * @throws jakarta.jms.JMSException if managed connection is null
      */
     private Connection getConnection() throws JMSException {
         if (managedConnection == null) {
@@ -288,6 +288,64 @@ public class ManagedConnectionProxy implements Connection, QueueConnection, Topi
                 // We can never trust user code so ignore any exceptions.
             }
         }
+    }
+
+    /**
+     * Creates a <CODE>Session</CODE> object.
+     *
+     * @throws JMSException if the <CODE>Connection</CODE> object fails to
+     *                 create a session due to some internal error or lack of
+     *                 support for the specific transaction and acknowledgement
+     *                 mode.
+     * @since 2.0
+     */
+    @Override
+    public Session createSession() throws JMSException {
+        throw new UnsupportedOperationException("createSession() is unsupported"); 
+    }
+
+    /**
+     * Creates a <CODE>Session</CODE> object.
+     *
+     * @param acknowledgeMode indicates whether the consumer or the client will
+     *                acknowledge any messages it receives; ignored if the
+     *                session is transacted. Legal values are
+     *                <code>Session.AUTO_ACKNOWLEDGE</code>,
+     *                <code>Session.CLIENT_ACKNOWLEDGE</code>, and
+     *                <code>Session.DUPS_OK_ACKNOWLEDGE</code>.
+     * @return a newly created session
+     * @throws JMSException if the <CODE>Connection</CODE> object fails to
+     *                 create a session due to some internal error or lack of
+     *                 support for the specific transaction and acknowledgement
+     *                 mode.
+     * @see Session#AUTO_ACKNOWLEDGE
+     * @see Session#CLIENT_ACKNOWLEDGE
+     * @see Session#DUPS_OK_ACKNOWLEDGE
+     * @since 2.0
+     */
+    @Override
+    public Session createSession(int sessionMode) throws JMSException {
+        throw new UnsupportedOperationException("createSession(int sessionMode) is unsupported"); 
+    }
+
+    /**
+     * 
+     * @see jakarta.jms.ConnectionConsumer
+     * @since 2.0
+     */
+    @Override
+    public ConnectionConsumer createSharedConnectionConsumer(Topic topic, String subscriptionName, String messageSelector, ServerSessionPool sessionPool, int maxMessages) throws JMSException {
+        throw new UnsupportedOperationException("createSharedConnectionConsumer() is not supported");
+    }
+
+    /**
+     * 
+     * @see jakarta.jms.ConnectionConsumer
+     * @since 2.0
+     */
+    @Override
+    public ConnectionConsumer createSharedDurableConnectionConsumer(Topic topic, String subscriptionName, String messageSelector, ServerSessionPool sessionPool, int maxMessages) throws JMSException {
+        throw new UnsupportedOperationException("createSharedConnectionConsumer() is not supported");
     }
 
 }

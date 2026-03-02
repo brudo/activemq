@@ -19,7 +19,7 @@ package org.apache.activemq.store.kahadb;
 import java.io.File;
 import java.io.IOException;
 import java.util.Date;
-import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
@@ -48,6 +48,7 @@ import org.apache.activemq.store.kahadb.data.KahaCommitCommand;
 import org.apache.activemq.store.kahadb.data.KahaEntryType;
 import org.apache.activemq.store.kahadb.data.KahaPrepareCommand;
 import org.apache.activemq.store.kahadb.data.KahaTraceCommand;
+import org.apache.activemq.store.kahadb.disk.journal.DataFile;
 import org.apache.activemq.store.kahadb.disk.journal.Journal;
 import org.apache.activemq.store.kahadb.disk.journal.Location;
 import org.apache.activemq.usage.StoreUsage;
@@ -61,11 +62,15 @@ public class MultiKahaDBTransactionStore implements TransactionStore {
     static final Logger LOG = LoggerFactory.getLogger(MultiKahaDBTransactionStore.class);
     final MultiKahaDBPersistenceAdapter multiKahaDBPersistenceAdapter;
     final ConcurrentMap<TransactionId, Tx> inflightTransactions = new ConcurrentHashMap<TransactionId, Tx>();
-    final Set<TransactionId> recoveredPendingCommit = new HashSet<TransactionId>();
+    final ConcurrentMap<TransactionId, Tx> pendingCommit = new ConcurrentHashMap<TransactionId, Tx>();
     private Journal journal;
     private int journalMaxFileLength = Journal.DEFAULT_MAX_FILE_LENGTH;
     private int journalWriteBatchSize = Journal.DEFAULT_MAX_WRITE_BATCH_SIZE;
     private final AtomicBoolean started = new AtomicBoolean(false);
+    private final AtomicBoolean recovered = new AtomicBoolean(false);
+    private long journalCleanupInterval = Journal.DEFAULT_CLEANUP_INTERVAL;
+    private boolean checkForCorruption = true;
+    private AtomicBoolean corruptJournalDetected = new AtomicBoolean(false);
 
     public MultiKahaDBTransactionStore(MultiKahaDBPersistenceAdapter multiKahaDBPersistenceAdapter) {
         this.multiKahaDBPersistenceAdapter = multiKahaDBPersistenceAdapter;
@@ -188,16 +193,41 @@ public class MultiKahaDBTransactionStore implements TransactionStore {
         this.journalWriteBatchSize = journalWriteBatchSize;
     }
 
+    public void setJournalCleanupInterval(long journalCleanupInterval) {
+        this.journalCleanupInterval = journalCleanupInterval;
+    }
+
+    public long getJournalCleanupInterval() {
+        return journalCleanupInterval;
+    }
+
+    public void setCheckForCorruption(boolean checkForCorruption) {
+        this.checkForCorruption = checkForCorruption;
+    }
+
+    public boolean isCheckForCorruption() {
+        return checkForCorruption;
+    }
+
+    private static final XATransactionId NULL_XA_TRANSACTION_ID = new XATransactionId();
     public class Tx {
-        private final Set<TransactionStore> stores = new HashSet<TransactionStore>();
+        private final ConcurrentHashMap<TransactionStore, TransactionId> stores = new ConcurrentHashMap<TransactionStore, TransactionId>();
         private int prepareLocationId = 0;
 
+        public void trackStore(TransactionStore store, XATransactionId xid) {
+            stores.put(store, xid);
+        }
+
         public void trackStore(TransactionStore store) {
-            stores.add(store);
+            stores.putIfAbsent(store, NULL_XA_TRANSACTION_ID);
+        }
+
+        public Map<TransactionStore, TransactionId> getStoresMap() {
+            return stores;
         }
 
         public Set<TransactionStore> getStores() {
-            return stores;
+            return stores.keySet();
         }
 
         public void trackPrepareLocation(Location location) {
@@ -212,8 +242,12 @@ public class MultiKahaDBTransactionStore implements TransactionStore {
     public Tx getTx(TransactionId txid) {
         Tx tx = inflightTransactions.get(txid);
         if (tx == null) {
-            tx = new Tx();
-            inflightTransactions.put(txid, tx);
+            final Tx val = new Tx();
+            tx = inflightTransactions.putIfAbsent(txid, val);
+            if (tx == null) {
+                // we won
+                tx = val;
+            }
         }
         return tx;
     }
@@ -240,8 +274,13 @@ public class MultiKahaDBTransactionStore implements TransactionStore {
 
         Tx tx = getTx(txid);
         if (wasPrepared) {
-            for (TransactionStore store : tx.getStores()) {
-                store.commit(txid, true, null, null);
+            for (Map.Entry<TransactionStore, TransactionId> storeTx : tx.getStoresMap().entrySet()) {
+                TransactionId recovered = storeTx.getValue();
+                if (recovered != null && recovered != NULL_XA_TRANSACTION_ID ) {
+                    storeTx.getKey().commit(recovered, true, null, null);
+                } else {
+                    storeTx.getKey().commit(txid, true, null, null);
+                }
             }
         } else {
             // can only do 1pc on a single store
@@ -269,10 +308,12 @@ public class MultiKahaDBTransactionStore implements TransactionStore {
 
     public void persistOutcome(Tx tx, TransactionId txid) throws IOException {
         tx.trackPrepareLocation(store(new KahaPrepareCommand().setTransactionInfo(TransactionIdConversion.convert(multiKahaDBPersistenceAdapter.transactionIdTransformer.transform(txid)))));
+        pendingCommit.put(txid, tx);
     }
 
     public void persistCompletion(TransactionId txid) throws IOException {
         store(new KahaCommitCommand().setTransactionInfo(TransactionIdConversion.convert(multiKahaDBPersistenceAdapter.transactionIdTransformer.transform(txid))));
+        pendingCommit.remove(txid);
     }
 
     private Location store(JournalCommand<?> data) throws IOException {
@@ -289,8 +330,13 @@ public class MultiKahaDBTransactionStore implements TransactionStore {
     public void rollback(TransactionId txid) throws IOException {
         Tx tx = removeTx(txid);
         if (tx != null) {
-            for (TransactionStore store : tx.getStores()) {
-                store.rollback(txid);
+            for (Map.Entry<TransactionStore, TransactionId> storeTx : tx.getStoresMap().entrySet()) {
+                TransactionId recovered = storeTx.getValue();
+                if (recovered != null && recovered != NULL_XA_TRANSACTION_ID) {
+                    storeTx.getKey().rollback(recovered);
+                } else {
+                    storeTx.getKey().rollback(txid);
+                }
             }
         }
     }
@@ -308,16 +354,30 @@ public class MultiKahaDBTransactionStore implements TransactionStore {
             journal.setDirectory(getDirectory());
             journal.setMaxFileLength(journalMaxFileLength);
             journal.setWriteBatchSize(journalWriteBatchSize);
+            journal.setCleanupInterval(journalCleanupInterval);
+            journal.setCheckForCorruptionOnStartup(checkForCorruption);
+            journal.setChecksum(checkForCorruption);
             IOHelper.mkdirs(journal.getDirectory());
             journal.start();
             recoverPendingLocalTransactions();
-            store(new KahaTraceCommand().setMessage("LOADED " + new Date()));
+            recovered.set(true);
+            loaded();
         }
     }
 
+    private void loaded() throws IOException {
+        store(new KahaTraceCommand().setMessage("LOADED " + new Date()));
+    }
+
     private void txStoreCleanup() {
+        if (!recovered.get() || corruptJournalDetected.get()) {
+            return;
+        }
         Set<Integer> knownDataFileIds = new TreeSet<Integer>(journal.getFileMap().keySet());
         for (Tx tx : inflightTransactions.values()) {
+            knownDataFileIds.remove(tx.getPreparedLocationId());
+        }
+        for (Tx tx : pendingCommit.values()) {
             knownDataFileIds.remove(tx.getPreparedLocationId());
         }
         try {
@@ -340,32 +400,50 @@ public class MultiKahaDBTransactionStore implements TransactionStore {
     }
 
     private void recoverPendingLocalTransactions() throws IOException {
-        Location location = journal.getNextLocation(null);
-        while (location != null) {
-            process(load(location));
-            location = journal.getNextLocation(location);
+
+        if (checkForCorruption) {
+            for (DataFile dataFile: journal.getFileMap().values()) {
+                if (!dataFile.getCorruptedBlocks().isEmpty()) {
+                    LOG.error("Corrupt Transaction journal records found in db-{}.log at {}", dataFile.getDataFileId(),  dataFile.getCorruptedBlocks());
+                    corruptJournalDetected.set(true);
+                }
+            }
         }
-        recoveredPendingCommit.addAll(inflightTransactions.keySet());
-        LOG.info("pending local transactions: " + recoveredPendingCommit);
+        if (!corruptJournalDetected.get()) {
+            Location location = null;
+            try {
+                location = journal.getNextLocation(null);
+                while (location != null) {
+                    process(location, load(location));
+                    location = journal.getNextLocation(location);
+                }
+            } catch (Exception oops) {
+                LOG.error("Corrupt journal record; unexpected exception on transaction journal replay of location:" + location, oops);
+                corruptJournalDetected.set(true);
+            }
+            pendingCommit.putAll(inflightTransactions);
+            LOG.info("pending local transactions: " + pendingCommit.keySet());
+        }
     }
 
     public JournalCommand<?> load(Location location) throws IOException {
-        DataByteArrayInputStream is = new DataByteArrayInputStream(journal.read(location));
-        byte readByte = is.readByte();
-        KahaEntryType type = KahaEntryType.valueOf(readByte);
-        if (type == null) {
-            throw new IOException("Could not load journal record. Invalid location: " + location);
+        try(DataByteArrayInputStream is = new DataByteArrayInputStream(journal.read(location))) {
+            byte readByte = is.readByte();
+            KahaEntryType type = KahaEntryType.valueOf(readByte);
+            if (type == null) {
+                throw new IOException("Could not load journal record. Invalid location: " + location);
+            }
+            JournalCommand<?> message = (JournalCommand<?>) type.createMessage();
+            message.mergeFramed(is);
+            return message;
         }
-        JournalCommand<?> message = (JournalCommand<?>) type.createMessage();
-        message.mergeFramed(is);
-        return message;
     }
 
-    public void process(JournalCommand<?> command) throws IOException {
+    public void process(final Location location, JournalCommand<?> command) throws IOException {
         switch (command.type()) {
             case KAHA_PREPARE_COMMAND:
                 KahaPrepareCommand prepareCommand = (KahaPrepareCommand) command;
-                getTx(TransactionIdConversion.convert(prepareCommand.getTransactionInfo()));
+                getTx(TransactionIdConversion.convert(prepareCommand.getTransactionInfo())).trackPrepareLocation(location);
                 break;
             case KAHA_COMMIT_COMMAND:
                 KahaCommitCommand commitCommand = (KahaCommitCommand) command;
@@ -387,7 +465,7 @@ public class MultiKahaDBTransactionStore implements TransactionStore {
                 @Override
                 public void recover(XATransactionId xid, Message[] addedMessages, MessageAck[] acks) {
                     try {
-                        getTx(xid).trackStore(adapter.createTransactionStore());
+                        getTx(xid).trackStore(adapter.createTransactionStore(), xid);
                     } catch (IOException e) {
                         LOG.error("Failed to access transaction store: " + adapter + " for prepared xa tid: " + xid, e);
                     }
@@ -396,28 +474,60 @@ public class MultiKahaDBTransactionStore implements TransactionStore {
             });
         }
 
+        boolean recoveryWorkPending = false;
         try {
             Broker broker = multiKahaDBPersistenceAdapter.getBrokerService().getBroker();
             // force completion of local xa
             for (TransactionId txid : broker.getPreparedTransactions(null)) {
                 if (multiKahaDBPersistenceAdapter.isLocalXid(txid)) {
-                    try {
-                        if (recoveredPendingCommit.contains(txid)) {
-                            LOG.info("delivering pending commit outcome for tid: " + txid);
-                            broker.commitTransaction(null, txid, false);
-
-                        } else {
-                            LOG.info("delivering rollback outcome to store for tid: " + txid);
-                            broker.forgetTransaction(null, txid);
+                    recoveryWorkPending = true;
+                    if (corruptJournalDetected.get()) {
+                        // not having a record is meaningless once our tx store is corrupt; we need a heuristic decision
+                        LOG.warn("Pending multi store local transaction {} requires manual heuristic outcome via JMX", txid);
+                        logSomeContext(txid);
+                    } else {
+                        try {
+                            if (pendingCommit.keySet().contains(txid)) {
+                                // we recorded the commit outcome, finish the job
+                                LOG.info("delivering pending commit outcome for tid: " + txid);
+                                broker.commitTransaction(null, txid, false);
+                            } else {
+                                // we have not record an outcome, and would have reported a commit failure, so we must rollback
+                                LOG.info("delivering rollback outcome to store for tid: " + txid);
+                                broker.forgetTransaction(null, txid);
+                            }
+                            persistCompletion(txid);
+                        } catch (Exception ex) {
+                            LOG.error("failed to deliver pending outcome for tid: " + txid, ex);
                         }
-                        persistCompletion(txid);
-                    } catch (Exception ex) {
-                        LOG.error("failed to deliver pending outcome for tid: " + txid, ex);
                     }
                 }
             }
         } catch (Exception e) {
             LOG.error("failed to resolve pending local transactions", e);
+        }
+        // can we ignore corruption and resume
+        if (corruptJournalDetected.get() && !recoveryWorkPending) {
+            // move to new write file, gc will cleanup
+            journal.rotateWriteFile();
+            loaded();
+            corruptJournalDetected.set(false);
+            LOG.info("No heuristics outcome pending after corrupt tx store detection, auto resolving");
+        }
+    }
+
+    private void logSomeContext(TransactionId txid) throws IOException {
+        Tx tx = getTx(txid);
+        if (tx != null) {
+            for (TransactionStore store: tx.getStores()) {
+                for (PersistenceAdapter persistenceAdapter : multiKahaDBPersistenceAdapter.adapters) {
+                    if (persistenceAdapter.createTransactionStore() == store) {
+                        if (persistenceAdapter instanceof KahaDBPersistenceAdapter) {
+                            LOG.warn("Heuristic data in: " + persistenceAdapter + ", "  + ((KahaDBPersistenceAdapter)persistenceAdapter).getStore().getPreparedTransaction(txid));
+                        }
+                    }
+                }
+            }
         }
     }
 

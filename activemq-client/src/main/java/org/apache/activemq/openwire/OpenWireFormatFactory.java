@@ -22,7 +22,7 @@ import org.apache.activemq.wireformat.WireFormat;
 import org.apache.activemq.wireformat.WireFormatFactory;
 
 /**
- * 
+ *
  */
 public class OpenWireFormatFactory implements WireFormatFactory {
 
@@ -41,11 +41,14 @@ public class OpenWireFormatFactory implements WireFormatFactory {
     private long maxInactivityDurationInitalDelay = 10*1000;
     private int cacheSize = 1024;
     private long maxFrameSize = OpenWireFormat.DEFAULT_MAX_FRAME_SIZE;
+    private boolean maxFrameSizeEnabled = true;
     private String host=null;
     private String providerName = ActiveMQConnectionMetaData.PROVIDER_NAME;
     private String providerVersion = ActiveMQConnectionMetaData.PROVIDER_VERSION;
-    private String platformDetails = ActiveMQConnectionMetaData.PLATFORM_DETAILS;
+    private String platformDetails = ActiveMQConnectionMetaData.DEFAULT_PLATFORM_DETAILS;
+    private boolean includePlatformDetails = false;
 
+    @Override
     public WireFormat createWireFormat() {
         WireFormatInfo info = new WireFormatInfo();
         info.setVersion(version);
@@ -60,11 +63,15 @@ public class OpenWireFormatFactory implements WireFormatFactory {
             info.setMaxInactivityDurationInitalDelay(maxInactivityDurationInitalDelay);
             info.setCacheSize(cacheSize);
             info.setMaxFrameSize(maxFrameSize);
+            info.setMaxFrameSizeEnabled(maxFrameSizeEnabled);
             if( host!=null ) {
                 info.setHost(host);
             }
             info.setProviderName(providerName);
             info.setProviderVersion(providerVersion);
+            if (includePlatformDetails) {
+                platformDetails = ActiveMQConnectionMetaData.PLATFORM_DETAILS;
+            }
             info.setPlatformDetails(platformDetails);
         } catch (Exception e) {
             IllegalStateException ise = new IllegalStateException("Could not configure WireFormatInfo");
@@ -75,6 +82,7 @@ public class OpenWireFormatFactory implements WireFormatFactory {
         OpenWireFormat f = new OpenWireFormat(version);
         f.setMaxFrameSize(maxFrameSize);
         f.setPreferedWireFormatInfo(info);
+        f.setMaxFrameSizeEnabled(maxFrameSizeEnabled);
         return f;
     }
 
@@ -189,5 +197,27 @@ public class OpenWireFormatFactory implements WireFormatFactory {
 
     public void setPlatformDetails(String platformDetails) {
         this.platformDetails = platformDetails;
+    }
+
+    public boolean isIncludePlatformDetails() {
+        return includePlatformDetails;
+    }
+
+    public void setIncludePlatformDetails(boolean includePlatformDetails) {
+        this.includePlatformDetails = includePlatformDetails;
+    }
+
+    /**
+     * Set whether the maxFrameSize check will be enabled. Note this is only applied to this factory
+     * and will NOT be negotiated
+     *
+     * @param maxFrameSizeEnabled
+     */
+    public void setMaxFrameSizeEnabled(boolean maxFrameSizeEnabled) {
+        this.maxFrameSizeEnabled = maxFrameSizeEnabled;
+    }
+
+    public boolean isMaxFrameSizeEnabled() {
+        return this.maxFrameSizeEnabled;
     }
 }

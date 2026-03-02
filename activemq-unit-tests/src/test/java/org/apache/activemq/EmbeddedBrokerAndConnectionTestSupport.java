@@ -16,13 +16,16 @@
  */
 package org.apache.activemq;
 
-import javax.jms.Connection;
+import jakarta.jms.Connection;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  * A base class for a test case which creates an embedded broker and uses a connection and session
  *
  * 
  */
+@Category(ParallelTest.class)
 public abstract class EmbeddedBrokerAndConnectionTestSupport extends EmbeddedBrokerTestSupport {
     protected Connection connection;
 

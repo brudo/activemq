@@ -21,7 +21,7 @@ import java.net.URI;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.DeliveryMode;
+import jakarta.jms.DeliveryMode;
 
 import junit.framework.Test;
 import org.apache.activemq.broker.StubConnection;
@@ -56,7 +56,7 @@ public class FanoutTransportBrokerTest extends NetworkTestSupport {
     }
 
     public void initCombosForTestPublisherFansout() {
-        addCombinationValues("deliveryMode", new Object[] {Integer.valueOf(DeliveryMode.NON_PERSISTENT), Integer.valueOf(DeliveryMode.PERSISTENT)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT, DeliveryMode.PERSISTENT});
         addCombinationValues("destination", new Object[] {new ActiveMQTopic("TEST"), new ActiveMQQueue("TEST")});
     }
 
@@ -102,7 +102,7 @@ public class FanoutTransportBrokerTest extends NetworkTestSupport {
     }
 
     public void initCombosForTestPublisherWaitsForServerToBeUp() {
-        addCombinationValues("deliveryMode", new Object[] {Integer.valueOf(DeliveryMode.NON_PERSISTENT), Integer.valueOf(DeliveryMode.PERSISTENT)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT, DeliveryMode.PERSISTENT});
         addCombinationValues("destination", new Object[] {new ActiveMQTopic("TEST")});
     }
 

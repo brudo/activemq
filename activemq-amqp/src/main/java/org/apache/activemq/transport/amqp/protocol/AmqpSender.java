@@ -17,7 +17,6 @@
 package org.apache.activemq.transport.amqp.protocol;
 
 import static org.apache.activemq.transport.amqp.AmqpSupport.toLong;
-import static org.apache.activemq.transport.amqp.message.AmqpMessageSupport.JMS_AMQP_MESSAGE_FORMAT;
 
 import java.io.IOException;
 import java.util.LinkedList;
@@ -39,7 +38,6 @@ import org.apache.activemq.command.RemoveSubscriptionInfo;
 import org.apache.activemq.command.Response;
 import org.apache.activemq.command.TransactionId;
 import org.apache.activemq.transport.amqp.AmqpProtocolConverter;
-import org.apache.activemq.transport.amqp.ResponseHandler;
 import org.apache.activemq.transport.amqp.message.AutoOutboundTransformer;
 import org.apache.activemq.transport.amqp.message.EncodedMessage;
 import org.apache.activemq.transport.amqp.message.OutboundTransformer;
@@ -280,8 +278,8 @@ public class AmqpSender extends AmqpAbstractLink<Sender> {
                 // Rejection is a terminal outcome, we poison the message for dispatch to
                 // the DLQ.  If a custom redelivery policy is used on the broker the message
                 // can still be redelivered based on the configation of that policy.
-                LOG.trace("onDelivery: Rejected state = {}, message poisoned.", state, md.getRedeliveryCounter());
-                settle(delivery, MessageAck.POSION_ACK_TYPE);
+                LOG.trace("onDelivery: Rejected state = {}, message poisoned.", state);
+                settle(delivery, MessageAck.POISON_ACK_TYPE);
             } else if (state instanceof Released) {
                 LOG.trace("onDelivery: Released state = {}", state);
                 // re-deliver && don't increment the counter.
@@ -298,7 +296,7 @@ public class AmqpSender extends AmqpAbstractLink<Sender> {
                 if (undeliverableHere != null && undeliverableHere) {
                     // receiver does not want the message..
                     // perhaps we should DLQ it?
-                    ackType = MessageAck.POSION_ACK_TYPE;
+                    ackType = MessageAck.POISON_ACK_TYPE;
                 }
                 settle(delivery, ackType);
             }
@@ -449,21 +447,7 @@ public class AmqpSender extends AmqpAbstractLink<Sender> {
 
                 ActiveMQMessage temp = null;
                 if (md.getMessage() != null) {
-
-                    // Topics can dispatch the same Message to more than one consumer
-                    // so we must copy to prevent concurrent read / write to the same
-                    // message object.
-                    if (md.getDestination().isTopic()) {
-                        synchronized (md.getMessage()) {
-                            temp = (ActiveMQMessage) md.getMessage().copy();
-                        }
-                    } else {
-                        temp = (ActiveMQMessage) md.getMessage();
-                    }
-
-                    if (!temp.getProperties().containsKey(JMS_AMQP_MESSAGE_FORMAT)) {
-                        temp.setProperty(JMS_AMQP_MESSAGE_FORMAT, 0);
-                    }
+                    temp = (ActiveMQMessage) md.getMessage().copy();
                 }
 
                 final ActiveMQMessage jms = temp;

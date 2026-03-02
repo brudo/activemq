@@ -16,13 +16,20 @@
  */
 package org.apache.activemq.statistics;
 
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
+import static org.junit.Assert.assertTrue;
+
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageConsumer;
 
 import org.apache.activemq.broker.region.Subscription;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQTopic;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.apache.activemq.util.Wait;
+import org.junit.Assume;
+import org.junit.Test;
+import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
@@ -30,16 +37,17 @@ import org.junit.runners.Parameterized;
  * This test shows Inflight Message sizes are correct for various acknowledgement modes
  * using a TopicSubscription
  */
+@Category(ParallelTest.class)
 @RunWith(Parameterized.class)
 public class TopicSubscriptionInflightMessageSizeTest extends AbstractInflightMessageSizeTest {
 
-    public TopicSubscriptionInflightMessageSizeTest(int ackType, boolean optimizeAcknowledge) {
-        super(ackType, optimizeAcknowledge);
+    public TopicSubscriptionInflightMessageSizeTest(int ackType, boolean optimizeAcknowledge, boolean useTopicSubscriptionInflightStats) {
+        super(ackType, optimizeAcknowledge, useTopicSubscriptionInflightStats);
     }
 
     @Override
-    protected MessageConsumer getMessageConsumer() throws JMSException {
-        return session.createConsumer(dest);
+    protected MessageConsumer getMessageConsumer(String destName) throws JMSException {
+        return session.createConsumer(getDestination(destName));
     }
 
     @Override
@@ -48,13 +56,38 @@ public class TopicSubscriptionInflightMessageSizeTest extends AbstractInflightMe
     }
 
     @Override
-    protected Destination getDestination() throws JMSException {
+    protected Destination getDestination(String destName) throws JMSException {
         return session.createTopic(destName);
     }
 
     @Override
-    protected ActiveMQDestination getActiveMQDestination() {
+    protected ActiveMQDestination getActiveMQDestination(String destName) {
         return new ActiveMQTopic(destName);
+    }
+
+    @Test(timeout=15000)
+    public void testInflightMessageSizeDisabled() throws Exception {
+        Assume.assumeFalse(useTopicSubscriptionInflightStats);
+        sendMessages(10);
+
+        Thread.sleep(1000);
+
+        assertTrue("Inflight message size should be 0", Wait.waitFor(new Wait.Condition() {
+            @Override
+            public boolean isSatisified() throws Exception {
+                return getSubscription().getInFlightMessageSize() == 0;
+            }
+        }));
+
+        receiveMessages(10);
+
+        Thread.sleep(1000);
+        assertTrue("Inflight message size should still be 0", Wait.waitFor(new Wait.Condition() {
+            @Override
+            public boolean isSatisified() throws Exception {
+                return getSubscription().getInFlightMessageSize() == 0;
+            }
+        }));
     }
 
 }

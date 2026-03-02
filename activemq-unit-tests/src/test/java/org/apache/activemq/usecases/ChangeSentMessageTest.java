@@ -19,12 +19,12 @@ package org.apache.activemq.usecases;
 
 import java.util.HashMap;
 
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.ObjectMessage;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.ObjectMessage;
+import jakarta.jms.Session;
 
 import org.apache.activemq.test.TestSupport;
 
@@ -32,6 +32,11 @@ import org.apache.activemq.test.TestSupport;
  *
  */
 public class ChangeSentMessageTest extends TestSupport {
+
+    static {
+        System.setProperty("org.apache.activemq.SERIALIZABLE_PACKAGES", "java.util,java.lang");
+    }
+
     private static final int COUNT = 200;
     private static final String VALUE_NAME = "value";
 
@@ -52,7 +57,7 @@ public class ChangeSentMessageTest extends TestSupport {
         HashMap<String, Integer> map = new HashMap<String, Integer>();
         ObjectMessage message = publisherSession.createObjectMessage();
         for (int i = 0; i < COUNT; i++) {
-            map.put(VALUE_NAME, Integer.valueOf(i));
+            map.put(VALUE_NAME, i);
             message.setObject(map);
             producer.send(message);
             assertTrue(message.getObject() == map);
@@ -61,7 +66,7 @@ public class ChangeSentMessageTest extends TestSupport {
             ObjectMessage msg = (ObjectMessage)consumer.receive();
             HashMap receivedMap = (HashMap)msg.getObject();
             Integer intValue = (Integer)receivedMap.get(VALUE_NAME);
-            assertTrue(intValue.intValue() == i);
+            assertTrue(intValue == i);
         }
     }
 }

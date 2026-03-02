@@ -19,19 +19,18 @@ package org.apache.activemq;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.security.AccessController;
-import java.security.PrivilegedAction;
 import java.util.*;
 import java.util.concurrent.RejectedExecutionHandler;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.ExceptionListener;
-import javax.jms.JMSException;
-import javax.jms.QueueConnection;
-import javax.jms.QueueConnectionFactory;
-import javax.jms.TopicConnection;
-import javax.jms.TopicConnectionFactory;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.ExceptionListener;
+import jakarta.jms.JMSContext;
+import jakarta.jms.JMSException;
+import jakarta.jms.QueueConnection;
+import jakarta.jms.QueueConnectionFactory;
+import jakarta.jms.TopicConnection;
+import jakarta.jms.TopicConnectionFactory;
 import javax.naming.Context;
 
 import org.apache.activemq.blob.BlobTransferPolicy;
@@ -56,7 +55,7 @@ import org.slf4j.LoggerFactory;
  * QueueConnections and TopicConnections.
  *
  *
- * @see javax.jms.ConnectionFactory
+ * @see jakarta.jms.ConnectionFactory
  */
 public class ActiveMQConnectionFactory extends JNDIBaseStorable implements ConnectionFactory, QueueConnectionFactory, TopicConnectionFactory, StatsCapable, Cloneable {
     private static final Logger LOG = LoggerFactory.getLogger(ActiveMQConnectionFactory.class);
@@ -66,23 +65,12 @@ public class ActiveMQConnectionFactory extends JNDIBaseStorable implements Conne
         String host = null;
         String port = null;
         try {
-             host = AccessController.doPrivileged(new PrivilegedAction<String>() {
-                 @Override
-                 public String run() {
-                     String result = System.getProperty("org.apache.activemq.AMQ_HOST");
-                     result = (result==null||result.isEmpty()) ?  System.getProperty("AMQ_HOST","localhost") : result;
-                     return result;
-                 }
-             });
-             port = AccessController.doPrivileged(new PrivilegedAction<String>() {
-                 @Override
-                 public String run() {
-                     String result = System.getProperty("org.apache.activemq.AMQ_PORT");
-                     result = (result==null||result.isEmpty()) ?  System.getProperty("AMQ_PORT","61616") : result;
-                     return result;
-                 }
-             });
-        }catch(Throwable e){
+            host = System.getProperty("org.apache.activemq.AMQ_HOST");
+            host = (host==null||host.isBlank()) ?  System.getProperty("AMQ_HOST","localhost") : host;
+
+            port = System.getProperty("org.apache.activemq.AMQ_PORT");
+            port = (port==null||port.isBlank()) ?  System.getProperty("AMQ_PORT","61616") : port;
+        } catch(Throwable e){
             LOG.debug("Failed to look up System properties for host and port",e);
         }
         host = (host == null || host.isEmpty()) ? "localhost" : host;
@@ -91,7 +79,6 @@ public class ActiveMQConnectionFactory extends JNDIBaseStorable implements Conne
         DEFAULT_BROKER_PORT = Integer.parseInt(port);
     }
 
-
     public static final String DEFAULT_BROKER_BIND_URL;
 
     static{
@@ -99,15 +86,9 @@ public class ActiveMQConnectionFactory extends JNDIBaseStorable implements Conne
         String bindURL = null;
 
         try {
-            bindURL = AccessController.doPrivileged(new PrivilegedAction<String>() {
-                @Override
-                public String run() {
-                    String result = System.getProperty("org.apache.activemq.BROKER_BIND_URL");
-                    result = (result==null||result.isEmpty()) ?  System.getProperty("BROKER_BIND_URL",defaultURL) : result;
-                    return result;
-                }
-            });
-        }catch(Throwable e){
+            bindURL = System.getProperty("org.apache.activemq.BROKER_BIND_URL");
+            bindURL = (bindURL==null||bindURL.isEmpty()) ?  System.getProperty("BROKER_BIND_URL",defaultURL) : bindURL;
+        } catch(Throwable e){
             LOG.debug("Failed to look up System properties for host and port",e);
         }
         bindURL = (bindURL == null || bindURL.isEmpty()) ? defaultURL : bindURL;
@@ -167,6 +148,7 @@ public class ActiveMQConnectionFactory extends JNDIBaseStorable implements Conne
     private int auditDepth = ActiveMQMessageAudit.DEFAULT_WINDOW_SIZE;
     private int auditMaximumProducerNumber = ActiveMQMessageAudit.MAXIMUM_PRODUCER_COUNT;
     private boolean useDedicatedTaskRunner;
+    private boolean useVirtualThreadTaskRunner;
     private long consumerFailoverRedeliveryWaitPeriod = 0;
     private boolean checkForDuplicates = true;
     private ClientInternalExceptionListener clientInternalExceptionListener;
@@ -284,6 +266,54 @@ public class ActiveMQConnectionFactory extends JNDIBaseStorable implements Conne
     @Override
     public TopicConnection createTopicConnection(String userName, String password) throws JMSException {
         return createActiveMQConnection(userName, password);
+    }
+    
+    /**
+     * @return Returns the JMSContext.
+     */
+    @Override
+    public JMSContext createContext() {
+        try {
+            return new ActiveMQContext(createActiveMQConnection());
+        } catch (JMSException e) {
+            throw JMSExceptionSupport.convertToJMSRuntimeException(e);
+        }
+    }
+
+    /**
+     * @return Returns the JMSContext.
+     */
+    @Override
+    public JMSContext createContext(String userName, String password) {
+        try {
+            return new ActiveMQContext(createActiveMQConnection(userName, password));
+        } catch (JMSException e) {
+            throw JMSExceptionSupport.convertToJMSRuntimeException(e);
+        }
+    }
+
+    /**
+     * @return Returns the JMSContext.
+     */
+    @Override
+    public JMSContext createContext(String userName, String password, int sessionMode) {
+        try {
+            return new ActiveMQContext(createActiveMQConnection(userName, password), sessionMode);
+        } catch (JMSException e) {
+            throw JMSExceptionSupport.convertToJMSRuntimeException(e);
+        }
+    }
+
+    /**
+     * @return Returns the JMSContext.
+     */
+    @Override
+    public JMSContext createContext(int sessionMode) {
+        try {
+            return new ActiveMQContext(createActiveMQConnection(getUserName(), getPassword()), sessionMode);
+        } catch (JMSException e) {
+            throw JMSExceptionSupport.convertToJMSRuntimeException(e);
+        }
     }
 
     /**
@@ -409,6 +439,7 @@ public class ActiveMQConnectionFactory extends JNDIBaseStorable implements Conne
         connection.setAuditDepth(getAuditDepth());
         connection.setAuditMaximumProducerNumber(getAuditMaximumProducerNumber());
         connection.setUseDedicatedTaskRunner(isUseDedicatedTaskRunner());
+        connection.setUseVirtualThreadTaskRunner(isUseVirtualThreadTaskRunner());
         connection.setConsumerFailoverRedeliveryWaitPeriod(getConsumerFailoverRedeliveryWaitPeriod());
         connection.setCheckForDuplicates(isCheckForDuplicates());
         connection.setMessagePrioritySupported(isMessagePrioritySupported());
@@ -1117,6 +1148,14 @@ public class ActiveMQConnectionFactory extends JNDIBaseStorable implements Conne
 
     public boolean isUseDedicatedTaskRunner() {
         return useDedicatedTaskRunner;
+    }
+
+    public void setUseVirtualThreadTaskRunner(boolean useVirtualThreadTaskRunner) {
+        this.useVirtualThreadTaskRunner = useVirtualThreadTaskRunner;
+    }
+
+    public boolean isUseVirtualThreadTaskRunner() {
+        return useVirtualThreadTaskRunner;
     }
 
     public void setConsumerFailoverRedeliveryWaitPeriod(long consumerFailoverRedeliveryWaitPeriod) {

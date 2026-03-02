@@ -22,7 +22,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 
-import javax.jms.JMSException;
+import jakarta.jms.JMSException;
 
 /**
  * An expression which performs an operation on two expression values
@@ -86,11 +86,10 @@ public abstract class UnaryExpression implements Expression {
                 } else {
                     return Boolean.FALSE;
                 }
-
             }
 
             public String toString() {
-                StringBuffer answer = new StringBuffer();
+                StringBuilder answer = new StringBuilder();
                 answer.append(right);
                 answer.append(" ");
                 answer.append(getExpressionSymbol());
@@ -132,19 +131,7 @@ public abstract class UnaryExpression implements Expression {
     };
 
     public static BooleanExpression createNOT(BooleanExpression left) {
-        return new BooleanUnaryExpression(left) {
-            public Object evaluate(MessageEvaluationContext message) throws JMSException {
-                Boolean lvalue = (Boolean)right.evaluate(message);
-                if (lvalue == null) {
-                    return null;
-                }
-                return lvalue.booleanValue() ? Boolean.FALSE : Boolean.TRUE;
-            }
-
-            public String getExpressionSymbol() {
-                return "NOT";
-            }
-        };
+        return new NotExpression(left);
     }
 
     public static BooleanExpression createXPath(final String xpath) {
@@ -165,7 +152,7 @@ public abstract class UnaryExpression implements Expression {
                 if (!rvalue.getClass().equals(Boolean.class)) {
                     return Boolean.FALSE;
                 }
-                return ((Boolean)rvalue).booleanValue() ? Boolean.TRUE : Boolean.FALSE;
+                return (Boolean) rvalue ? Boolean.TRUE : Boolean.FALSE;
             }
 
             public String toString() {
@@ -181,13 +168,13 @@ public abstract class UnaryExpression implements Expression {
     private static Number negate(Number left) {
         Class clazz = left.getClass();
         if (clazz == Integer.class) {
-            return new Integer(-left.intValue());
+            return -left.intValue();
         } else if (clazz == Long.class) {
-            return new Long(-left.longValue());
+            return -left.longValue();
         } else if (clazz == Float.class) {
-            return new Float(-left.floatValue());
+            return -left.floatValue();
         } else if (clazz == Double.class) {
-            return new Double(-left.doubleValue());
+            return -left.doubleValue();
         } else if (clazz == BigDecimal.class) {
             // We ussually get a big deciamal when we have Long.MIN_VALUE
             // constant in the
@@ -200,7 +187,7 @@ public abstract class UnaryExpression implements Expression {
             bd = bd.negate();
 
             if (BD_LONG_MIN_VALUE.compareTo(bd) == 0) {
-                return Long.valueOf(Long.MIN_VALUE);
+                return Long.MIN_VALUE;
             }
             return bd;
         } else {
@@ -243,7 +230,6 @@ public abstract class UnaryExpression implements Expression {
             return false;
         }
         return toString().equals(o.toString());
-
     }
 
     /**
@@ -254,4 +240,31 @@ public abstract class UnaryExpression implements Expression {
      */
     public abstract String getExpressionSymbol();
 
+    private static class NotExpression extends BooleanUnaryExpression {
+        public NotExpression(BooleanExpression right) {
+            super(right);
+        }
+
+        public Object evaluate(MessageEvaluationContext message) throws JMSException {
+            Boolean lvalue = (Boolean) right.evaluate(message);
+            if (lvalue == null) {
+                return null;
+            }
+            return lvalue.booleanValue() ? Boolean.FALSE : Boolean.TRUE;
+        }
+
+        @Override
+        public boolean matches(MessageEvaluationContext message) throws JMSException {
+            Boolean lvalue = (Boolean) right.evaluate(message);
+            if (lvalue == null) {
+                // NOT NULL returns NULL that eventually fails the selector
+                return false;
+            }
+            return !lvalue;
+        }
+
+        public String getExpressionSymbol() {
+            return "NOT";
+        }
+    }
 }

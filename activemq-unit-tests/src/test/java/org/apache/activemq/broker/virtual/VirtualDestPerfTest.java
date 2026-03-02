@@ -16,7 +16,6 @@
  */
 package org.apache.activemq.broker.virtual;
 
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -24,10 +23,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import javax.jms.Connection;
-import javax.jms.DeliveryMode;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 import javax.management.ObjectName;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerService;
@@ -48,11 +47,6 @@ import org.junit.Ignore;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-
 
 public class VirtualDestPerfTest {
 
@@ -97,7 +91,7 @@ public class VirtualDestPerfTest {
             executor.awaitTermination(5, TimeUnit.MINUTES);
             long endTime = System.currentTimeMillis();
             long seconds = (endTime - startTime) / 1000;
-            LOG.info("For numThreads {} duration {}", numThreads.intValue(), seconds);
+            LOG.info("For numThreads {} duration {}", numThreads, seconds);
             results.put(numThreads, seconds);
             LOG.info("Broker got {} messages", brokerService.getAdminView().getTotalEnqueueCount());
         }

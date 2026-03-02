@@ -22,7 +22,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.StringTokenizer;
 
-import javax.jms.MessageFormatException;
+import jakarta.jms.MessageFormatException;
 
 public class CronParser {
 
@@ -70,13 +70,13 @@ public class CronParser {
         // so we'll need to check again when done updating month and day.
         int currentMinutes = working.get(Calendar.MINUTE);
         if (!isCurrent(minutes, currentMinutes)) {
-            int nextMinutes = getNext(minutes, currentMinutes);
+            int nextMinutes = getNext(minutes, currentMinutes, working);
             working.add(Calendar.MINUTE, nextMinutes);
         }
 
         int currentHours = working.get(Calendar.HOUR_OF_DAY);
         if (!isCurrent(hours, currentHours)) {
-            int nextHour = getNext(hours, currentHours);
+            int nextHour = getNext(hours, currentHours, working);
             working.add(Calendar.HOUR_OF_DAY, nextHour);
         }
 
@@ -100,13 +100,13 @@ public class CronParser {
 
         currentHours = working.get(Calendar.HOUR_OF_DAY);
         if (!isCurrent(hours, currentHours)) {
-            int nextHour = getNext(hours, currentHours);
+            int nextHour = getNext(hours, currentHours, working);
             working.add(Calendar.HOUR_OF_DAY, nextHour);
         }
 
         currentMinutes = working.get(Calendar.MINUTE);
         if (!isCurrent(minutes, currentMinutes)) {
-            int nextMinutes = getNext(minutes, currentMinutes);
+            int nextMinutes = getNext(minutes, currentMinutes, working);
             working.add(Calendar.MINUTE, nextMinutes);
         }
 
@@ -123,7 +123,7 @@ public class CronParser {
 
         int currentMonth = working.get(Calendar.MONTH) + 1;
         if (!isCurrent(month, currentMonth)) {
-            int nextMonth = getNext(month, currentMonth);
+            int nextMonth = getNext(month, currentMonth, working);
             working.add(Calendar.MONTH, nextMonth);
 
             // Reset to start of month.
@@ -150,11 +150,11 @@ public class CronParser {
             int nextCalendarDay = Integer.MAX_VALUE;
 
             if (!isCurrent(dayOfWeek, currentDayOfWeek)) {
-                nextWeekDay = getNext(dayOfWeek, currentDayOfWeek);
+                nextWeekDay = getNext(dayOfWeek, currentDayOfWeek, working);
             }
 
             if (!isCurrent(dayOfMonth, currentDayOfMonth)) {
-                nextCalendarDay = getNext(dayOfMonth, currentDayOfMonth);
+                nextCalendarDay = getNext(dayOfMonth, currentDayOfMonth, working);
             }
 
             if( nextWeekDay < nextCalendarDay ) {
@@ -185,12 +185,12 @@ public class CronParser {
     static void validate(final CronEntry entry) throws MessageFormatException {
 
         List<Integer> list = entry.currentWhen;
-        if (list.isEmpty() || list.get(0).intValue() < entry.start || list.get(list.size() - 1).intValue() > entry.end) {
+        if (list.isEmpty() || list.get(0) < entry.start || list.get(list.size() - 1) > entry.end) {
             throw new MessageFormatException("Invalid token: " + entry);
         }
     }
 
-    static int getNext(final CronEntry entry, final int current) throws MessageFormatException {
+    static int getNext(final CronEntry entry, final int current, final Calendar working) throws MessageFormatException {
         int result = 0;
 
         if (entry.currentWhen == null) {
@@ -200,16 +200,24 @@ public class CronParser {
         List<Integer> list = entry.currentWhen;
         int next = -1;
         for (Integer i : list) {
-            if (i.intValue() > current) {
-                next = i.intValue();
+            if (i > current) {
+                next = i;
                 break;
             }
         }
         if (next != -1) {
             result = next - current;
         } else {
-            int first = list.get(0).intValue();
-            result = entry.end + first - entry.start - current;
+            int first = list.get(0);
+
+            int fixedEnd = entry.end;
+
+            //months have different max values
+            if("DayOfMonth".equals(entry.name)) {
+                fixedEnd = working.getActualMaximum(Calendar.DAY_OF_MONTH)+1;
+            }
+
+            result = fixedEnd + first - entry.start - current;
 
             // Account for difference of one vs zero based indices.
             if (entry.name.equals("DayOfWeek") || entry.name.equals("Month")) {
@@ -221,7 +229,7 @@ public class CronParser {
     }
 
     static boolean isCurrent(final CronEntry entry, final int current) throws MessageFormatException {
-        boolean result = entry.currentWhen.contains(new Integer(current));
+        boolean result = entry.currentWhen.contains(current);
         return result;
     }
 
@@ -257,7 +265,7 @@ public class CronParser {
             CronEntry ce = new CronEntry(entry.name, numerator, entry.start, entry.end);
             List<Integer> list = calculateValues(ce);
             for (Integer i : list) {
-                if (i.intValue() % denominator == 0) {
+                if (i % denominator == 0) {
                     result.add(i);
                 }
             }

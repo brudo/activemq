@@ -16,11 +16,11 @@
  */
 package org.apache.activemq.usecases;
 
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.TextMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.TextMessage;
 
 import junit.framework.TestCase;
 
@@ -28,11 +28,14 @@ import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.command.ActiveMQMessage;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTopic;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  * Useful base class for unit test cases
  */
-public class TestSupport extends TestCase {
+@Category(ParallelTest.class)
+public abstract class TestSupport extends TestCase {
 
     protected ActiveMQConnectionFactory connectionFactory;
     protected boolean topic = true;

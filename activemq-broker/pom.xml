@@ -22,7 +22,7 @@
   <parent>
     <groupId>org.apache.activemq</groupId>
     <artifactId>activemq-parent</artifactId>
-    <version>5.16.0-SNAPSHOT</version>
+    <version>6.3.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>activemq-broker</artifactId>
@@ -46,27 +46,24 @@
       <groupId>org.apache.activemq</groupId>
       <artifactId>activemq-openwire-legacy</artifactId>
     </dependency>
-
+    <dependency>
+      <groupId>jakarta.annotation</groupId>
+      <artifactId>jakarta.annotation-api</artifactId>
+    </dependency>
+    
     <!-- =============================== -->
     <!-- Optional Dependencies -->
     <!-- =============================== -->
 
     <dependency>
       <groupId>org.osgi</groupId>
-      <artifactId>org.osgi.core</artifactId>
+      <artifactId>osgi.core</artifactId>
       <scope>provided</scope>
       <optional>true</optional>
     </dependency>
     <dependency>
       <groupId>org.apache.activemq</groupId>
       <artifactId>activemq-jaas</artifactId>
-      <optional>true</optional>
-    </dependency>
-
-    <!-- to support XPath based Selectors -->
-    <dependency>
-      <groupId>xalan</groupId>
-      <artifactId>xalan</artifactId>
       <optional>true</optional>
     </dependency>
 
@@ -79,14 +76,14 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-log4j12</artifactId>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-core</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>com.google.guava</groupId>
-      <artifactId>guava</artifactId>
-      <version>${guava-version}</version>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-slf4j2-impl</artifactId>
+      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
@@ -106,13 +103,12 @@
           <links>
             <link>${javase-javadoc-url}</link>
             <link>${javaee-javadoc-url}</link>
-            <link>${slf4j-javadoc-url}</link>
             <link>http://junit.sourceforge.net/javadoc/</link>
           </links>
           <stylesheetfile>${basedir}/../etc/css/stylesheet.css</stylesheetfile>
-          <linksource>true</linksource>
           <maxmemory>256m</maxmemory>
           <source>${source-version}</source>
+          <noindex>true</noindex>
           <groups>
             <group>
               <title>JMS Client</title>
@@ -187,15 +183,11 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
           <forkCount>1</forkCount>
-          <reuseForks>false</reuseForks>
           <argLine>${surefire.argLine}</argLine>
           <runOrder>alphabetical</runOrder>
-          <systemProperties>
-            <property>
-              <name>org.apache.activemq.default.directory.prefix</name>
-              <value>target/</value>
-            </property>
-          </systemProperties>
+          <systemPropertyVariables>
+            <org.apache.activemq.default.directory.prefix>target/</org.apache.activemq.default.directory.prefix>
+          </systemPropertyVariables>
           <includes>
             <include>**/*Test.*</include>
           </includes>
@@ -216,6 +208,16 @@
       <plugin>
         <artifactId>maven-jar-plugin</artifactId>
         <executions>
+          <execution>
+            <!-- Do jar creation earlier, before the "test" phase, so that the
+             multi-release-jar content is visible to any dependent modules,
+             enabling them to use the relevant classes during their tests. -->
+            <id>default-jar</id>
+            <phase>process-test-classes</phase>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+          </execution>
           <execution>
             <goals>
               <goal>test-jar</goal>
@@ -249,7 +251,7 @@
         </plugins>
       </build>
     </profile>
-	<profile>
+    <profile>
       <id>activemq.tests-autoTransport</id>
       <activation>
         <property>
@@ -266,6 +268,33 @@
                 <exclude>**</exclude>
               </excludes>
             </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+      <profile>
+      <id>jdk24-plus</id>
+      <activation>
+        <jdk>[24,)</jdk>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <artifactId>maven-compiler-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>java24-compile</id>
+                <phase>compile</phase>
+                <goals>
+                  <goal>compile</goal>
+                </goals>
+                <configuration>
+                  <release>24</release> <!-- Specific Java version for alternative classes -->
+                  <compileSourceRoots>${project.basedir}/src/main/java24</compileSourceRoots>
+                  <multiReleaseOutput>true</multiReleaseOutput>
+                </configuration>
+              </execution>
+            </executions>
           </plugin>
         </plugins>
       </build>

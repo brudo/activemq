@@ -21,13 +21,13 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import javax.jms.Connection;
-import javax.jms.ExceptionListener;
-import javax.jms.IllegalStateException;
-import javax.jms.JMSException;
-import javax.jms.Session;
-import javax.jms.TemporaryQueue;
-import javax.jms.TemporaryTopic;
+import jakarta.jms.Connection;
+import jakarta.jms.ExceptionListener;
+import jakarta.jms.IllegalStateException;
+import jakarta.jms.JMSException;
+import jakarta.jms.Session;
+import jakarta.jms.TemporaryQueue;
+import jakarta.jms.TemporaryTopic;
 
 import org.apache.commons.pool2.KeyedPooledObjectFactory;
 import org.apache.commons.pool2.PooledObject;
@@ -125,6 +125,7 @@ public class ConnectionPool implements ExceptionListener {
                 connection.start();
             } catch (JMSException e) {
                 started.set(false);
+                setHasExpired(true);
                 if (isReconnectOnException()) {
                     close();
                 }
@@ -233,7 +234,7 @@ public class ConnectionPool implements ExceptionListener {
             }
         }
 
-        if (expiryTimeout > 0 && System.currentTimeMillis() > firstUsed + expiryTimeout) {
+        if (expiryTimeout > 0 && (firstUsed + expiryTimeout) - System.currentTimeMillis() < 0) {
             hasExpired = true;
             if (referenceCount == 0) {
                 close();
@@ -243,7 +244,7 @@ public class ConnectionPool implements ExceptionListener {
 
         // Only set hasExpired here is no references, as a Connection with references is by
         // definition not idle at this time.
-        if (referenceCount == 0 && idleTimeout > 0 && System.currentTimeMillis() > lastUsed + idleTimeout) {
+        if (referenceCount == 0 && idleTimeout > 0 && (lastUsed + idleTimeout) - System.currentTimeMillis() < 0) {
             hasExpired = true;
             close();
             expired = true;
@@ -377,6 +378,7 @@ public class ConnectionPool implements ExceptionListener {
 
     @Override
     public void onException(JMSException exception) {
+        setHasExpired(true);
         if (isReconnectOnException()) {
             close();
         }

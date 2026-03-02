@@ -25,9 +25,9 @@ import java.util.HashMap;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.InflaterInputStream;
 
-import javax.jms.JMSException;
-import javax.jms.MessageNotWriteableException;
-import javax.jms.TextMessage;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageNotWriteableException;
+import jakarta.jms.TextMessage;
 
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.util.ByteArrayInputStream;
@@ -158,6 +158,11 @@ public class ActiveMQTextMessage extends ActiveMQMessage implements TextMessage 
         this.text = null;
     }
 
+    @Override
+    public boolean isContentMarshalled() {
+        return content != null || text == null;
+    }
+
     /**
      * Clears out the message body. Clearing a message's body does not clear its
      * header values or property entries. <p/>
@@ -204,5 +209,22 @@ public class ActiveMQTextMessage extends ActiveMQMessage implements TextMessage 
         } catch (JMSException e) {
         }
         return super.toString();
+    }
+
+    @SuppressWarnings("unchecked")
+    public boolean isBodyAssignableTo(Class c) throws JMSException {
+        /*
+         * If null the JMS spec says this method always returns true
+         * regardless of the passed in class type.
+         */
+        if (getText() == null) {
+            return true;
+        }
+        return c.isAssignableFrom(java.lang.String.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    protected <T> T doGetBody(Class<T> asType) throws JMSException {
+        return (T) getText();
     }
 }

@@ -21,8 +21,8 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-import javax.jms.MessageProducer;
-import javax.jms.TemporaryQueue;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.TemporaryQueue;
 
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.util.Wait;
@@ -40,10 +40,15 @@ public class DuplexNetworkTest extends SimpleNetworkTest {
 
     @Override
     protected BrokerService createRemoteBroker() throws Exception {
-        BrokerService broker = new BrokerService();
+        final BrokerService broker = new BrokerService();
         broker.setBrokerName("remoteBroker");
         broker.addConnector("tcp://localhost:61617?transport.connectAttemptTimeout=2000");
         return broker;
+    }
+
+    @Override
+    protected void addNetworkConnectors() throws Exception {
+        // No-op: duplex network connector is already defined in duplexLocalBroker.xml
     }
 
     @Test

@@ -23,28 +23,32 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.DeliveryMode;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageListener;
-import javax.jms.MessageProducer;
-import javax.jms.Queue;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageListener;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.store.kahadb.KahaDBStore;
+import org.apache.activemq.store.kahadb.disk.journal.Journal.JournalDiskSyncStrategy;
+import org.apache.activemq.test.annotations.ParallelTest;
 import org.apache.activemq.util.IOHelper;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+@Category(ParallelTest.class)
 public class AMQ2512Test {
 
     private static final Logger LOG = LoggerFactory.getLogger(AMQ2512Test.class);
@@ -185,11 +189,10 @@ public class AMQ2512Test {
 
         KahaDBStore kaha = new KahaDBStore();
         kaha.setDirectory(dataFileDir);
-        kaha.setEnableJournalDiskSyncs(false);
+        kaha.setJournalDiskSyncStrategy(JournalDiskSyncStrategy.NEVER.name());
 
         BrokerService answer = new BrokerService();
         answer.setPersistenceAdapter(kaha);
-        answer.setDataDirectoryFile(dataFileDir);
         answer.setUseJmx(false);
         answer.addConnector("tcp://localhost:0").setName("openwire");
 

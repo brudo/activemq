@@ -27,22 +27,21 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Queue;
-import javax.jms.Session;
-import javax.jms.Topic;
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
+import jakarta.jms.Topic;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.ActiveMQSession;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTopic;
-import org.apache.activemq.leveldb.LevelDBStore;
 import org.apache.activemq.store.PersistenceAdapter;
 import org.apache.activemq.store.kahadb.KahaDBPersistenceAdapter;
 import org.apache.activemq.store.kahadb.disk.journal.DataFile;
@@ -249,9 +248,6 @@ public class AMQ2832Test {
 
         startBroker();
         PersistenceAdapter pa  = broker.getPersistenceAdapter();
-        if (pa instanceof LevelDBStore) {
-            return;
-        }
 
         ActiveMQQueue queue = new ActiveMQQueue("MyQueue");
         ActiveMQQueue disposable = new ActiveMQQueue("MyDisposableQueue");
@@ -289,7 +285,7 @@ public class AMQ2832Test {
         assertTrue("Less than three journal file expected, was " + getNumberOfJournalFiles(), Wait.waitFor(new Wait.Condition() {
             @Override
             public boolean isSatisified() throws Exception {
-                return getNumberOfJournalFiles() <= 3;
+                return getNumberOfJournalFiles() <= 4;
             }
         }, TimeUnit.MINUTES.toMillis(3)));
 

@@ -18,6 +18,7 @@ package org.apache.activemq.transport.ws;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
@@ -191,7 +192,7 @@ public class MQTTWSConnection extends WebSocketAdapter implements WebSocketListe
         try {
             frame = (MQTTFrame)wireFormat.unmarshal(new ByteSequence(data, offset, length));
         } catch (IOException e) {
-            LOG.error("Could not decode incoming MQTT Frame: ", e.getMessage());
+            LOG.error("Could not decode incoming MQTT Frame: {}", e.getMessage());
             connection.close();
         }
 
@@ -245,7 +246,7 @@ public class MQTTWSConnection extends WebSocketAdapter implements WebSocketListe
                 connection.close();
             }
         } catch (Exception e) {
-            LOG.error("Could not decode incoming MQTT Frame: ", e.getMessage());
+            LOG.error("Could not decode incoming MQTT Frame: {}", e.getMessage());
             connection.close();
         }
     }
@@ -282,6 +283,7 @@ public class MQTTWSConnection extends WebSocketAdapter implements WebSocketListe
     @Override
     public void onWebSocketConnect(org.eclipse.jetty.websocket.api.Session session) {
         this.connection = session;
+        this.connection.setIdleTimeout(Duration.ZERO);
         this.connectLatch.countDown();
     }
 }

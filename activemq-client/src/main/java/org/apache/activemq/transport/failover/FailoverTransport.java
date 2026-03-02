@@ -32,12 +32,14 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.StringTokenizer;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 
+import org.apache.activemq.MaxFrameSizeExceededException;
 import org.apache.activemq.broker.SslContext;
 import org.apache.activemq.command.Command;
 import org.apache.activemq.command.ConnectionControl;
@@ -121,6 +123,7 @@ public class FailoverTransport implements CompositeTransport {
     private String updateURIsURL = null;
     private boolean rebalanceUpdateURIs = true;
     private boolean doRebalance = false;
+    private boolean doReconnect = false;
     private boolean connectedToPriority = false;
 
     private boolean priorityBackup = false;
@@ -188,7 +191,7 @@ public class FailoverTransport implements CompositeTransport {
         if (command.isResponse()) {
             Object object = null;
             synchronized (requestMap) {
-                object = requestMap.remove(Integer.valueOf(((Response) command).getCorrelationId()));
+                object = requestMap.remove(((Response) command).getCorrelationId());
             }
             if (object != null && object.getClass() == Tracked.class) {
                 ((Tracked) object).onResponses(command);
@@ -277,7 +280,7 @@ public class FailoverTransport implements CompositeTransport {
                     reconnectOk = true;
                 }
 
-                LOG.warn("Transport ({}) failed {} attempting to automatically reconnect: {}",
+                LOG.warn("Transport ({}) failed{} attempting to automatically reconnect",
                          connectedTransportURI, (reconnectOk ? "," : ", not"), e);
 
                 failedConnectTransportURI = connectedTransportURI;
@@ -290,7 +293,6 @@ public class FailoverTransport implements CompositeTransport {
                         transportListener.transportInterupted();
                     }
 
-                    updated.remove(failedConnectTransportURI);
                     reconnectTask.wakeup();
                 } else if (!isDisposed()) {
                     propagateFailureToExceptionListener(e);
@@ -657,9 +659,9 @@ public class FailoverTransport implements CompositeTransport {
                         // it later.
                         synchronized (requestMap) {
                             if (tracked != null && tracked.isWaitingForResponse()) {
-                                requestMap.put(Integer.valueOf(command.getCommandId()), tracked);
+                                requestMap.put(command.getCommandId(), tracked);
                             } else if (tracked == null && command.isResponseRequired()) {
-                                requestMap.put(Integer.valueOf(command.getCommandId()), command);
+                                requestMap.put(command.getCommandId(), command);
                             }
                         }
 
@@ -681,7 +683,7 @@ public class FailoverTransport implements CompositeTransport {
                                 // map so that it is not sent 2 times on
                                 // recovery
                                 if (command.isResponseRequired()) {
-                                    requestMap.remove(Integer.valueOf(command.getCommandId()));
+                                    requestMap.remove(command.getCommandId());
                                 }
 
                                 // Rethrow the exception so it will handled by
@@ -696,6 +698,9 @@ public class FailoverTransport implements CompositeTransport {
                         }
 
                         return;
+                    } catch (MaxFrameSizeExceededException e) {
+                        LOG.debug("MaxFrameSizeExceededException for command: {}", command);
+                        throw e;
                     } catch (IOException e) {
                         LOG.debug("Send oneway attempt: {} failed for command: {}", i, command);
                         handleTransportFailure(e);
@@ -750,6 +755,7 @@ public class FailoverTransport implements CompositeTransport {
             reconnect(rebalance);
         }
     }
+    
 
     @Override
     public void remove(boolean rebalance, URI u[]) {
@@ -791,14 +797,16 @@ public class FailoverTransport implements CompositeTransport {
     }
 
     private List<URI> getConnectList() {
-        if (!updated.isEmpty()) {
-            return updated;
-        }
-        ArrayList<URI> l = new ArrayList<URI>(uris);
+        // updated have precedence
+        LinkedHashSet<URI> uniqueUris = new LinkedHashSet<URI>(updated);
+        uniqueUris.addAll(uris);
+
         boolean removed = false;
         if (failedConnectTransportURI != null) {
-            removed = l.remove(failedConnectTransportURI);
+            removed = uniqueUris.remove(failedConnectTransportURI);
         }
+
+        ArrayList<URI> l = new ArrayList<URI>(uniqueUris);
         if (randomize) {
             // Randomly, reorder the list by random swapping
             for (int i = 0; i < l.size(); i++) {
@@ -813,7 +821,7 @@ public class FailoverTransport implements CompositeTransport {
             l.add(failedConnectTransportURI);
         }
 
-        LOG.debug("urlList connectionList:{}, from: {}", l, uris);
+        LOG.debug("urlList connectionList:{}, from: {}", l, uniqueUris);
 
         return l;
     }
@@ -895,7 +903,7 @@ public class FailoverTransport implements CompositeTransport {
         if (fileURL != null) {
             BufferedReader in = null;
             String newUris = null;
-            StringBuffer buffer = new StringBuffer();
+            StringBuilder buffer = new StringBuilder();
 
             try {
                 in = new BufferedReader(getURLStream(fileURL));
@@ -926,7 +934,7 @@ public class FailoverTransport implements CompositeTransport {
     final boolean doReconnect() {
         Exception failure = null;
         synchronized (reconnectMutex) {
-
+            List<URI> connectList = null;
             // First ensure we are up to date.
             doUpdateURIsFromDisk();
 
@@ -936,12 +944,12 @@ public class FailoverTransport implements CompositeTransport {
             if ((connectedTransport.get() != null && !doRebalance && !priorityBackupAvailable) || disposed || connectionFailure != null) {
                 return false;
             } else {
-                List<URI> connectList = getConnectList();
+                connectList = getConnectList();
                 if (connectList.isEmpty()) {
                     failure = new IOException("No uris available to connect to.");
                 } else {
                     if (doRebalance) {
-                        if (connectedToPriority || compareURIs(connectList.get(0), connectedTransportURI)) {
+                        if (connectedToPriority || (!doReconnect && compareURIs(connectList.get(0), connectedTransportURI))) {
                             // already connected to first in the list, no need to rebalance
                             doRebalance = false;
                             return false;
@@ -956,6 +964,7 @@ public class FailoverTransport implements CompositeTransport {
                             } catch (Exception e) {
                                 LOG.debug("Caught an exception stopping existing transport for rebalance", e);
                             }
+                            doReconnect = false;
                         }
                         doRebalance = false;
                     }
@@ -1077,7 +1086,7 @@ public class FailoverTransport implements CompositeTransport {
 
             connectFailures++;
             if (reconnectLimit != INFINITE && connectFailures >= reconnectLimit) {
-                LOG.error("Failed to connect to {} after: {} attempt(s)", uris, connectFailures);
+                LOG.error("Failed to connect to {} after: {} attempt(s)", connectList, connectFailures);
                 connectionFailure = failure;
 
                 // Make sure on initial startup, that the transportListener has been
@@ -1096,9 +1105,9 @@ public class FailoverTransport implements CompositeTransport {
             }
 
             int warnInterval = getWarnAfterReconnectAttempts();
-            if (warnInterval > 0 && (connectFailures % warnInterval) == 0) {
-                LOG.warn("Failed to connect to {} after: {} attempt(s) continuing to retry.",
-                         uris, connectFailures);
+            if (warnInterval > 0 && (connectFailures == 1 || (connectFailures % warnInterval) == 0)) {
+                LOG.warn("Failed to connect to {} after: {} attempt(s) with {}, continuing to retry.",
+                         connectList, connectFailures, (failure == null ? "?" : failure.getLocalizedMessage()));
             }
         }
 
@@ -1254,6 +1263,8 @@ public class FailoverTransport implements CompositeTransport {
 
     @Override
     public void reconnect(URI uri) throws IOException {
+        uris.clear();
+        doReconnect = true;
         add(true, new URI[]{uri});
     }
 
@@ -1286,6 +1297,9 @@ public class FailoverTransport implements CompositeTransport {
                     for (URI uri : updatedURIs) {
                         if (uri != null && !updated.contains(uri)) {
                             updated.add(uri);
+                            if (failedConnectTransportURI != null && failedConnectTransportURI.equals(uri)) {
+                                failedConnectTransportURI = null;
+                            }
                         }
                     }
                 }
@@ -1385,9 +1399,11 @@ public class FailoverTransport implements CompositeTransport {
             } catch(IOException e) {
 
                 if (firstAddr == null) {
-                    LOG.error("Failed to Lookup INetAddress for URI[{}] : {}", first, e);
+                    LOG.error("Failed to Lookup INetAddress for URI[{}]", first);
+                    LOG.debug("Lookup Failure stack trace", e);
                 } else {
-                    LOG.error("Failed to Lookup INetAddress for URI[{}] : {}", second, e);
+                    LOG.error("Failed to Lookup INetAddress for URI[{}]", second);
+                    LOG.debug("Lookup Failure stack trace", e);
                 }
 
                 if (first.getHost().equalsIgnoreCase(second.getHost())) {

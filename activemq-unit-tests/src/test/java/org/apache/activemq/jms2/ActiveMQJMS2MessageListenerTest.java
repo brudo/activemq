@@ -1,0 +1,186 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.activemq.jms2;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSConsumer;
+import jakarta.jms.JMSContext;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageListener;
+import jakarta.jms.Session;
+
+import org.apache.activemq.ActiveMQSession;
+import org.apache.activemq.broker.jmx.QueueViewMBean;
+import org.apache.activemq.command.ActiveMQDestination;
+import org.apache.activemq.util.Wait;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+@RunWith(value = Parameterized.class)
+public class ActiveMQJMS2MessageListenerTest extends ActiveMQJMS2TestBase {
+
+    private final String destinationName;
+    private final String destinationType;
+    private final int ackMode;
+    private final String messagePayload;
+
+    public ActiveMQJMS2MessageListenerTest(String destinationType, int ackMode) {
+        this.destinationName = "AMQ.JMS2.ACKMODE." + Integer.toString(ackMode) + destinationType.toUpperCase();
+        this.destinationType = destinationType;
+        this.ackMode = ackMode;
+        this.messagePayload = "Test message destType: " + destinationType + " ackMode: " + Integer.toString(ackMode);
+    }
+
+    @Parameterized.Parameters(name="destinationType={0}, ackMode={1}")
+    public static Collection<Object[]> data() {
+        return Arrays.asList(new Object[][] {
+                {"queue", ActiveMQSession.INDIVIDUAL_ACKNOWLEDGE },
+                {"queue", Session.AUTO_ACKNOWLEDGE },
+                {"queue", Session.CLIENT_ACKNOWLEDGE },
+                {"queue", Session.DUPS_OK_ACKNOWLEDGE },
+                {"queue", Session.SESSION_TRANSACTED }
+        });
+    }
+
+    @Test
+    public void testMessageListener() {
+
+        try(JMSContext producerContext = activemqConnectionFactory.createContext(DEFAULT_JMS_USER, DEFAULT_JMS_PASS, ackMode)) {
+            assertNotNull(producerContext);
+            Destination destination = ActiveMQJMS2TestSupport.generateDestination(producerContext, destinationType, destinationName);
+            assertNotNull(destination);
+
+            // Use a separate context for consuming to avoid issues with AUTO_ACKNOWLEDGE mode
+            // when using the same context for both producing and consuming
+            try(JMSContext consumerContext = activemqConnectionFactory.createContext(DEFAULT_JMS_USER, DEFAULT_JMS_PASS, ackMode)) {
+                JMSConsumer jmsConsumer = consumerContext.createConsumer(destination);
+
+                AtomicInteger receivedMessageCount = new AtomicInteger();
+                AtomicInteger exceptionCount = new AtomicInteger();
+                CountDownLatch countDownLatch = new CountDownLatch(2);
+
+                jmsConsumer.setMessageListener(new MessageListener() {
+                    @Override
+                    public void onMessage(Message message) {
+                        receivedMessageCount.incrementAndGet();
+                        countDownLatch.countDown();
+                        try {
+                            switch(ackMode) {
+                            case Session.CLIENT_ACKNOWLEDGE: message.acknowledge(); break;
+                            case ActiveMQSession.INDIVIDUAL_ACKNOWLEDGE: message.acknowledge(); break;
+                            default: break;
+                            }
+                        } catch (JMSException e) {
+                            exceptionCount.incrementAndGet();
+                        }
+                    }
+                });
+
+                // Start consuming before sending messages (original test behavior)
+                consumerContext.start();
+
+                Message message = ActiveMQJMS2TestSupport.generateMessage(producerContext, "text", messagePayload);
+
+                List<String> sentMessageIds = new LinkedList<>();
+                for(int deliveryMode : Arrays.asList(DeliveryMode.NON_PERSISTENT, DeliveryMode.PERSISTENT)) {
+                    MessageData sendMessageData = new MessageData();
+                    sendMessageData.setMessage(message).setDeliveryMode(deliveryMode);
+                    sentMessageIds.add(ActiveMQJMS2TestSupport.sendMessage(producerContext, destination, sendMessageData));
+                }
+
+                // Wait for the queue to be created and MBean to be registered before accessing it
+                final ActiveMQDestination activeMQDestination = (ActiveMQDestination)destination;
+                assertTrue("Queue MBean not registered in time", Wait.waitFor(new Wait.Condition() {
+                    @Override
+                    public boolean isSatisified() throws Exception {
+                        try {
+                            QueueViewMBean testMBean = getQueueViewMBean(activeMQDestination);
+                            return testMBean != null && testMBean.getEnqueueCount() >= 0;
+                        } catch (Exception e) {
+                            return false;
+                        }
+                    }
+                }, 5000L, 100L));
+
+                QueueViewMBean localQueueViewMBean = getQueueViewMBean(activeMQDestination);
+
+                // For session transacted ack we ack after all messages are sent
+                switch(ackMode) {
+                case ActiveMQSession.SESSION_TRANSACTED:
+                    assertEquals(Long.valueOf(0), Long.valueOf(localQueueViewMBean.getEnqueueCount()));
+                    producerContext.commit();
+                    assertEquals(Long.valueOf(2), Long.valueOf(localQueueViewMBean.getEnqueueCount()));
+                    break;
+                default:
+                    assertEquals(Long.valueOf(2), Long.valueOf(localQueueViewMBean.getEnqueueCount()));
+                    break;
+                }
+
+                assertTrue("Did not receive all messages in time", countDownLatch.await(10, TimeUnit.SECONDS));
+
+                assertEquals(Integer.valueOf(2), Integer.valueOf(receivedMessageCount.get()));
+                assertEquals(Integer.valueOf(0), Integer.valueOf(exceptionCount.get()));
+
+                // For session transacted we ack after all messages are received
+                switch(ackMode) {
+                case ActiveMQSession.SESSION_TRANSACTED:
+                    assertEquals(Long.valueOf(0), Long.valueOf(localQueueViewMBean.getDequeueCount()));
+                    consumerContext.commit();
+                    break;
+                default: break;
+                }
+
+                final Logger logger = LoggerFactory.getLogger(this.getClass());
+
+                // Wait for all acknowledgments to be processed BEFORE closing the consumer.
+                // With CLIENT_ACKNOWLEDGE and INDIVIDUAL_ACKNOWLEDGE, the ack processing may be
+                // asynchronous and closing the consumer too early can cause messages to not be dequeued.
+                assertTrue("Queue should drain in time", Wait.waitFor(() -> {
+                    logger.info("Current Queue size: " + localQueueViewMBean.getQueueSize() +
+                            ", dequeue count: " + localQueueViewMBean.getDequeueCount());
+                    return localQueueViewMBean.getQueueSize() == 0L && localQueueViewMBean.getDequeueCount() >= 2L;
+                }, 60000L, 200L));
+
+                jmsConsumer.close();
+            } // Close consumer context
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            Throwable cause = e.getCause();
+            String causeMsg = cause != null ? " Cause: " + cause.getClass().getName() + ": " + cause.getMessage() : "";
+            fail("Test failed: " + e.getClass().getName() + ": " + e.getMessage() + causeMsg);
+        }
+    }
+}

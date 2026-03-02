@@ -15,10 +15,10 @@
     See the License for the specific language governing permissions and
     limitations under the License.
 -->
-<web-app xmlns="http://java.sun.com/xml/ns/javaee"
-      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-      xsi:schemaLocation="http://java.sun.com/xml/ns/javaee http://java.sun.com/xml/ns/javaee/web-app_3_0.xsd"
-      version="3.0"> 
+<web-app xmlns="https://jakarta.ee/xml/ns/jakartaee"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="https://jakarta.ee/xml/ns/jakartaee https://jakarta.ee/xml/ns/jakartaee/web-app_5_0.xsd"
+         version="5.0">
 
     <display-name>Apache ActiveMQ Web Demo</display-name>
 
@@ -66,6 +66,15 @@
                 <param-name>destinationOptions</param-name>
                 <param-value>consumer.prefetchSize=1</param-value>
         </init-param> 
+        -->
+        <!--
+        Uncomment this parameter if you plan to change the default max size of a message over REST. By default, it is set
+        to 100,000. Set it to -1 to disable the limitation but be aware that your AMQ instance could run out of memory if
+        the message is too big. See https://issues.apache.org/jira/browse/AMQ-8029 for more details.
+        <init-param>
+            <param-name>maxMessageSize</param-name>
+            <param-value>-1</param-value>
+        </init-param>
         -->
     </servlet>
 

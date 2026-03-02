@@ -17,9 +17,9 @@
 package org.apache.activemq.broker.region.virtual;
 
 import org.apache.activemq.broker.Broker;
+import org.apache.activemq.broker.region.BaseDestination;
 import org.apache.activemq.broker.region.Destination;
 import org.apache.activemq.broker.region.Subscription;
-import org.apache.activemq.broker.region.Topic;
 import org.apache.activemq.command.Message;
 import org.apache.activemq.filter.BooleanExpression;
 import org.apache.activemq.filter.MessageEvaluationContext;
@@ -41,8 +41,11 @@ public class SelectorAwareVirtualTopicInterceptor extends VirtualTopicIntercepto
 
     public SelectorAwareVirtualTopicInterceptor(Destination next, VirtualTopic virtualTopic) {
         super(next, virtualTopic);
+        BaseDestination baseDestination = getBaseDestination(next);
         selectorCachePlugin = (SubQueueSelectorCacheBroker)
-                ((Topic)next).createConnectionContext().getBroker().getAdaptor(SubQueueSelectorCacheBroker.class);
+                (baseDestination != null
+                ? baseDestination.createConnectionContext().getBroker().getAdaptor(SubQueueSelectorCacheBroker.class)
+                : null);
     }
 
     /**
@@ -77,7 +80,7 @@ public class SelectorAwareVirtualTopicInterceptor extends VirtualTopicIntercepto
         LOG.debug("No active consumer match found. Will try cache if configured...");
 
         if (selectorCachePlugin != null) {
-            final Set<String> selectors = selectorCachePlugin.getSelector(dest.getActiveMQDestination().getQualifiedName());
+            final Set<String> selectors = selectorCachePlugin.getSelectorsForDestination(dest.getActiveMQDestination().getQualifiedName());
             if (selectors != null) {
                 for (String selector : selectors) {
                     try {

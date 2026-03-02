@@ -16,13 +16,18 @@
  */
 package org.apache.activemq;
 
-import javax.jms.ConnectionFactory;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.Session;
+
 import junit.framework.Test;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /*
  * allow an XA session to be used as an auto ack session when no XA transaction
  * https://issues.apache.org/activemq/browse/AMQ-2659
  */
+@Category(ParallelTest.class)
 public class JMSXAConsumerTest extends JMSConsumerTest {
 
     public static Test suite() {
@@ -31,7 +36,9 @@ public class JMSXAConsumerTest extends JMSConsumerTest {
 
     @Override
     protected ConnectionFactory createConnectionFactory() throws Exception {
-        return new ActiveMQXAConnectionFactory("vm://localhost");
+        ActiveMQXAConnectionFactory activeMQXAConnectionFactory = new ActiveMQXAConnectionFactory("vm://localhost?jms.xaAckMode=1");
+        activeMQXAConnectionFactory.setXaAckMode(Session.AUTO_ACKNOWLEDGE);
+        return activeMQXAConnectionFactory;
     }
 
     // some tests use transactions, these will not work unless an XA transaction is in place
@@ -50,5 +57,11 @@ public class JMSXAConsumerTest extends JMSConsumerTest {
 
     // needs client ack, xa is auto ack if no transaction
     public void testExceptionOnClientAckAfterConsumerClose() throws Exception {
+    }
+
+    public void testReceiveTopicWithPrefetch1() throws Exception {
+    }
+
+    public void testReceiveQueueWithPrefetch1() throws Exception {
     }
 }

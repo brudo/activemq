@@ -18,19 +18,22 @@
 package org.apache.activemq.broker.region;
 
 import org.apache.activemq.EmbeddedBrokerTestSupport;
+import org.apache.activemq.TestSupport;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.region.policy.ConstantPendingMessageLimitStrategy;
 import org.apache.activemq.broker.region.policy.PolicyEntry;
 import org.apache.activemq.broker.region.policy.PolicyMap;
 import org.apache.activemq.broker.region.policy.UniquePropertyMessageEvictionStrategy;
+import org.apache.activemq.command.ActiveMQDestination;
 
-import javax.jms.*;
+import jakarta.jms.*;
 import java.util.ArrayList;
 import java.util.List;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class UniquePropertyMessageEvictionStrategyTest extends EmbeddedBrokerTestSupport {
-
-
 
     @Override
     protected BrokerService createBroker() throws Exception {
@@ -66,7 +69,7 @@ public class UniquePropertyMessageEvictionStrategyTest extends EmbeddedBrokerTes
         Connection conn = connectionFactory.createConnection();
         conn.start();
         Session session = conn.createSession(false, Session.AUTO_ACKNOWLEDGE);
-        javax.jms.Topic destination = session.createTopic("TEST");
+        jakarta.jms.Topic destination = session.createTopic("TEST");
 
         MessageProducer producer = session.createProducer(destination);
         MessageConsumer consumer = session.createConsumer(destination);
@@ -80,10 +83,9 @@ public class UniquePropertyMessageEvictionStrategyTest extends EmbeddedBrokerTes
                 Thread.sleep(100);
             }
         }
-
-
+        
         for (int i = 0; i < 11; i++) {
-            javax.jms.Message msg = consumer.receive(1000);
+            jakarta.jms.Message msg = consumer.receive(1000);
             assertNotNull(msg);
             int seqI = msg.getIntProperty("sequenceI");
             int seqJ = msg.getIntProperty("sequenceJ");
@@ -97,9 +99,10 @@ public class UniquePropertyMessageEvictionStrategyTest extends EmbeddedBrokerTes
             //System.out.println(msg.getIntProperty("sequenceI") + " " + msg.getIntProperty("sequenceJ"));
         }
 
-        javax.jms.Message msg = consumer.receive(1000);
+        jakarta.jms.Message msg = consumer.receive(1000);
         assertNull(msg);
 
+        assertEquals("usage goes to 0", 0, TestSupport.getDestination(broker, ActiveMQDestination.transform(destination)).getMemoryUsage().getUsage());
     }
 
 }

@@ -17,19 +17,21 @@
 package org.apache.activemq.broker.jmx;
 
 import java.util.Set;
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.Destination;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.Destination;
+import jakarta.jms.Session;
 import javax.management.MBeanServer;
 import javax.management.ObjectInstance;
 import javax.management.ObjectName;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerService;
+import org.apache.activemq.test.annotations.ParallelTest;
 import org.apache.activemq.util.Wait;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,6 +39,7 @@ import org.slf4j.LoggerFactory;
 import static org.junit.Assert.*;
 
 
+@Category(ParallelTest.class)
 public class SelectiveMBeanRegistrationTest  {
     private static final Logger LOG = LoggerFactory.getLogger(SelectiveMBeanRegistrationTest.class);
 
@@ -74,6 +77,11 @@ public class SelectiveMBeanRegistrationTest  {
 
         session.createConsumer(queue);
 
+        // create a plain topic
+        Destination topic = session.createTopic("ATopic");
+        session.createConsumer(topic);
+
+
         final ManagedRegionBroker managedRegionBroker = (ManagedRegionBroker) brokerService.getBroker().getAdaptor(ManagedRegionBroker.class);
 
         // mbean exists
@@ -86,6 +94,10 @@ public class SelectiveMBeanRegistrationTest  {
 
         // but it is not registered
         assertFalse(mbeanServer.isRegistered(managedRegionBroker.getQueueSubscribers()[0]));
+
+        // and is not tracked
+        assertFalse("not tracked as registered", managedRegionBroker.getRegisteredMbeans().contains(managedRegionBroker.getQueueSubscribers()[0]));
+
 
         // verify dynamicProducer suppressed
         session.createProducer(null);
@@ -105,9 +117,22 @@ public class SelectiveMBeanRegistrationTest  {
         Set<ObjectInstance> mbeans = mbeanServer.queryMBeans(query, null);
         assertEquals(0, mbeans.size());
 
+        assertFalse("producer not tracked as registered", managedRegionBroker.getRegisteredMbeans().contains(managedRegionBroker.getDynamicDestinationProducers()[0]));
+
+
         query = new ObjectName(domain + ":type=Broker,brokerName=localhost,destinationName=ActiveMQ.Advisory.*,*");
         mbeans = mbeanServer.queryMBeans(query, null);
         assertEquals(0, mbeans.size());
+
+        ObjectName[] topicNames = managedRegionBroker.getTopics();
+        assertTrue("Some topics registered", topicNames.length > 0);
+        for (ObjectName objectName : topicNames) {
+            if (objectName.getKeyProperty("destinationName").contains("Advisory")) {
+                assertFalse("advisory topic not tracked as registered: " + objectName, managedRegionBroker.getRegisteredMbeans().contains(objectName));
+            } else {
+                assertTrue("topic tracked as registered: " + objectName, managedRegionBroker.getRegisteredMbeans().contains(objectName));
+            }
+        }
     }
 
 

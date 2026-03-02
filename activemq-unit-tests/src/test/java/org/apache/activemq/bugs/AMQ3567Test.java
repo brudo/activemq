@@ -20,24 +20,31 @@ import static org.junit.Assert.fail;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageListener;
-import javax.jms.MessageProducer;
-import javax.jms.Queue;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageListener;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerService;
+import org.apache.activemq.broker.region.cursors.AbstractStoreCursor;
 import org.apache.activemq.util.DefaultTestAppender;
-import org.apache.log4j.Appender;
-import org.apache.log4j.Level;
-import org.apache.log4j.spi.LoggingEvent;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.Property;
+import org.apache.logging.log4j.core.filter.AbstractFilter;
+import org.apache.logging.log4j.core.layout.MessageLayout;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,6 +52,7 @@ import org.slf4j.LoggerFactory;
  * @author Claudio Corsi
  *
  */
+@Category(ParallelTest.class)
 public class AMQ3567Test {
 
     private static Logger logger = LoggerFactory.getLogger(AMQ3567Test.class);
@@ -71,15 +79,15 @@ public class AMQ3567Test {
     @Test
     public void runTest() throws Exception {
         produceSingleMessage();
-        org.apache.log4j.Logger log4jLogger = org.apache.log4j.Logger.getLogger("org.apache.activemq.util.ServiceSupport");
-        final AtomicBoolean failed = new AtomicBoolean(false);
+        final var logger = org.apache.logging.log4j.core.Logger.class.cast(LogManager.getLogger("org.apache.activemq.util.ServiceSupport"));
 
-        Appender appender = new DefaultTestAppender() {
+        final AtomicBoolean failed = new AtomicBoolean(false);
+        final var appender = new AbstractAppender("testAppender", new AbstractFilter() {}, new MessageLayout(), false, new Property[0]) {
             @Override
-            public void doAppend(LoggingEvent event) {
-                if (event.getThrowableInformation() != null) {
-                    if (event.getThrowableInformation().getThrowable() instanceof InterruptedException) {
-                        InterruptedException ie = (InterruptedException)event.getThrowableInformation().getThrowable();
+            public void append(LogEvent event) {
+                if (event.getThrown() != null) {
+                    if (event.getThrown() instanceof InterruptedException) {
+                        InterruptedException ie = (InterruptedException)event.getThrown();
                         if (ie.getMessage().startsWith("Could not stop service:")) {
                             logger.info("Received an interrupted exception : ", ie);
                             failed.set(true);
@@ -88,11 +96,14 @@ public class AMQ3567Test {
                 }
             }
         };
-        log4jLogger.addAppender(appender);
+        appender.start();
 
-        Level level = log4jLogger.getLevel();
-        log4jLogger.setLevel(Level.DEBUG);
+        Level level = logger.getLevel();
 
+        logger.get().addAppender(appender, Level.DEBUG, new AbstractFilter() {});
+        logger.addAppender(appender);
+        logger.setLevel(Level.DEBUG);
+      
         try {
             stopConsumer();
             stopBroker();
@@ -101,14 +112,13 @@ public class AMQ3567Test {
             }
 
         } finally {
-            log4jLogger.setLevel(level);
-            log4jLogger.removeAppender(appender);
+            logger.setLevel(level);
+            logger.removeAppender(appender);
         }
     }
 
     private void startBroker() throws Exception {
         broker = new BrokerService();
-        broker.setDataDirectory("target/data");
         connectionUri = broker.addConnector("tcp://localhost:0?wireFormat.maxInactivityDuration=30000&transport.closeAsync=false&transport.threadName&soTimeout=60000&transport.keepAlive=false&transport.useInactivityMonitor=false").getPublishableConnectString();
         broker.start(true);
         broker.waitUntilStarted();

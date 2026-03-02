@@ -20,7 +20,6 @@ package org.apache.activemq.state;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -46,7 +45,7 @@ public class ConnectionState {
     private final List<DestinationInfo> tempDestinations = Collections.synchronizedList(new ArrayList<DestinationInfo>());
     private final AtomicBoolean shutdown = new AtomicBoolean(false);
     private boolean connectionInterruptProcessingComplete = true;
-    private HashMap<ConsumerId, ConsumerInfo> recoveringPullConsumers;
+    private ConcurrentMap<ConsumerId, ConsumerInfo> recoveringPullConsumers;
 
     public ConnectionState(ConnectionInfo info) {
         this.info = info;
@@ -146,7 +145,7 @@ public class ConnectionState {
 
     public Map<ConsumerId, ConsumerInfo> getRecoveringPullConsumers() {
         if (recoveringPullConsumers == null) {
-            recoveringPullConsumers = new HashMap<ConsumerId, ConsumerInfo>();
+            recoveringPullConsumers = new ConcurrentHashMap<ConsumerId, ConsumerInfo>();
         }
         return recoveringPullConsumers;
     }

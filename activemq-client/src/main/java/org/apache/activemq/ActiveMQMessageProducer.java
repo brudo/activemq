@@ -20,11 +20,12 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
-import javax.jms.Destination;
-import javax.jms.IllegalStateException;
-import javax.jms.InvalidDestinationException;
-import javax.jms.JMSException;
-import javax.jms.Message;
+import jakarta.jms.CompletionListener;
+import jakarta.jms.Destination;
+import jakarta.jms.IllegalStateException;
+import jakarta.jms.InvalidDestinationException;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
 
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ProducerAck;
@@ -66,9 +67,9 @@ import org.slf4j.LoggerFactory;
  * JMS API does not define the accuracy provided.
  *
  *
- * @see javax.jms.TopicPublisher
- * @see javax.jms.QueueSender
- * @see javax.jms.Session#createProducer
+ * @see jakarta.jms.TopicPublisher
+ * @see jakarta.jms.QueueSender
+ * @see jakarta.jms.Session#createProducer
  */
 public class ActiveMQMessageProducer extends ActiveMQMessageProducerSupport implements StatsCapable, Disposable {
 
@@ -215,12 +216,47 @@ public class ActiveMQMessageProducer extends ActiveMQMessageProducerSupport impl
      *                 specified.
      * @throws InvalidDestinationException if a client uses this method with an
      *                 invalid destination.
-     * @see javax.jms.Session#createProducer
+     * @see jakarta.jms.Session#createProducer
      * @since 1.1
      */
     @Override
     public void send(Destination destination, Message message, int deliveryMode, int priority, long timeToLive) throws JMSException {
-        this.send(destination, message, deliveryMode, priority, timeToLive, null);
+        this.send(destination, message, deliveryMode, priority, timeToLive, (AsyncCallback)null);
+    }
+
+    /**
+     *
+     * @param message the message to send
+     * @param CompletionListener to callback
+     * @throws JMSException if the JMS provider fails to send the message due to
+     *                 some internal error.
+     * @throws UnsupportedOperationException if an invalid destination is
+     *                 specified.
+     * @throws InvalidDestinationException if a client uses this method with an
+     *                 invalid destination.
+     * @see jakarta.jms.Session#createProducer
+     * @since 2.0
+     */
+    @Override
+    public void send(Message message, CompletionListener completionListener) throws JMSException {
+        throw new UnsupportedOperationException("send(Message, CompletionListener) is not supported");
+    }
+
+    @Override
+    public void send(Message message, int deliveryMode, int priority, long timeToLive,
+                      CompletionListener completionListener) throws JMSException {
+        throw new UnsupportedOperationException("send(Message, deliveryMode, priority, timetoLive, CompletionListener) is not supported");
+    }
+
+    @Override
+    public void send(Destination destination, Message message, CompletionListener completionListener) throws JMSException {
+        throw new UnsupportedOperationException("send(Destination, Message, CompletionListener) is not supported");
+    }
+
+    @Override
+    public void send(Destination destination, Message message, int deliveryMode, int priority, long timeToLive,
+                     CompletionListener completionListener) throws JMSException {
+        throw new UnsupportedOperationException("send(Destination, Message, deliveryMode, priority, timetoLive, CompletionListener) is not supported");
     }
 
     public void send(Message message, AsyncCallback onComplete) throws JMSException {
@@ -250,6 +286,11 @@ public class ActiveMQMessageProducer extends ActiveMQMessageProducerSupport impl
     }
 
     public void send(Destination destination, Message message, int deliveryMode, int priority, long timeToLive, AsyncCallback onComplete) throws JMSException {
+        this.send(destination, message, deliveryMode, priority, timeToLive, getDisableMessageID(), getDisableMessageTimestamp(), onComplete);
+    }
+
+    public void send(Destination destination, Message message, int deliveryMode, int priority, long timeToLive, boolean disableMessageID, boolean disableMessageTimestamp, AsyncCallback onComplete) throws JMSException {
+
         checkClosed();
         if (destination == null) {
             if (info.getDestination() == null) {
@@ -285,7 +326,7 @@ public class ActiveMQMessageProducer extends ActiveMQMessageProducerSupport impl
             }
         }
 
-        this.session.send(this, dest, message, deliveryMode, priority, timeToLive, producerWindow, sendTimeout, onComplete);
+        this.session.send(this, dest, message, deliveryMode, priority, timeToLive, disableMessageID, disableMessageTimestamp, producerWindow, sendTimeout, onComplete);
 
         stats.onMessage();
     }

@@ -16,17 +16,20 @@
  */
 package org.apache.activemq;
 
-import javax.jms.DeliveryMode;
-import javax.jms.Destination;
-import javax.jms.MessageConsumer;
-import javax.jms.Topic;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Destination;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.Topic;
 
 import org.apache.activemq.test.JmsTopicSendReceiveTest;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 
 /**
  * 
  */
+@Category(ParallelTest.class)
 public class JmsQueueTopicCompositeSendReceiveTest extends JmsTopicSendReceiveTest {
     private static final org.apache.commons.logging.Log LOG = org.apache.commons.logging.LogFactory
             .getLog(JmsQueueTopicCompositeSendReceiveTest.class);

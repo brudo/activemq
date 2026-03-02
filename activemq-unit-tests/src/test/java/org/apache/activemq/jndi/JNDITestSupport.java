@@ -18,9 +18,9 @@ package org.apache.activemq.jndi;
 
 import java.util.Hashtable;
 
-import javax.jms.ConnectionFactory;
-import javax.jms.Destination;
-import javax.jms.JMSException;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
 import javax.naming.Binding;
 import javax.naming.Context;
 import javax.naming.NamingEnumeration;
@@ -30,10 +30,13 @@ import javax.naming.spi.InitialContextFactory;
 import junit.framework.TestCase;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  *
  */
+@Category(ParallelTest.class)
 public abstract class JNDITestSupport extends TestCase {
 
     private static final org.apache.commons.logging.Log LOG = org.apache.commons.logging.LogFactory

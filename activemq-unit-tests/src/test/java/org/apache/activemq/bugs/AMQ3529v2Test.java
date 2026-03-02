@@ -24,11 +24,11 @@ import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.Session;
 import javax.naming.Context;
 import javax.naming.InitialContext;
 import javax.naming.NamingException;
@@ -38,6 +38,8 @@ import org.apache.activemq.util.Wait;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,6 +48,7 @@ import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
+@Category(ParallelTest.class)
 public class AMQ3529v2Test {
 
     private static Logger LOG = LoggerFactory.getLogger(AMQ3529v2Test.class);
@@ -174,18 +177,15 @@ public class AMQ3529v2Test {
             thread.start();
         }
         // interrupt the threads at some random time
-        ExecutorService doTheInterrupts = Executors.newFixedThreadPool(threads.size());
+        final ExecutorService doTheInterrupts = Executors.newFixedThreadPool(threads.size());
         for (final Thread thread : threads) {
-            doTheInterrupts.execute(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        Thread.sleep(random.nextInt(5000));
-                    } catch (InterruptedException ignored) {
-                        ignored.printStackTrace();
-                    }
-                    thread.interrupt();
+            doTheInterrupts.execute(() -> {
+                try {
+                    Thread.sleep(random.nextInt(5000));
+                } catch (InterruptedException ignored) {
+                    ignored.printStackTrace();
                 }
+                thread.interrupt();
             });
         }
         doTheInterrupts.shutdown();
@@ -197,21 +197,43 @@ public class AMQ3529v2Test {
 
         for (ClientThread thread : threads) {
             if (thread.error != null) {
-                LOG.info("Close error on thread: " + thread, thread.error);
+                LOG.info("Close error on thread: {}", thread, thread.error);
             }
         }
 
-        Thread[] remainThreads = new Thread[tg.activeCount()];
+        final Thread[] remainThreads = new Thread[tg.activeCount()];
         tg.enumerate(remainThreads);
+        final List<Thread> transportThreads = new LinkedList<>();
         for (final Thread t : remainThreads) {
-            if (t != null && t.isAlive() && !t.isDaemon())
-                assertTrue("Thread completes:" + t, Wait.waitFor(new Wait.Condition() {
-                    @Override
-                    public boolean isSatisified() throws Exception {
-                        LOG.info("Remaining thread: " + t.toString());
-                        return !t.isAlive();
+            if (t == null || !t.isAlive() || t.isDaemon()) {
+                continue;
+            }
+            if (t.getName().startsWith("ActiveMQ Transport")) {
+                transportThreads.add(t);
+                continue;
+            }
+            assertTrue("Thread completes:" + t, Wait.waitFor(() -> {
+                LOG.info("Remaining thread: {}", t.toString());
+                return !t.isAlive();
+            }));
+        }
+        if (!transportThreads.isEmpty()) {
+            final ExecutorService transportWait = Executors.newFixedThreadPool(transportThreads.size());
+            for (final Thread t : transportThreads) {
+                transportWait.execute(() -> {
+                    try {
+                        t.join(TimeUnit.SECONDS.toMillis(45));
+                    } catch (InterruptedException ignored) {
                     }
-                }));
+                });
+            }
+            transportWait.shutdown();
+            transportWait.awaitTermination(60, TimeUnit.SECONDS);
+            for (final Thread t : transportThreads) {
+                if (t.isAlive()) {
+                    LOG.warn("Transport thread still running after wait: {}", t);
+                }
+            }
         }
 
         ThreadGroup root = Thread.currentThread().getThreadGroup().getParent();

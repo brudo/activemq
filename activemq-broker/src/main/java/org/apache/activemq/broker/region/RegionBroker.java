@@ -28,10 +28,11 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-import javax.jms.InvalidClientIDException;
-import javax.jms.JMSException;
+import jakarta.jms.InvalidClientIDException;
+import jakarta.jms.JMSException;
 
 import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.BrokerService;
@@ -112,10 +113,26 @@ public class RegionBroker extends EmptyBroker {
     private boolean allowTempAutoCreationOnSend;
 
     private final ReentrantReadWriteLock inactiveDestinationsPurgeLock = new ReentrantReadWriteLock();
+    private final TaskRunnerFactory taskRunnerFactory;
+    private final AtomicBoolean purgeInactiveDestinationsTaskInProgress = new AtomicBoolean(false);
     private final Runnable purgeInactiveDestinationsTask = new Runnable() {
         @Override
         public void run() {
-            purgeInactiveDestinations();
+            if (purgeInactiveDestinationsTaskInProgress.compareAndSet(false, true)) {
+                taskRunnerFactory.execute(purgeInactiveDestinationsWork);
+            }
+        }
+    };
+    private final Runnable purgeInactiveDestinationsWork = new Runnable() {
+        @Override
+        public void run() {
+            try {
+                purgeInactiveDestinations();
+            } catch (Throwable ignored) {
+                LOG.error("Unexpected exception on purgeInactiveDestinations {}", this, ignored);
+            } finally {
+                purgeInactiveDestinationsTaskInProgress.set(false);
+            }
         }
     };
 
@@ -134,6 +151,7 @@ public class RegionBroker extends EmptyBroker {
         this.destinationInterceptor = destinationInterceptor;
         tempQueueRegion = createTempQueueRegion(memoryManager, taskRunnerFactory, destinationFactory);
         tempTopicRegion = createTempTopicRegion(memoryManager, taskRunnerFactory, destinationFactory);
+        this.taskRunnerFactory = taskRunnerFactory;
     }
 
     @Override
@@ -577,7 +595,8 @@ public class RegionBroker extends EmptyBroker {
             brokerInfos.put(info.getBrokerId(), existing);
         }
         existing.incrementRefCount();
-        LOG.debug("{} addBroker: {} brokerInfo size: {}", new Object[]{ getBrokerName(), info.getBrokerName(), brokerInfos.size() });
+        LOG.debug("{} addBroker: {} brokerInfo size: {}",
+                getBrokerName(), info.getBrokerName(), brokerInfos.size());
         addBrokerInClusterUpdate(info);
     }
 
@@ -588,7 +607,8 @@ public class RegionBroker extends EmptyBroker {
             if (existing != null && existing.decrementRefCount() == 0) {
                 brokerInfos.remove(info.getBrokerId());
             }
-            LOG.debug("{} removeBroker: {} brokerInfo size: {}", new Object[]{ getBrokerName(), info.getBrokerName(), brokerInfos.size()});
+            LOG.debug("{} removeBroker: {} brokerInfo size: {}",
+                    getBrokerName(), info.getBrokerName(), brokerInfos.size());
             // When stopping don't send cluster updates since we are the one's tearing down
             // our own bridges.
             if (!brokerService.isStopping()) {
@@ -733,7 +753,7 @@ public class RegionBroker extends EmptyBroker {
         boolean stamped = false;
         if (message.getProperty(ORIGINAL_EXPIRATION) == null) {
             long expiration = message.getExpiration();
-            message.setProperty(ORIGINAL_EXPIRATION, new Long(expiration));
+            message.setProperty(ORIGINAL_EXPIRATION, expiration);
             stamped = true;
         }
         return stamped;
@@ -808,7 +828,7 @@ public class RegionBroker extends EmptyBroker {
             return getBrokerService().getBroker();
         } catch (Exception e) {
             LOG.error("Trying to get Root Broker", e);
-            throw new RuntimeException("The broker from the BrokerService should not throw an exception");
+            throw new RuntimeException("The broker from the BrokerService should not throw an exception", e);
         }
     }
 
@@ -895,7 +915,7 @@ public class RegionBroker extends EmptyBroker {
                     log.info("{} Inactive for longer than {} ms - removing ...", dest.getName(), dest.getInactiveTimeoutBeforeGC());
                     try {
                         getRoot().removeDestination(context, dest.getActiveMQDestination(), isAllowTempAutoCreationOnSend() ? 1 : 0);
-                    } catch (Exception e) {
+                    } catch (Throwable e) {
                         LOG.error("Failed to remove inactive destination {}", dest, e);
                     }
                 }

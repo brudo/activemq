@@ -16,14 +16,17 @@
  */
 package org.apache.activemq;
 
-import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
-import javax.jms.Topic;
-import javax.jms.TopicSession;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.Topic;
+import jakarta.jms.TopicSession;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  * 
  */
+@Category(ParallelTest.class)
 public class JmsTopicSendReceiveSubscriberTest extends JmsTopicSendReceiveTest {
     protected MessageConsumer createConsumer() throws JMSException {
         if (durable) {

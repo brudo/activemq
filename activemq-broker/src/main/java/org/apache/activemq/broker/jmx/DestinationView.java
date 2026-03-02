@@ -26,10 +26,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
-import javax.jms.Connection;
-import javax.jms.InvalidSelectorException;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.InvalidSelectorException;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import java.util.function.Function;
 import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
 import javax.management.openmbean.CompositeData;
@@ -51,7 +52,9 @@ import org.apache.activemq.command.ActiveMQMessage;
 import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.command.Message;
 import org.apache.activemq.filter.BooleanExpression;
-import org.apache.activemq.filter.MessageEvaluationContext;
+import org.apache.activemq.filter.NonCachedMessageEvaluationContext;
+import org.apache.activemq.management.MessageFlowStats;
+import org.apache.activemq.management.UnsampledStatistic;
 import org.apache.activemq.selector.SelectorParser;
 import org.apache.activemq.store.MessageStore;
 import org.apache.activemq.util.URISupport;
@@ -100,6 +103,11 @@ public class DestinationView implements DestinationViewMBean {
     @Override
     public long getDispatchCount() {
         return destination.getDestinationStatistics().getDispatched().getCount();
+    }
+
+    @Override
+    public long getDuplicateFromStoreCount() {
+        return destination.getDestinationStatistics().getDuplicateFromStore().getCount();
     }
 
     @Override
@@ -158,6 +166,21 @@ public class DestinationView implements DestinationViewMBean {
     }
 
     @Override
+    public int getTempUsagePercentUsage() {
+        return destination.getTempUsage().getPercentUsage();
+    }
+
+    @Override
+    public long getTempUsageLimit() {
+        return destination.getTempUsage().getLimit();
+    }
+
+    @Override
+    public void setTempUsageLimit(long limit) {
+        destination.getTempUsage().setLimit(limit);
+    }
+
+    @Override
     public long getMaxEnqueueTime() {
         return destination.getDestinationStatistics().getProcessTime().getMaxTime();
     }
@@ -213,7 +236,7 @@ public class DestinationView implements DestinationViewMBean {
         Message[] messages = destination.browse();
         ArrayList<CompositeData> c = new ArrayList<CompositeData>();
 
-        MessageEvaluationContext ctx = new MessageEvaluationContext();
+        NonCachedMessageEvaluationContext ctx = new NonCachedMessageEvaluationContext();
         ctx.setDestination(destination.getActiveMQDestination());
         BooleanExpression selectorExpression = selector == null ? null : SelectorParser.parse(selector);
 
@@ -256,7 +279,7 @@ public class DestinationView implements DestinationViewMBean {
         Message[] messages = destination.browse();
         ArrayList<Object> answer = new ArrayList<Object>();
 
-        MessageEvaluationContext ctx = new MessageEvaluationContext();
+        NonCachedMessageEvaluationContext ctx = new NonCachedMessageEvaluationContext();
         ctx.setDestination(destination.getActiveMQDestination());
         BooleanExpression selectorExpression = selector == null ? null : SelectorParser.parse(selector);
 
@@ -297,7 +320,7 @@ public class DestinationView implements DestinationViewMBean {
         TabularType tt = new TabularType("MessageList", "MessageList", ct, new String[] { "JMSMessageID" });
         TabularDataSupport rc = new TabularDataSupport(tt);
 
-        MessageEvaluationContext ctx = new MessageEvaluationContext();
+        NonCachedMessageEvaluationContext ctx = new NonCachedMessageEvaluationContext();
         ctx.setDestination(destination.getActiveMQDestination());
         BooleanExpression selectorExpression = selector == null ? null : SelectorParser.parse(selector);
 
@@ -321,7 +344,22 @@ public class DestinationView implements DestinationViewMBean {
 
     @Override
     public String sendTextMessageWithProperties(String properties) throws Exception {
-        String[] kvs = properties.split(",");
+        Map<String, String> props = parseProps(properties, ",");
+        return sendTextMessage(props, props.remove("body"), props.remove("username"), props.remove("password"));
+    }
+
+    @Override
+    public String sendTextMessageWithProperties(String properties, String delimiter) throws Exception {
+        if (delimiter == null || delimiter.isEmpty()) {
+            return sendTextMessageWithProperties(properties);
+        } else {
+            Map<String, String> props = parseProps(properties, delimiter);
+            return sendTextMessage(props, props.remove("body"), props.remove("username"), props.remove("password"));
+        }
+    }
+
+    private Map<String, String> parseProps(String properties, String delimiter) {
+        String[] kvs = properties.split(delimiter);
         Map<String, String> props = new HashMap<String, String>();
         for (String kv : kvs) {
             String[] it = kv.split("=");
@@ -329,7 +367,7 @@ public class DestinationView implements DestinationViewMBean {
                 props.put(it[0],it[1]);
             }
         }
-        return sendTextMessage(props, props.remove("body"), props.remove("username"), props.remove("password"));
+        return props;
     }
 
     @Override
@@ -486,6 +524,11 @@ public class DestinationView implements DestinationViewMBean {
     }
 
     @Override
+    public int getMaxBrowsePageSize() {
+        return destination.getMaxBrowsePageSize();
+    }
+
+    @Override
     public boolean isUseCache() {
         return destination.isUseCache();
     }
@@ -555,4 +598,93 @@ public class DestinationView implements DestinationViewMBean {
         return destination.getDestinationStatistics().getBlockedTime().getTotalTime();
     }
 
+    @Override
+    public boolean isSendDuplicateFromStoreToDLQ() {
+        return destination.isSendDuplicateFromStoreToDLQ();
+    }
+
+    @Override
+    public long getMaxUncommittedExceededCount() {
+        return destination.getDestinationStatistics().getMaxUncommittedExceededCount().getCount();
+    }
+
+    @Override
+    public boolean isAdvancedNetworkStatisticsEnabled() {
+        return destination.isAdvancedNetworkStatisticsEnabled();
+    }
+
+    @Override
+    public void setAdvancedNetworkStatisticsEnabled(boolean advancedNetworkStatisticsEnabled) {
+        destination.setAdvancedNetworkStatisticsEnabled(advancedNetworkStatisticsEnabled);
+    }
+
+    @Override
+    public long getNetworkEnqueues() {
+        return destination.getDestinationStatistics().getNetworkEnqueues().getCount();
+    }
+
+    @Override
+    public long getNetworkDequeues() {
+        return destination.getDestinationStatistics().getNetworkDequeues().getCount();
+    }
+
+    @Override
+    public boolean isAdvancedMessageStatisticsEnabled() {
+        return destination.isAdvancedMessageStatisticsEnabled();
+    }
+
+    @Override
+    public void setAdvancedMessageStatisticsEnabled(boolean advancedMessageStatisticsEnabled) {
+        destination.setAdvancedMessageStatisticsEnabled(advancedMessageStatisticsEnabled);
+    }
+
+    @Override
+    public long getEnqueuedMessageBrokerInTime() {
+        return getMessageFlowStat(MessageFlowStats::getEnqueuedMessageBrokerInTime, 0L);
+    }
+
+    @Override
+    public String getEnqueuedMessageClientId() {
+        return getMessageFlowStat(MessageFlowStats::getEnqueuedMessageClientID, null);
+    }
+
+    @Override
+    public String getEnqueuedMessageId() {
+        return getMessageFlowStat(MessageFlowStats::getEnqueuedMessageID, null);
+    }
+
+    @Override
+    public long getEnqueuedMessageTimestamp() {
+        return getMessageFlowStat(MessageFlowStats::getEnqueuedMessageTimestamp, 0L);
+    }
+
+    @Override
+    public long getDequeuedMessageBrokerInTime() {
+        return getMessageFlowStat(MessageFlowStats::getDequeuedMessageBrokerInTime, 0L);
+    }
+
+    @Override
+    public long getDequeuedMessageBrokerOutTime() {
+        return getMessageFlowStat(MessageFlowStats::getDequeuedMessageBrokerOutTime, 0L);
+    }
+
+    @Override
+    public String getDequeuedMessageClientId() {
+        return getMessageFlowStat(MessageFlowStats::getDequeuedMessageClientID, null);
+    }
+
+    @Override
+    public String getDequeuedMessageId() {
+        return getMessageFlowStat(MessageFlowStats::getDequeuedMessageID, null);
+    }
+
+    @Override
+    public long getDequeuedMessageTimestamp() {
+        return getMessageFlowStat(MessageFlowStats::getDequeuedMessageTimestamp, 0L);
+    }
+
+    private <T> T getMessageFlowStat(Function<MessageFlowStats, UnsampledStatistic<T>> f, T defVal) {
+        final var stats = destination.getDestinationStatistics().getMessageFlowStats();
+        return stats != null ? f.apply(stats).getValue() : defVal;
+    }
 }

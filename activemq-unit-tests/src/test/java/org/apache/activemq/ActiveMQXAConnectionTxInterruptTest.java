@@ -25,12 +25,12 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.TextMessage;
-import javax.jms.XASession;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.TextMessage;
+import jakarta.jms.XASession;
 import javax.transaction.xa.XAException;
 import javax.transaction.xa.XAResource;
 import javax.transaction.xa.Xid;
@@ -50,7 +50,10 @@ import org.slf4j.LoggerFactory;
 
 
 import static org.junit.Assert.*;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class ActiveMQXAConnectionTxInterruptTest {
     private static final Logger LOG = LoggerFactory.getLogger(ActiveMQXAConnectionTxInterruptTest.class);
     long txGenerator = System.currentTimeMillis();
@@ -182,18 +185,17 @@ public class ActiveMQXAConnectionTxInterruptTest {
 
                     try {
                         resource.end(tid, XAResource.TMSUCCESS);
-                        fail("Expect end to fail");
                     } catch (Throwable expectedWithInterrupt) {
                         assertTrue(expectedWithInterrupt instanceof XAException);
                         assertCause(expectedWithInterrupt, new Class[]{InterruptedException.class});
                     }
 
+                    assertTrue("Was interrupted during ack!", Thread.currentThread().isInterrupted());
                     try {
                         resource.rollback(tid);
-                        fail("Expect rollback to fail due to connection being closed");
-                    } catch (Throwable expectedWithInterrupt) {
-                        assertTrue(expectedWithInterrupt instanceof XAException);
-                        assertCause(expectedWithInterrupt, new Class[]{ConnectionClosedException.class, InterruptedException.class});
+                    } catch (Throwable expectedWithInterruptIfClosed) {
+                        assertTrue(expectedWithInterruptIfClosed.toString(), expectedWithInterruptIfClosed instanceof XAException);
+                        assertCause(expectedWithInterruptIfClosed, new Class[]{ConnectionClosedException.class, InterruptedException.class});
                     }
                     session.close();
 

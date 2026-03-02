@@ -281,8 +281,38 @@ public class BrokerView implements BrokerViewMBean {
     }
 
     @Override
+    public int getTotalTopicsCount() {
+        return safeGetBroker().getTopicRegion().getDestinationMap().size();
+    }
+
+    @Override
+    public int getTotalManagedTopicsCount() {
+        return safeGetBroker().getTopicsNonSuppressed().length;
+    }
+
+    @Override
+    public int getTotalTemporaryTopicsCount() {
+        return safeGetBroker().getTempTopicRegion().getDestinationMap().size();
+    }
+
+    @Override
     public ObjectName[] getQueues() {
         return safeGetBroker().getQueuesNonSuppressed();
+    }
+
+    @Override
+    public int getTotalQueuesCount() {
+        return safeGetBroker().getQueueRegion().getDestinationMap().size();
+    }
+
+    @Override
+    public int getTotalManagedQueuesCount() {
+        return safeGetBroker().getQueuesNonSuppressed().length;
+    }
+
+    @Override
+    public int getTotalTemporaryQueuesCount() {
+        return safeGetBroker().getTempQueueRegion().getDestinationMap().size();
     }
 
     @Override
@@ -517,6 +547,16 @@ public class BrokerView implements BrokerViewMBean {
         return brokerService.isSlave();
     }
 
+    @Override
+    public boolean isDedicatedTaskRunner() {
+        return brokerService.isDedicatedTaskRunner();
+    }
+
+    @Override
+    public boolean isVirtualThreadTaskRunner() {
+        return brokerService.isVirtualThreadTaskRunner();
+    }
+
     private ManagedRegionBroker safeGetBroker() {
         if (broker == null) {
             throw new IllegalStateException("Broker is not yet started.");
@@ -541,4 +581,19 @@ public class BrokerView implements BrokerViewMBean {
 
         return context;
     }
+
+    @Override
+    public int getMaxUncommittedCount() {
+        return brokerService.getMaxUncommittedCount();
+    }
+
+    @Override
+    public void setMaxUncommittedCount(int maxUncommittedCount) {
+        brokerService.setMaxUncommittedCount(maxUncommittedCount);
+    }
+
+    @Override
+    public long getTotalMaxUncommittedExceededCount() {
+        return safeGetBroker().getDestinationStatistics().getMaxUncommittedExceededCount().getCount();
+	}
 }

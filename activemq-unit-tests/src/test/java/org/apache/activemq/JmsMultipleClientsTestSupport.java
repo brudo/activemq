@@ -26,16 +26,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.DeliveryMode;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
-import javax.jms.TopicSubscriber;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
+import jakarta.jms.TopicSubscriber;
 
 import org.apache.activemq.broker.BrokerFactory;
 import org.apache.activemq.broker.BrokerService;
@@ -43,6 +43,7 @@ import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTopic;
 import org.apache.activemq.util.MessageIdList;
+import org.apache.activemq.util.Wait;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -51,6 +52,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static org.junit.Assert.*;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  * Test case support used to test multiple message comsumers and message
@@ -58,6 +61,7 @@ import static org.junit.Assert.*;
  * 
  * 
  */
+@Category(ParallelTest.class)
 public class JmsMultipleClientsTestSupport {
 
     @Rule
@@ -199,7 +203,7 @@ public class JmsMultipleClientsTestSupport {
         conn.start();
 
         Session sess = conn.createSession(false, Session.AUTO_ACKNOWLEDGE);
-        final TopicSubscriber consumer = sess.createDurableSubscriber((javax.jms.Topic)dest, name);
+        final TopicSubscriber consumer = sess.createDurableSubscriber((jakarta.jms.Topic)dest, name);
 
         return consumer;
     }
@@ -313,8 +317,13 @@ public class JmsMultipleClientsTestSupport {
     }
 
     public void assertDestinationMemoryUsageGoesToZero() throws Exception {
-        assertEquals("destination memory is back to 0", 0,
-                TestSupport.getDestination(broker, ActiveMQDestination.transform(destination)).getMemoryUsage().getPercentUsage());
+        final ActiveMQDestination activeMQDestination = ActiveMQDestination.transform(destination);
+        assertTrue("destination memory is back to 0", Wait.waitFor(new Wait.Condition() {
+            @Override
+            public boolean isSatisified() throws Exception {
+                return TestSupport.getDestination(broker, activeMQDestination).getMemoryUsage().getPercentUsage() == 0;
+            }
+        }));
     }
 
 

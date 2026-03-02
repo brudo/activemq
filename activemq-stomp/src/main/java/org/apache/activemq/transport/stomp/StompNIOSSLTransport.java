@@ -26,11 +26,16 @@ import java.security.cert.X509Certificate;
 
 import javax.net.SocketFactory;
 import javax.net.ssl.SSLEngine;
+import javax.net.ssl.SSLHandshakeException;
 
 import org.apache.activemq.transport.nio.NIOSSLTransport;
 import org.apache.activemq.wireformat.WireFormat;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class StompNIOSSLTransport extends NIOSSLTransport {
+
+    private final static Logger LOGGER = LoggerFactory.getLogger(StompNIOSSLTransport.class);
 
     StompCodec codec;
 
@@ -44,11 +49,18 @@ public class StompNIOSSLTransport extends NIOSSLTransport {
         super(wireFormat, socket, null, null, null);
     }
 
-
-
     public StompNIOSSLTransport(WireFormat wireFormat, Socket socket,
             SSLEngine engine, InitBuffer initBuffer, ByteBuffer inputBuffer) throws IOException {
         super(wireFormat, socket, engine, initBuffer, inputBuffer);
+    }
+
+    @Override
+    public String getRemoteAddress() {
+        String remoteAddress = super.getRemoteAddress();
+        if (remoteAddress == null) {
+            return remoteLocation.toString();
+        }
+        return remoteAddress;
     }
 
     @Override
@@ -87,7 +99,7 @@ public class StompNIOSSLTransport extends NIOSSLTransport {
     protected void doInit() throws Exception {
         if (initBuffer != null) {
             nextFrameSize = -1;
-            receiveCounter += initBuffer.readSize;
+            receiveCounter.addAndGet(initBuffer.readSize);
             initBuffer.buffer.flip();
             processCommand(initBuffer.buffer);
         }

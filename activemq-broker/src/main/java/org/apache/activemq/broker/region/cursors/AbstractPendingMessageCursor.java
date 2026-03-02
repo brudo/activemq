@@ -45,8 +45,8 @@ public abstract class AbstractPendingMessageCursor implements PendingMessageCurs
     protected boolean enableAudit=true;
     protected ActiveMQMessageAudit audit;
     protected boolean useCache=true;
-    private boolean cacheEnabled=true;
-    private boolean started=false;
+    protected boolean cacheEnabled=true;
+    protected boolean started=false;
     protected MessageReference last = null;
     protected final boolean prioritizedMessages;
 
@@ -177,6 +177,16 @@ public abstract class AbstractPendingMessageCursor implements PendingMessageCurs
         return systemUsage != null ? (!isParentFull() && systemUsage.getMemoryUsage().getPercentUsage() < memoryUsageHighWaterMark) : true;
     }
 
+    boolean parentHasSpace(int waterMark) {
+        boolean result = true;
+        if (systemUsage != null) {
+            if (systemUsage.getMemoryUsage().getParent() != null) {
+                return systemUsage.getMemoryUsage().getParent().getPercentUsage() <= waterMark;
+            }
+        }
+        return result;
+    }
+
     private boolean isParentFull() {
         boolean result = false;
         if (systemUsage != null) {
@@ -250,7 +260,7 @@ public abstract class AbstractPendingMessageCursor implements PendingMessageCurs
      * @return the maxProducersToAudit
      */
     @Override
-    public int getMaxProducersToAudit() {
+    public synchronized int getMaxProducersToAudit() {
         return maxProducersToAudit;
     }
 
@@ -269,7 +279,7 @@ public abstract class AbstractPendingMessageCursor implements PendingMessageCurs
      * @return the maxAuditDepth
      */
     @Override
-    public int getMaxAuditDepth() {
+    public synchronized int getMaxAuditDepth() {
         return maxAuditDepth;
     }
 

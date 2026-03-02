@@ -16,10 +16,10 @@
  */
 package org.apache.activemq.broker.policy;
 
-import javax.jms.DeliveryMode;
-import javax.jms.Destination;
-import javax.jms.Message;
-import javax.jms.Queue;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Destination;
+import jakarta.jms.Message;
+import jakarta.jms.Queue;
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.RedeliveryPolicy;
@@ -36,6 +36,11 @@ import org.apache.activemq.util.Wait;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.concurrent.TimeUnit;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
+
+@Category(ParallelTest.class)
 public class DeadLetterExpiryTest extends DeadLetterTest {
     private static final Logger LOG = LoggerFactory.getLogger(DeadLetterExpiryTest.class);
 
@@ -156,7 +161,8 @@ public class DeadLetterExpiryTest extends DeadLetterTest {
                 try {
                     QueueViewMBean queueViewMBean = getProxyToQueue("DLQ.auditConfigured");
                     LOG.info("Queue " + queueViewMBean.getName() + ", size:" + queueViewMBean.getQueueSize());
-                    return queueViewMBean.getQueueSize() == 4;
+                    // expiry across queues is no longer seralised on a single timertask thread AMQ-6979
+                    return queueViewMBean.getQueueSize() >= 2;
                 } catch (Exception expectedTillExpiry) {}
                 return false;
             }

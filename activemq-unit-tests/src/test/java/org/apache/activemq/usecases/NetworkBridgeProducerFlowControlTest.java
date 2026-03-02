@@ -23,7 +23,7 @@ import java.util.Vector;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import javax.jms.MessageConsumer;
+import jakarta.jms.MessageConsumer;
 import junit.framework.Test;
 import org.apache.activemq.JmsMultipleBrokersTestSupport;
 import org.apache.activemq.broker.BrokerService;
@@ -118,9 +118,9 @@ public class NetworkBridgeProducerFlowControlTest extends
 
     public void initCombosForTestFastAndSlowRemoteConsumers() {
         addCombinationValues("persistentTestMessages", new Object[]{
-                new Boolean(true), new Boolean(false)});
+                Boolean.TRUE, Boolean.FALSE});
         addCombinationValues("networkIsAlwaysSendSync", new Object[]{
-                new Boolean(true), new Boolean(false)});
+                Boolean.TRUE, Boolean.FALSE});
     }
 
     @Override
@@ -511,8 +511,8 @@ public class NetworkBridgeProducerFlowControlTest extends
      *
      * producer connects to broker1 and messages should be sent across the network to broker0
      *
-     * Ensure broker0 will not send the  javax.jms.ResourceAllocationException (when broker0 runs out of space).
-     * If the javax.jms.ResourceAllocationException is sent across the wire it will force the network connector
+     * Ensure broker0 will not send the  jakarta.jms.ResourceAllocationException (when broker0 runs out of space).
+     * If the jakarta.jms.ResourceAllocationException is sent across the wire it will force the network connector
      * to shutdown
      *
      *

@@ -27,8 +27,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerService;
@@ -105,6 +105,9 @@ public class AutoTransportConnectionsTest {
     public void configureConnectorAndStart(String bindAddress) throws Exception {
         connector = service.addConnector(bindAddress);
         connectionUri = connector.getPublishableConnectString();
+        if (connectionUri.contains("ssl")) {
+            connectionUri += connectionUri.contains("?") ? "&socket.verifyHostName=false" : "?socket.verifyHostName=false";
+        }
         service.start();
         service.waitUntilStarted();
     }
@@ -144,6 +147,8 @@ public class AutoTransportConnectionsTest {
         assertEquals(maxConnections, transportServer.getMaximumConnections());
         // No connections at first
         assertEquals(0, connector.getConnections().size());
+        // No connections exceeded at first
+        assertEquals(Long.valueOf(0l), Long.valueOf(connector.getMaxConnectionExceededCount()));
         // Release the latch to set up connections in parallel
         startupLatch.countDown();
 
@@ -159,6 +164,12 @@ public class AutoTransportConnectionsTest {
             })
         );
 
+        // The 10 extra connections exceeded connection count
+        assertEquals(Long.valueOf(10l), Long.valueOf(connector.getMaxConnectionExceededCount()));
+
+        // Confirm reset statistics
+        connector.resetStatistics();
+        assertEquals(Long.valueOf(0l), Long.valueOf(connector.getMaxConnectionExceededCount()));
     }
 
     @Test

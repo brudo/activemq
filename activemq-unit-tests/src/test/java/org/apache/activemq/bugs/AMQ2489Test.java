@@ -22,20 +22,22 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.Connection;
-import javax.jms.DeliveryMode;
-import javax.jms.ExceptionListener;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageListener;
-import javax.jms.MessageProducer;
-import javax.jms.Queue;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.ExceptionListener;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageListener;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
 
 import org.apache.activemq.ActiveMQSession;
 import org.apache.activemq.TestSupport;
 import org.apache.activemq.command.ActiveMQQueue;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  * In CLIENT_ACKNOWLEDGE and INDIVIDUAL_ACKNOWLEDGE modes following exception
@@ -44,11 +46,12 @@ import org.apache.activemq.command.ActiveMQQueue;
  * <p>
  * Exception thrown on broker side:
  * <p>
- * {@code javax.jms.JMSException: Could not correlate acknowledgment with
+ * {@code jakarta.jms.JMSException: Could not correlate acknowledgment with
  * dispatched message: MessageAck}
  * 
  * @author daroo
  */
+@Category(ParallelTest.class)
 public class AMQ2489Test extends TestSupport {
     private final static String SEQ_NUM_PROPERTY = "seqNum";
 
@@ -147,6 +150,7 @@ public class AMQ2489Test extends TestSupport {
         return getClass().getName() + "." + getName();
     }
 
+@Category(ParallelTest.class)
     public final class Consumer implements MessageListener {
         final Session session;
 

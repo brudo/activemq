@@ -24,12 +24,12 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Set;
 
-import javax.jms.ConnectionFactory;
-import javax.jms.DeliveryMode;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.MessageProducer;
-import javax.jms.TextMessage;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.TextMessage;
 
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.tool.properties.JmsClientProperties;
@@ -199,7 +199,7 @@ public class JmsProducerClient extends AbstractJmsMeasurableClient {
 
                 // Send to more than one actual destination
                 if (dest.length > 1) {
-                    while (System.currentTimeMillis() < endTime) {
+                    while (System.currentTimeMillis() - endTime < 0) {
                         for (int j = 0; j < dest.length; j++) {
                             getJmsProducer().send(dest[j], getJmsTextMessage());
                             incThroughput();
@@ -209,7 +209,7 @@ public class JmsProducerClient extends AbstractJmsMeasurableClient {
                     }
                     // Send to only one actual destination
                 } else {
-                    while (System.currentTimeMillis() < endTime) {
+                    while (System.currentTimeMillis() - endTime < 0) {
                         getJmsProducer().send(getJmsTextMessage());
                         incThroughput();
                         sleep();
@@ -224,7 +224,7 @@ public class JmsProducerClient extends AbstractJmsMeasurableClient {
                 // Send to more than one actual destination
                 long count = 1;
                 if (dest.length > 1) {
-                    while (System.currentTimeMillis() < endTime) {
+                    while (System.currentTimeMillis() - endTime < 0) {
                         for (int j = 0; j < dest.length; j++) {
                             getJmsProducer().send(dest[j], createJmsTextMessage("Text Message [" + count++ + "]"));
                             incThroughput();
@@ -235,7 +235,7 @@ public class JmsProducerClient extends AbstractJmsMeasurableClient {
 
                     // Send to only one actual destination
                 } else {
-                    while (System.currentTimeMillis() < endTime) {
+                    while (System.currentTimeMillis() - endTime < 0) {
 
                         getJmsProducer().send(createJmsTextMessage("Text Message [" + count++ + "]"));
                         incThroughput();

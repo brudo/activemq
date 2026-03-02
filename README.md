@@ -1,27 +1,39 @@
 Welcome to Apache ActiveMQ 
 =======================================================================
 Apache ActiveMQ is a high performance Apache 2.0 licensed
-Message Broker and JMS 1.1 implementation.
+Message Broker.
+ActiveMQ supports several API and protocols:
+- Jakarta Messaging 3.1.0, JMS 2.0 and JMS 1.1.
+- AMQP
+- MQTT
+- HTTP/WS
+
+ActiveMQ also provides advanced features like:
+- network of brokers
+- scheduling
+- and much more!
 
 Getting Started
 ===============
 To help you get started, try the following links:
 
 Getting Started
-- http://activemq.apache.org/version-5-getting-started.html
+- You need JDK17+ to run Apache ActiveMQ
+- After having extracted ActiveMQ binary distribution, you can start ActiveMQ with `./bin/activemq console` (foreground) or `./bin/activemq start`
+- Docker images are also available on Docker Hub (https://hub.docker.com/r/apache/activemq-classic)
 
 Building
-- http://activemq.apache.org/version-5-getting-started.html#GettingStarted-WindowsSourceInstallation
-- http://activemq.apache.org/version-5-getting-started.html#GettingStarted-UnixSourceInstallation
+- You can build (fast) using Apache Maven: `mvn clean install -DskipTests`
+- You can build (including all tests) using Apache Maven: `mvn clean install`
 
 Examples
-- http://activemq.apache.org/examples.html
+- https://activemq.apache.org/examples.html
 
 We welcome contributions of all kinds, for details of how you can help
-http://activemq.apache.org/contributing.html
+https://activemq.apache.org/contributing.html
 
 Please refer to the website for details of finding the issue tracker, 
-email lists, wiki or IRC channel at http://activemq.apache.org/
+email lists, wiki or IRC channel at https://activemq.apache.org/
 
 Please help us make Apache ActiveMQ better - we appreciate any feedback 
 you may have.
@@ -32,7 +44,7 @@ Licensing
 =======================================================================
 
    This software is licensed under the terms you may find in the file 
-   named "LICENSE" in this directory.
+   named "[LICENSE](./LICENSE)" in this directory.
 
    This distribution includes cryptographic software.  The country in 
    which you currently reside may have restrictions on the import, 
@@ -40,7 +52,7 @@ Licensing
    encryption software.  BEFORE using any encryption software, please 
    check your country's laws, regulations and policies concerning the
    import, possession, or use, and re-export of encryption software, to 
-   see if this is permitted.  See <http://www.wassenaar.org/> for more
+   see if this is permitted.  See <https://www.wassenaar.org/> for more
    information.
 
    The U.S. Government Department of Commerce, Bureau of Industry and
@@ -58,6 +70,6 @@ Licensing
    
    ActiveMQ supports the use of SSL TCP connections when used with 
    with a JVM supporting the Java Cryptography extensions
-   <http://www.oracle.com/technetwork/java/javase/tech/index-jsp-136007.html>.
+   <https://www.oracle.com/java/technologies/javase/javase-tech-security.html>.
    ActiveMQ does not include these libraries itself, but is designed to use them.
 

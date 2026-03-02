@@ -16,7 +16,7 @@
  */
 package org.apache.activemq;
 
-import javax.jms.Session;
+import jakarta.jms.Session;
 
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTopic;
@@ -24,6 +24,7 @@ import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 public class PolicyEntryTest extends RuntimeConfigTestSupport {
 
@@ -42,6 +43,42 @@ public class PolicyEntryTest extends RuntimeConfigTestSupport {
 
         // change to existing dest
         verifyQueueLimit("Before", 4194304);
+    }
+
+    @Test
+    public void testModSendDuplicateFromStoreToDLQ() throws Exception {
+        final String brokerConfig = configurationSeed + "-policy-ml-broker";
+        applyNewConfig(brokerConfig, configurationSeed + "-policy-sendDuplicateFromStoreToDLQ");
+        startBroker(brokerConfig);
+        assertTrue("broker alive", brokerService.isStarted());
+
+        verifyBooleanField("AMQ.8397", "sendDuplicateFromStoreToDLQ", false);
+        applyNewConfig(brokerConfig, configurationSeed + "-policy-sendDuplicateFromStoreToDLQ-mod", SLEEP);
+        verifyBooleanField("AMQ.8397", "sendDuplicateFromStoreToDLQ", true);
+    }
+
+    @Test
+    public void testModAdvancedMessageStatistics() throws Exception {
+        final String brokerConfig = configurationSeed + "-policy-ml-broker";
+        applyNewConfig(brokerConfig, configurationSeed + "-policy-advancedMessageStatistics");
+        startBroker(brokerConfig);
+        assertTrue("broker alive", brokerService.isStarted());
+
+        verifyBooleanField("AMQ.8463", "advancedMessageStatisticsEnabled", false);
+        applyNewConfig(brokerConfig, configurationSeed + "-policy-advancedMessageStatistics-mod", SLEEP);
+        verifyBooleanField("AMQ.8463", "advancedMessageStatisticsEnabled", true);
+    }
+
+    @Test
+    public void testModAdvancedNetworkStatistics() throws Exception {
+        final String brokerConfig = configurationSeed + "-policy-ml-broker";
+        applyNewConfig(brokerConfig, configurationSeed + "-policy-advancedNetworkStatistics");
+        startBroker(brokerConfig);
+        assertTrue("broker alive", brokerService.isStarted());
+
+        verifyBooleanField("AMQ.9437", "advancedNetworkStatisticsEnabled", false);
+        applyNewConfig(brokerConfig, configurationSeed + "-policy-advancedNetworkStatistics-mod", SLEEP);
+        verifyBooleanField("AMQ.9437", "advancedNetworkStatisticsEnabled", true);
     }
 
     @Test
@@ -100,6 +137,32 @@ public class PolicyEntryTest extends RuntimeConfigTestSupport {
         verifyQueueLimit("queue.child.test2", 4194304);
     }
 
+    private void verifyBooleanField(String dest, String fieldName, boolean value) throws Exception {
+        ActiveMQConnection connection = new ActiveMQConnectionFactory("vm://localhost").createActiveMQConnection();
+        try {
+            connection.start();
+            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            session.createConsumer(session.createQueue(dest));
+
+            switch(fieldName) {
+            case "advancedMessageStatisticsEnabled":
+                assertEquals(value, brokerService.getRegionBroker().getDestinationMap().get(new ActiveMQQueue(dest)).isAdvancedMessageStatisticsEnabled());
+                break;
+            case "advancedNetworkStatisticsEnabled":
+                assertEquals(value, brokerService.getRegionBroker().getDestinationMap().get(new ActiveMQQueue(dest)).isAdvancedNetworkStatisticsEnabled());
+                break;
+            case "sendDuplicateFromStoreToDLQ":
+                assertEquals(value, brokerService.getRegionBroker().getDestinationMap().get(new ActiveMQQueue(dest)).isSendDuplicateFromStoreToDLQ());
+                break;
+            default:
+                fail("Unsupported field specified: " + fieldName);
+            }
+            
+        } finally {
+            connection.close();
+        }
+    }
+    
     private void verifyQueueLimit(String dest, int memoryLimit) throws Exception {
         ActiveMQConnection connection = new ActiveMQConnectionFactory("vm://localhost").createActiveMQConnection();
         try {

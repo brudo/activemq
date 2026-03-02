@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.apache.activemq.advisory.AdvisorySupport;
+import org.apache.activemq.broker.SslContext;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ConsumerInfo;
 
@@ -27,13 +28,19 @@ import org.apache.activemq.command.ConsumerInfo;
  * Configuration for a NetworkBridge
  */
 public class NetworkBridgeConfiguration {
+    public static final String DURABLE_SUB_PREFIX = "NC-DS_";
 
     private boolean conduitSubscriptions = true;
+    /**
+     * Whether or not network subscriptions on queues are eligible to be conduit
+     * Default is false
+     */
+    private boolean conduitNetworkQueueSubscriptions;
     private boolean useVirtualDestSubs;
     private boolean dynamicOnly;
     private boolean syncDurableSubs;
     private boolean dispatchAsync = true;
-    private boolean decreaseNetworkConsumerPriority;
+    private boolean decreaseNetworkConsumerPriority = true;
     private int consumerPriorityBase = ConsumerInfo.NETWORK_CONSUMER_PRIORITY;
     private boolean duplex;
     private boolean bridgeTempDestinations = true;
@@ -52,8 +59,11 @@ public class NetworkBridgeConfiguration {
     private String brokerURL = "";
     private String userName;
     private String password;
+    private String remoteUserName;
+    private String remotePassword;
     private String destinationFilter = null;
     private String name = "NC";
+    private String clientIdToken = "_";
 
     protected List<ActiveMQDestination> excludedDestinations = new CopyOnWriteArrayList<ActiveMQDestination>();
     protected List<ActiveMQDestination> dynamicallyIncludedDestinations = new CopyOnWriteArrayList<ActiveMQDestination>();
@@ -70,6 +80,13 @@ public class NetworkBridgeConfiguration {
     private boolean gcDestinationViews = true;
     private long gcSweepTime = 60 * 1000;
     private boolean checkDuplicateMessagesOnDuplex = false;
+    private boolean autoStart = true;
+
+    /**
+     * Bridge factory implementation - by default backed by static factory, which is default implementation and will rely change.
+     */
+    private BridgeFactory bridgeFactory = NetworkBridgeFactory.INSTANCE;
+    private SslContext sslContext;
 
     /**
      * @return the conduitSubscriptions
@@ -83,6 +100,14 @@ public class NetworkBridgeConfiguration {
      */
     public void setConduitSubscriptions(boolean conduitSubscriptions) {
         this.conduitSubscriptions = conduitSubscriptions;
+    }
+
+    public boolean isConduitNetworkQueueSubscriptions() {
+        return conduitNetworkQueueSubscriptions;
+    }
+
+    public void setConduitNetworkQueueSubscriptions(boolean conduitNetworkQueueSubscriptions) {
+        this.conduitNetworkQueueSubscriptions = conduitNetworkQueueSubscriptions;
     }
 
     /**
@@ -176,6 +201,14 @@ public class NetworkBridgeConfiguration {
      */
     public void setBrokerName(String brokerName) {
         this.brokerName = brokerName;
+    }
+
+    public String getClientIdToken() {
+        return clientIdToken;
+    }
+
+    public void setClientIdToken(String clientIdToken) {
+        this.clientIdToken = clientIdToken;
     }
 
     /**
@@ -272,12 +305,40 @@ public class NetworkBridgeConfiguration {
     }
 
     /**
+     * @return the remoteUserName
+     */
+    public String getRemoteUserName() {
+        return this.remoteUserName;
+    }
+
+    /**
+     * @param remoteUserName the remoteUserName to set
+     */
+    public void setRemoteUserName(String remoteUserName) {
+        this.remoteUserName = remoteUserName;
+    }
+
+    /**
+     * @return the remotePassword
+     */
+    public String getRemotePassword() {
+        return this.remotePassword;
+    }
+
+    /**
+     * @param userName the userName to set
+     */
+    public void setRemotePassword(String remotePassword) {
+        this.remotePassword = remotePassword;
+    }
+
+    /**
      * @return the destinationFilter
      */
     public String getDestinationFilter() {
         if (this.destinationFilter == null) {
             if (dynamicallyIncludedDestinations != null && !dynamicallyIncludedDestinations.isEmpty()) {
-                StringBuffer filter = new StringBuffer();
+                StringBuilder filter = new StringBuilder();
                 String delimiter = "";
                 for (ActiveMQDestination destination : dynamicallyIncludedDestinations) {
                     if (!destination.isTemporary()) {
@@ -299,7 +360,7 @@ public class NetworkBridgeConfiguration {
                 }
                 return filter.toString();
             }   else {
-                StringBuffer filter = new StringBuffer();
+                StringBuilder filter = new StringBuilder();
                 filter.append(AdvisorySupport.CONSUMER_ADVISORY_TOPIC_PREFIX);
                 filter.append(">");
                 if (useVirtualDestSubs) {
@@ -519,12 +580,12 @@ public class NetworkBridgeConfiguration {
         return useVirtualDestSubs;
     }
 
-    /**
-     * This was a typo, so this is deprecated as of 5.13.1
-     */
-    @Deprecated
-    public boolean isUseVirtualDestSus() {
-        return useVirtualDestSubs;
+    public BridgeFactory getBridgeFactory() {
+        return bridgeFactory;
+    }
+
+    public void setBridgeFactory(BridgeFactory bridgeFactory) {
+        this.bridgeFactory = bridgeFactory;
     }
 
     public void setUseVirtualDestSubs(
@@ -532,4 +593,19 @@ public class NetworkBridgeConfiguration {
         this.useVirtualDestSubs = useVirtualDestSubs;
     }
 
+    public void setSslContext(SslContext sslContext) {
+        this.sslContext = sslContext;
+    }
+
+    public SslContext getSslContext() {
+        return sslContext;
+    }
+
+    public void setAutoStart(boolean autoStart) {
+        this.autoStart = autoStart;
+    }
+
+    public boolean isAutoStart() {
+        return autoStart;
+    }
 }

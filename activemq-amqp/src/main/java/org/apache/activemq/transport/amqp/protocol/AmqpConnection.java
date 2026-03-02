@@ -42,7 +42,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javax.jms.InvalidClientIDException;
+import jakarta.jms.InvalidClientIDException;
 
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.region.AbstractRegion;
@@ -78,7 +78,6 @@ import org.apache.activemq.transport.amqp.AmqpProtocolException;
 import org.apache.activemq.transport.amqp.AmqpTransport;
 import org.apache.activemq.transport.amqp.AmqpTransportFilter;
 import org.apache.activemq.transport.amqp.AmqpWireFormat;
-import org.apache.activemq.transport.amqp.ResponseHandler;
 import org.apache.activemq.transport.amqp.sasl.AmqpAuthenticator;
 import org.apache.activemq.util.IOExceptionSupport;
 import org.apache.activemq.util.IdGenerator;
@@ -171,6 +170,11 @@ public class AmqpConnection implements AmqpProtocolConverter {
         int maxFrameSize = amqpWireFormat.getMaxAmqpFrameSize();
         if (maxFrameSize > AmqpWireFormat.NO_AMQP_MAX_FRAME_SIZE) {
             this.protonTransport.setMaxFrameSize(maxFrameSize);
+            try {
+                this.protonTransport.setOutboundFrameSizeLimit(maxFrameSize);
+            } catch (Throwable e) {
+                // Ignore if older proton-j was injected.
+            }
         }
 
         this.protonTransport.bind(this.protonConnection);
@@ -251,12 +255,16 @@ public class AmqpConnection implements AmqpProtocolConverter {
         if (protonConnection.getLocalState() != EndpointState.CLOSED) {
             // Using nano time since it is not related to the wall clock, which may change
             long now = TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
-            rescheduleAt = protonTransport.tick(now) - now;
+            long deadline = protonTransport.tick(now);
             pumpProtonToSocket();
             if (protonTransport.isClosed()) {
-                rescheduleAt = 0;
                 LOG.debug("Transport closed after inactivity check.");
-                throw new InactivityIOException("Channel was inactive for to long");
+                throw new InactivityIOException("Channel was inactive for too long");
+            } else {
+                if(deadline != 0) {
+                    // caller treats 0 as no-work, ensure value is at least 1 as there was a deadline
+                    rescheduleAt = Math.max(deadline - now, 1);
+                }
             }
         }
 
@@ -324,6 +332,7 @@ public class AmqpConnection implements AmqpProtocolConverter {
         }
     }
 
+    @SuppressWarnings("deprecation")
     @Override
     public void onAMQPData(Object command) throws Exception {
         Buffer frame;
@@ -627,7 +636,7 @@ public class AmqpConnection implements AmqpProtocolConverter {
     public void onActiveMQCommand(Command command) throws Exception {
         if (command.isResponse()) {
             Response response = (Response) command;
-            ResponseHandler rh = resposeHandlers.remove(Integer.valueOf(response.getCorrelationId()));
+            ResponseHandler rh = resposeHandlers.remove(response.getCorrelationId());
             if (rh != null) {
                 rh.onResponse(this, response);
             } else {
@@ -790,7 +799,7 @@ public class AmqpConnection implements AmqpProtocolConverter {
         command.setCommandId(lastCommandId.incrementAndGet());
         if (handler != null) {
             command.setResponseRequired(true);
-            resposeHandlers.put(Integer.valueOf(command.getCommandId()), handler);
+            resposeHandlers.put(command.getCommandId(), handler);
         }
         amqpTransport.sendToActiveMQ(command);
     }
@@ -835,8 +844,9 @@ public class AmqpConnection implements AmqpProtocolConverter {
         // Using nano time since it is not related to the wall clock, which may change
         long now = TimeUnit.NANOSECONDS.toMillis(System.nanoTime());
         long nextIdleCheck = protonTransport.tick(now);
-        if (nextIdleCheck > 0) {
-            long delay = nextIdleCheck - now;
+        if (nextIdleCheck != 0) {
+            // monitor treats <= 0 as no work, ensure value is at least 1 as there was a deadline
+            long delay = Math.max(nextIdleCheck - now, 1);
             LOG.trace("Connection keep-alive processing starts in: {}", delay);
             monitor.startKeepAliveTask(delay);
         } else {

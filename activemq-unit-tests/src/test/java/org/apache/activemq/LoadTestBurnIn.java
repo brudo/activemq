@@ -22,16 +22,16 @@ import java.net.URISyntaxException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.BytesMessage;
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.DeliveryMode;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.Topic;
+import jakarta.jms.BytesMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.Topic;
 
 import junit.framework.Test;
 import org.apache.activemq.broker.BrokerFactory;
@@ -93,14 +93,14 @@ public class LoadTestBurnIn extends JmsTestSupport {
     }
 
     public void initCombosForTestSendReceive() {
-        addCombinationValues("deliveryMode", new Object[] {Integer.valueOf(DeliveryMode.NON_PERSISTENT),
-                                                           Integer.valueOf(DeliveryMode.PERSISTENT)});
-        addCombinationValues("destinationType", new Object[] {Byte.valueOf(ActiveMQDestination.TOPIC_TYPE)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT,
+                                                           DeliveryMode.PERSISTENT});
+        addCombinationValues("destinationType", new Object[] {ActiveMQDestination.TOPIC_TYPE});
         addCombinationValues("durableConsumer", new Object[] {Boolean.TRUE});
-        addCombinationValues("messageSize", new Object[] {Integer.valueOf(101), Integer.valueOf(102),
-                                                          Integer.valueOf(103), Integer.valueOf(104),
-                                                          Integer.valueOf(105), Integer.valueOf(106),
-                                                          Integer.valueOf(107), Integer.valueOf(108)});
+        addCombinationValues("messageSize", new Object[] {101, 102,
+                                                          103, 104,
+                                                          105, 106,
+                                                          107, 108});
     }
 
     public void testSendReceive() throws Exception {

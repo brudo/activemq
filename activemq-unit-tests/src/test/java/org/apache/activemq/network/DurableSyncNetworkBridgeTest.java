@@ -21,15 +21,16 @@ import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.advisory.AdvisoryBroker;
@@ -48,7 +49,6 @@ import org.apache.activemq.plugin.java.JavaRuntimeConfigurationPlugin;
 import org.apache.activemq.store.kahadb.KahaDBPersistenceAdapter;
 import org.apache.activemq.store.kahadb.disk.journal.Journal.JournalDiskSyncStrategy;
 import org.apache.activemq.util.Wait;
-import org.apache.activemq.util.Wait.Condition;
 import org.junit.After;
 import org.junit.Assume;
 import org.junit.Before;
@@ -60,8 +60,6 @@ import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.google.common.collect.Lists;
 
 @RunWith(Parameterized.class)
 public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
@@ -76,7 +74,6 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
     private boolean forceDurable = false;
     private boolean useVirtualDestSubs = false;
     private byte remoteBrokerWireFormatVersion = CommandTypes.PROTOCOL_VERSION;
-    public static enum FLOW {FORWARD, REVERSE}
 
     private BrokerService broker1;
     private BrokerService broker2;
@@ -85,7 +82,7 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
     private final FLOW flow;
 
     @Rule
-    public Timeout globalTimeout = new Timeout(30, TimeUnit.SECONDS);
+    public Timeout globalTimeout = new Timeout(60, TimeUnit.SECONDS);
 
     @Parameters
     public static Collection<Object[]> data() {
@@ -140,7 +137,11 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
         assertSubscriptionsCount(broker1, topic, 1);
         assertNCDurableSubsCount(broker2, topic, 1);
 
-        removeSubscription(broker1, topic, subName);
+        // Wait for subscription to become inactive before attempting removal
+        // It's very important to wait here, otherwise the removal may not propagate
+        waitForSubscriptionInactive(broker1, topic, subName);
+
+        removeSubscription(broker1, subName);
 
         assertSubscriptionsCount(broker1, topic, 0);
         assertNCDurableSubsCount(broker2, topic, 0);
@@ -162,7 +163,7 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
         assertSubscriptionsCount(broker1, topic, 1);
         assertNCDurableSubsCount(broker2, topic, 1);
 
-        removeSubscription(broker1, topic, subName);
+        removeSubscription(broker1, subName);
 
         assertSubscriptionsCount(broker1, topic, 0);
         assertNCDurableSubsCount(broker2, topic, 0);
@@ -189,7 +190,7 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
         }
 
         assertSubscriptionsCount(broker1, topic, 1);
-        removeSubscription(broker1, topic, subName);
+        removeSubscription(broker1, subName);
         assertSubscriptionsCount(broker1, topic, 0);
         doTearDown();
 
@@ -218,7 +219,7 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
         includedTopics = "different.topic";
         restartBroker(broker1, false);
         assertSubscriptionsCount(broker1, topic, 1);
-        removeSubscription(broker1, topic, subName);
+        removeSubscription(broker1, subName);
         assertSubscriptionsCount(broker1, topic, 0);
 
         //Test that on successful reconnection of the bridge that
@@ -311,7 +312,7 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
 
         assertSubscriptionsCount(broker1, topic, 1);
         session1.createDurableSubscriber(topic2, "sub2");
-        removeSubscription(broker1, topic, subName);
+        removeSubscription(broker1, subName);
         assertSubscriptionsCount(broker1, topic, 0);
         assertSubscriptionsCount(broker1, topic2, 1);
 
@@ -377,7 +378,7 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
         //with bridge off, remove 100 subs
         for (int i = 0; i < 10; i++) {
             for (int j = 0; j < 10; j++) {
-                removeSubscription(broker1, new ActiveMQTopic("include.test." + i), subName + i + j);
+                removeSubscription(broker1, subName + i + j);
             }
         }
 
@@ -482,7 +483,7 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
         restartBroker(broker1, false);
 
         assertSubscriptionsCount(broker1, topic, 1);
-        removeSubscription(broker1, topic, subName);
+        removeSubscription(broker1, subName);
         session1.createDurableSubscriber(topic, "sub2").close();
         assertSubscriptionsCount(broker1, topic, 1);
 
@@ -529,7 +530,6 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
         session1.createDurableSubscriber(topic, "sub3");
         session1.createDurableSubscriber(excludeTopic, "sub-exclude");
 
-        Thread.sleep(1000);
         assertNCDurableSubsCount(broker2, topic, 1);
         assertNCDurableSubsCount(broker2, excludeTopic, 0);
 
@@ -561,20 +561,17 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
         //Add the second network connector
         NetworkConnector secondConnector = configureLocalNetworkConnector();
         secondConnector.setName("networkConnector2");
-        secondConnector.setDynamicallyIncludedDestinations(
-                Lists.<ActiveMQDestination>newArrayList(
-                        new ActiveMQTopic("include.new.topic?forceDurable=" + forceDurable)));
+        ArrayList<ActiveMQDestination> includedDestinations = new ArrayList<>();
+        includedDestinations.add(new ActiveMQTopic("include.new.topic?forceDurable=" + forceDurable));
+        secondConnector.setDynamicallyIncludedDestinations(includedDestinations);
         localBroker.addNetworkConnector(secondConnector);
         secondConnector.start();
 
         //Make sure both bridges are connected
-        assertTrue(Wait.waitFor(new Condition() {
-            @Override
-            public boolean isSatisified() throws Exception {
-                return localBroker.getNetworkConnectors().get(0).activeBridges().size() == 1 &&
-                        localBroker.getNetworkConnectors().get(1).activeBridges().size() == 1;
-            }
-        }, 10000, 500));
+        assertTrue(Wait.waitFor(() ->
+                localBroker.getNetworkConnectors().get(0).activeBridges().size() == 1 &&
+                localBroker.getNetworkConnectors().get(1).activeBridges().size() == 1,
+            TimeUnit.SECONDS.toMillis(10), 500));
 
         //Make sure NC durables exist for both bridges
         assertNCDurableSubsCount(broker2, topic2, 1);
@@ -635,13 +632,7 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
         final DestinationStatistics remoteDestStatistics2 = remoteBroker.getDestination(
                 new ActiveMQQueue("include.test.bar.bridge")).getDestinationStatistics();
 
-        assertTrue(Wait.waitFor(new Condition() {
-
-            @Override
-            public boolean isSatisified() throws Exception {
-                return remoteDestStatistics2.getMessages().getCount() == 501;
-            }
-        }));
+        assertTrue(Wait.waitFor(() -> remoteDestStatistics2.getMessages().getCount() == 501));
 
     }
 
@@ -693,7 +684,11 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
         CompositeTopic compositeTopic = new CompositeTopic();
         compositeTopic.setName(name);
         compositeTopic.setForwardOnly(true);
-        compositeTopic.setForwardTo( Lists.newArrayList(forwardTo));
+        ArrayList<ActiveMQDestination> forwardDestinations = new ArrayList<>();
+        for (ActiveMQDestination ft : forwardTo) {
+            forwardDestinations.add(ft);
+        }
+        compositeTopic.setForwardTo(forwardDestinations);
 
         return compositeTopic;
     }
@@ -717,8 +712,36 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
         included = new ActiveMQTopic(testTopicName);
         doSetUpRemoteBroker(deleteAllMessages, remoteDataDir, 0);
         doSetUpLocalBroker(deleteAllMessages, startNetworkConnector, localDataDir);
-        //Give time for advisories to propagate
-        Thread.sleep(1000);
+        //Wait for the bridge to be fully started (advisory consumers registered).
+        //Note: activeBridges().size() == 1 is NOT sufficient because bridges are added
+        //to the map before start() completes asynchronously. We must wait for the
+        //startedLatch which counts down after advisory consumers are registered.
+        if (startNetworkConnector) {
+            waitForBridgeFullyStarted();
+        }
+    }
+
+    private void waitForBridgeFullyStarted() throws Exception {
+        // Wait for the local bridge to be fully started (advisory consumers registered)
+        assertTrue("Local bridge should be fully started", Wait.waitFor(() -> {
+            if (localBroker.getNetworkConnectors().get(0).activeBridges().isEmpty()) {
+                return false;
+            }
+            final NetworkBridge bridge = localBroker.getNetworkConnectors().get(0).activeBridges().iterator().next();
+            if (bridge instanceof DemandForwardingBridgeSupport) {
+                return ((DemandForwardingBridgeSupport) bridge).startedLatch.getCount() == 0;
+            }
+            return true;
+        }, TimeUnit.SECONDS.toMillis(10), 100));
+
+        // Also wait for the duplex bridge on the remote broker to be fully started.
+        // The duplex connector creates a separate DemandForwardingBridge on the remote side
+        // that also needs its advisory consumers registered before it can process events.
+        assertTrue("Duplex bridge should be fully started", Wait.waitFor(() -> {
+            final DemandForwardingBridge duplexBridge = findDuplexBridge(
+                remoteBroker.getTransportConnectors().get(0));
+            return duplexBridge != null && duplexBridge.startedLatch.getCount() == 0;
+        }, TimeUnit.SECONDS.toMillis(10), 100));
     }
 
     protected void restartLocalBroker(boolean startNetworkConnector) throws Exception {
@@ -751,12 +774,12 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
         localConnection.start();
 
         if (startNetworkConnector) {
-            Wait.waitFor(new Condition() {
-                @Override
-                public boolean isSatisified() throws Exception {
-                    return localBroker.getNetworkConnectors().get(0).activeBridges().size() == 1;
-                }
-            }, 5000, 500);
+            // Best-effort wait for the bridge to appear. Do NOT use assertTrue here
+            // because some tests restart localBroker before remoteBroker is running,
+            // relying on the bridge connecting later when remoteBroker restarts.
+            // Tests that need the bridge to be fully started call assertBridgeStarted() explicitly.
+            Wait.waitFor(() -> localBroker.getNetworkConnectors().get(0).activeBridges().size() == 1,
+                         TimeUnit.SECONDS.toMillis(10), 500);
         }
         localSession = localConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
 
@@ -828,12 +851,15 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
         connector.setStaticBridge(false);
         connector.setSyncDurableSubs(true);
         connector.setUseVirtualDestSubs(useVirtualDestSubs);
-        connector.setStaticallyIncludedDestinations(
-                Lists.<ActiveMQDestination>newArrayList(new ActiveMQTopic(staticIncludeTopics + "?forceDurable=" + forceDurable)));
-        connector.setDynamicallyIncludedDestinations(
-                Lists.<ActiveMQDestination>newArrayList(new ActiveMQTopic(includedTopics + "?forceDurable=" + forceDurable)));
-        connector.setExcludedDestinations(
-                Lists.<ActiveMQDestination>newArrayList(new ActiveMQTopic(excludeTopicName)));
+        ArrayList<ActiveMQDestination> staticIncludedDestinations = new ArrayList<>();
+        staticIncludedDestinations.add(new ActiveMQTopic(staticIncludeTopics + "?forceDurable=" + forceDurable));
+        connector.setStaticallyIncludedDestinations(staticIncludedDestinations);
+        ArrayList<ActiveMQDestination> dynamicIncludedDestinations = new ArrayList<>();
+        dynamicIncludedDestinations.add(new ActiveMQTopic(includedTopics + "?forceDurable=" + forceDurable));
+        connector.setDynamicallyIncludedDestinations(dynamicIncludedDestinations);
+        ArrayList<ActiveMQDestination> excludedDestinations = new ArrayList<>();
+        excludedDestinations.add(new ActiveMQTopic(excludeTopicName));
+        connector.setExcludedDestinations(excludedDestinations);
         return connector;
     }
 
@@ -862,6 +888,26 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
         brokerService.addConnector("auto+nio+ssl://localhost:" + port + "?wireFormat.cacheSize=2048&wireFormat.version=" + remoteBrokerWireFormatVersion);
 
         return brokerService;
+    }
+
+    /**
+     * Wait for a durable subscription to become inactive before attempting removal.
+     * This prevents "Durable consumer is in use" errors when consumer close operations
+     * complete asynchronously (especially visible with Java 25's different thread scheduling).
+     */
+    protected void waitForSubscriptionInactive(final BrokerService brokerService,
+                                               final ActiveMQTopic topic,
+                                               final String subName) throws Exception {
+        assertTrue("Subscription should become inactive", Wait.waitFor(() -> {
+            final List<org.apache.activemq.broker.region.DurableTopicSubscription> subs = getSubscriptions(brokerService, topic);
+            for (final org.apache.activemq.broker.region.DurableTopicSubscription sub : subs) {
+                if (sub.getSubscriptionKey().getSubscriptionName().equals(subName)) {
+                    return !sub.isActive();
+                }
+            }
+            // If subscription doesn't exist, it's considered inactive
+            return true;
+        }, TimeUnit.SECONDS.toMillis(10), 100));
     }
 
 }

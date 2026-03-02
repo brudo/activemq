@@ -67,7 +67,7 @@ public class Main {
         // Parse for extension directory option
         app.parseExtensions(tokens);
 
-        // lets add the conf directory first, to find the log4j.properties just in case its not
+        // lets add the conf directory first, to find the log4j2-test.properties just in case its not
         // in the activemq.classpath system property or some jar incorrectly includes one
         File confDir = app.getActiveMQConfig();
         app.addClassPath(confDir);
@@ -259,7 +259,7 @@ public class Main {
             Method runTask = task.getMethod("main", new Class[] {
                 String[].class, InputStream.class, PrintStream.class
             });
-            return (int)runTask.invoke(task.newInstance(), args, System.in, System.out);
+            return (int)runTask.invoke(task.getConstructor().newInstance(), args, System.in, System.out);
         } catch (InvocationTargetException e) {
             throw e.getCause();
         }

@@ -19,8 +19,8 @@ package org.apache.activemq.management;
 public class SizeStatisticImpl extends StatisticImpl {
 
     private long count;
-    private long maxSize;
-    private long minSize;
+    private volatile long maxSize;
+    private volatile long minSize;
     private long totalSize;
     private SizeStatisticImpl parent;
 
@@ -92,10 +92,24 @@ public class SizeStatisticImpl extends StatisticImpl {
     }
 
     /**
+     * @return the maximum size of any step
+     */
+    public void setMaxSize(long size) {
+        maxSize = size;
+    }
+
+    /**
      * @return the minimum size of any step
      */
-    public synchronized long getMinSize() {
+    public long getMinSize() {
         return minSize;
+    }
+
+    /**
+     * @return the maximum size of any step
+     */
+    public void setMinSize(long size) {
+        minSize = size;
     }
 
     /**
@@ -103,6 +117,10 @@ public class SizeStatisticImpl extends StatisticImpl {
      */
     public synchronized long getTotalSize() {
         return totalSize;
+    }
+
+    public synchronized void setCount(long count) {
+        this.count = count;
     }
 
     /**

@@ -22,15 +22,15 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageListener;
-import javax.jms.MessageProducer;
-import javax.jms.ServerSession;
-import javax.jms.ServerSessionPool;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageListener;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.ServerSession;
+import jakarta.jms.ServerSessionPool;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 import junit.framework.Test;
 
 import org.apache.activemq.broker.region.policy.RedeliveryPolicyMap;
@@ -43,7 +43,10 @@ import org.apache.activemq.transport.vm.VMTransportServer;
 import org.apache.activemq.util.Wait;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class RedeliveryPolicyTest extends JmsTestSupport {
     static final Logger LOG = LoggerFactory.getLogger(RedeliveryPolicyTest.class);
 
@@ -56,7 +59,7 @@ public class RedeliveryPolicyTest extends JmsTestSupport {
     }
 
 
-    public void testGetNext() throws Exception {
+    public void testGetNextWithExponentialBackoff() throws Exception {
 
         RedeliveryPolicy policy = new RedeliveryPolicy();
         policy.setInitialRedeliveryDelay(0);
@@ -76,6 +79,34 @@ public class RedeliveryPolicyTest extends JmsTestSupport {
         assertEquals(500, delay);
     }
 
+    public void testGetNextWithExponentialBackoff_RedeliveryDelayIsIgnoredIfInitialRedeliveryDelayAboveZero() {
+
+        RedeliveryPolicy policy = new RedeliveryPolicy();
+        policy.setInitialRedeliveryDelay(42);
+        policy.setRedeliveryDelay(-100); // This is ignored in actual usage since initial > 0
+        policy.setBackOffMultiplier(2d);
+        policy.setUseExponentialBackOff(true);
+
+        // Invoke in the order employed when actually used by redelivery code paths
+        long delay = policy.getInitialRedeliveryDelay();
+        assertEquals(42, delay);
+        // Notice how the setRedeliveryDelay(-100) doesn't affect the calculation if initial > 0
+        delay = policy.getNextRedeliveryDelay(delay);
+        assertEquals(42*2, delay);
+        delay = policy.getNextRedeliveryDelay(delay);
+        assertEquals(42*4, delay);
+
+        // If the initial delay is 0, when given back to the policy via getNextRedeliveryDelay(), we get -100
+        assertEquals(-100, policy.getNextRedeliveryDelay(0));
+        // .. but when invoked with anything else, the backoff multiplier is used
+        assertEquals(123 * 2, policy.getNextRedeliveryDelay(123));
+
+        // If exponential backoff is disabled, the setRedeliveryDelay(-100) is used.
+        policy.setUseExponentialBackOff(false);
+        delay = policy.getNextRedeliveryDelay(delay);
+        assertEquals(-100, delay);
+    }
+
     public void testGetNextWithInitialDelay() throws Exception {
 
         RedeliveryPolicy policy = new RedeliveryPolicy();
@@ -87,7 +118,6 @@ public class RedeliveryPolicyTest extends JmsTestSupport {
         assertEquals(1000, delay);
         delay = policy.getNextRedeliveryDelay(delay);
         assertEquals(1000, delay);
-
     }
 
     /**
@@ -145,11 +175,76 @@ public class RedeliveryPolicyTest extends JmsTestSupport {
 
     }
 
+    /**
+     * By version 5.17.1 (2022-04-25), the combination of exponential redelivery with non-blocking redelivery was
+     * handled erroneously: The redeliveryDelay was a modifiable field on the ActiveMQMessageConsumer (not per message,
+     * nor calculated individually based on the message's redelivery count), and thus if multiple consecutive messages
+     * was rolled back multiple times in a row (i.e. redeliveries > 1), the exponential delay <i>which was kept on the
+     * consumer</i> would quickly result in extreme delays.
+     */
+    public void testExponentialRedeliveryPolicyCombinedWithNonBlockingRedelivery() throws Exception {
+        // :: ARRANGE
+        // Condition #1: Create an exponential redelivery policy
+        RedeliveryPolicy policy = connection.getRedeliveryPolicy();
+        policy.setInitialRedeliveryDelay(0);
+        policy.setRedeliveryDelay(100);
+        policy.setBackOffMultiplier(2);
+        policy.setUseExponentialBackOff(true);
+        policy.setMaximumRedeliveries(4); // 5 attempts: 1 delivery + 4 redeliveries
+
+        // assert set of delays
+        long delay = policy.getInitialRedeliveryDelay();
+        assertEquals(0, delay);
+        delay = policy.getNextRedeliveryDelay(delay);
+        assertEquals(100, delay);
+        delay = policy.getNextRedeliveryDelay(delay);
+        assertEquals(200, delay);
+        delay = policy.getNextRedeliveryDelay(delay);
+        assertEquals(400, delay);
+
+        // Condition #2: Set non-blocking redelivery
+        connection.setNonBlockingRedelivery(true);
+
+        // :: ACT
+        connection.start();
+        Session session = connection.createSession(true, Session.AUTO_ACKNOWLEDGE);
+        ActiveMQQueue destination = new ActiveMQQueue(getName());
+        MessageProducer producer = session.createProducer(destination);
+
+        MessageConsumer consumer = session.createConsumer(destination);
+
+        // Send 'count' messages
+        int count = 10;
+        for (int i = 0; i<count; i++) {
+            producer.send(session.createTextMessage("#"+i));
+        }
+        session.commit();
+        LOG.info("{} messages sent", count);
+
+        // Receive messages, but rollback: 4+1 times each message = 5 * count
+        int receiveCount = 0;
+        // Add one extra receive, which should NOT result in a message (they should all be DLQed by then).
+        for (int i = 0; i < (count * 5 + 1); i++) {
+            // Max delay between redeliveries for these messages should be 400ms
+            // Waiting for 4x that = 1600 ms, to allow for hiccups during testing.
+            // (With the faulty code, the last calculated delay before test failing was 26214400.)
+            TextMessage m = (TextMessage) consumer.receive(1600);
+            LOG.info("Message received: {}", m);
+            if (m != null) {
+                receiveCount ++;
+            }
+            session.rollback();
+        }
+
+        // ASSERT
+        // We should have received count * 5 messages
+        assertEquals(count * 5, receiveCount);
+    }
 
     /**
      * @throws Exception
      */
-    public void testNornalRedeliveryPolicyDelaysDeliveryOnRollback() throws Exception {
+    public void testNormalRedeliveryPolicyDelaysDeliveryOnRollback() throws Exception {
 
         // Receive a message with the JMS API
         RedeliveryPolicy policy = connection.getRedeliveryPolicy();
@@ -540,7 +635,7 @@ public class RedeliveryPolicyTest extends JmsTestSupport {
         assertEquals("1st", m.getText());
         String cause = m.getStringProperty(ActiveMQMessage.DLQ_DELIVERY_FAILURE_CAUSE_PROPERTY);
         assertTrue("cause exception has policy ref: " + cause, cause.contains("RedeliveryPolicy"));
-        assertTrue("cause exception has pre dispatch and count:" + cause, cause.contains("Dispatch[5]"));
+        assertTrue("cause exception has pre dispatch and count:" + cause, cause.contains("[5]"));
 
         dlqSession.commit();
 
@@ -598,6 +693,45 @@ public class RedeliveryPolicyTest extends JmsTestSupport {
             }
         }
     }
+
+
+    public void testRepeatedServerClose() throws Exception {
+
+        connection.start();
+        Session session = connection.createSession(true, Session.SESSION_TRANSACTED);
+        ActiveMQQueue destination = new ActiveMQQueue("TEST");
+        MessageProducer producer = session.createProducer(destination);
+
+        // Send the messages
+        producer.send(session.createTextMessage("1st"));
+        session.commit();
+
+        final int maxRedeliveries = 10000;
+        for (int i=0;i<=maxRedeliveries + 1;i++) {
+
+            final ActiveMQConnection toTest = (ActiveMQConnection)factory.createConnection(userName, password);
+            toTest.start();
+
+            // abortive close via broker
+            for (VMTransportServer transportServer : VMTransportFactory.SERVERS.values()) {
+                transportServer.stop();
+            }
+
+            Wait.waitFor(new Wait.Condition() {
+                @Override
+                public boolean isSatisified() throws Exception {
+                    return toTest.isTransportFailed();
+                }
+            },10000, 100 );
+
+            try {
+                toTest.close();
+            } catch (Exception expected) {
+            } finally {
+            }
+        }
+    }
+
 
 
     public void testRepeatedRedeliveryOnMessageNoCommit() throws Exception {
@@ -703,7 +837,7 @@ public class RedeliveryPolicyTest extends JmsTestSupport {
                 public void onMessage(Message message) {
                     try {
                         ActiveMQTextMessage m = (ActiveMQTextMessage) message;
-                        LOG.info("Got: " + ((ActiveMQTextMessage) message).getMessageId() + ", seq:" + ((ActiveMQTextMessage) message).getMessageId().getBrokerSequenceId());
+                        LOG.info("Got: " + ((ActiveMQTextMessage) message).getMessageId() + ", seq:" + ((ActiveMQTextMessage) message).getMessageId().getBrokerSequenceId() + ", redeliveryCount: "  + m.getRedeliveryCounter());
                         assertEquals("1st", m.getText());
                         assertEquals(receivedCount.get(), m.getRedeliveryCounter());
                         receivedCount.incrementAndGet();
@@ -748,6 +882,108 @@ public class RedeliveryPolicyTest extends JmsTestSupport {
             } else {
                 // final redlivery gets poisoned before dispatch
                 assertFalse("listener not done @" + i, done.await(1, TimeUnit.SECONDS));
+            }
+            connection.close();
+            connections.remove(connection);
+        }
+
+        // We should be able to get the message off the DLQ now.
+        TextMessage m = (TextMessage)dlqConsumer.receive(1000);
+        assertNotNull("Got message from DLQ", m);
+        assertEquals("1st", m.getText());
+        String cause = m.getStringProperty(ActiveMQMessage.DLQ_DELIVERY_FAILURE_CAUSE_PROPERTY);
+        assertTrue("cause exception has policy ref", cause.contains("RedeliveryPolicy"));
+        dlqSession.commit();
+
+    }
+
+
+    public void testRepeatedRedeliveryNoCommitForwardMessage() throws Exception {
+
+        connection.start();
+        Session dlqSession = connection.createSession(true, Session.SESSION_TRANSACTED);
+        ActiveMQQueue destination = new ActiveMQQueue("TEST");
+        MessageProducer producer = dlqSession.createProducer(destination);
+
+        // Send the messages
+        producer.send(dlqSession.createTextMessage("1st"));
+
+        dlqSession.commit();
+        MessageConsumer dlqConsumer = dlqSession.createConsumer(new ActiveMQQueue("ActiveMQ.DLQ"));
+
+        final MessageProducer forwardingProducer = dlqSession.createProducer(new ActiveMQQueue("TEST_FORWARD"));
+
+        // Send the messages
+
+        final int maxRedeliveries = 2;
+        final AtomicInteger receivedCount = new AtomicInteger(0);
+
+        for (int i=0;i<=maxRedeliveries+1;i++) {
+            connection = (ActiveMQConnection)factory.createConnection(userName, password);
+            connections.add(connection);
+
+            RedeliveryPolicy policy = connection.getRedeliveryPolicy();
+            policy.setInitialRedeliveryDelay(0);
+            policy.setUseExponentialBackOff(false);
+            policy.setMaximumRedeliveries(maxRedeliveries);
+
+            connection.start();
+            final CountDownLatch done = new CountDownLatch(1);
+
+            final ActiveMQSession session = (ActiveMQSession) connection.createSession(true, Session.SESSION_TRANSACTED);
+            session.setMessageListener(new MessageListener() {
+                @Override
+                public void onMessage(Message message) {
+                    try {
+                        ActiveMQTextMessage m = (ActiveMQTextMessage) message;
+                        LOG.info("Got: " + ((ActiveMQTextMessage) message).getMessageId() + ", seq:" + ((ActiveMQTextMessage) message).getMessageId().getBrokerSequenceId() + " ,Redelivery: " + m.getRedeliveryCounter());
+                        assertEquals("1st", m.getText());
+                        assertEquals(receivedCount.get(), m.getRedeliveryCounter());
+                        receivedCount.incrementAndGet();
+
+                        // do a forward of the received message, will reset the messageID
+                        forwardingProducer.send(message);
+                        done.countDown();
+                    } catch (Exception ignored) {
+                        ignored.printStackTrace();
+                    }
+                }
+            });
+
+            connection.createConnectionConsumer(
+                    destination,
+                    null,
+                    new ServerSessionPool() {
+                        @Override
+                        public ServerSession getServerSession() throws JMSException {
+                            return new ServerSession() {
+                                @Override
+                                public Session getSession() throws JMSException {
+                                    return session;
+                                }
+
+                                @Override
+                                public void start() throws JMSException {
+                                }
+                            };
+                        }
+                    },
+                    100,
+                    false);
+
+            Wait.waitFor(new Wait.Condition() {
+                @Override
+                public boolean isSatisified() throws Exception {
+                    session.run();
+                    return done.await(10, TimeUnit.MILLISECONDS);
+                }
+            }, 5000);
+
+            if (i<=maxRedeliveries) {
+                assertTrue("listener done @" + i, done.await(5, TimeUnit.SECONDS));
+            } else {
+                // final redelivery gets poisoned before dispatch
+                assertFalse("listener not done @" + i, done.await(5, TimeUnit.SECONDS));
             }
             connection.close();
             connections.remove(connection);

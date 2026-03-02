@@ -22,6 +22,7 @@ import java.util.LinkedList;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -49,10 +50,14 @@ public class TransactionContext {
     private int transactionIsolation = Connection.TRANSACTION_READ_UNCOMMITTED;
     private LinkedList<Runnable> completions = new LinkedList<Runnable>();
     private ReentrantReadWriteLock exclusiveConnectionLock = new ReentrantReadWriteLock();
+    private int networkTimeout;
+    private int queryTimeout;
 
-    public TransactionContext(JDBCPersistenceAdapter persistenceAdapter) throws IOException {
+    public TransactionContext(JDBCPersistenceAdapter persistenceAdapter, int networkTimeout, int queryTimeout) throws IOException {
         this.persistenceAdapter = persistenceAdapter;
         this.dataSource = persistenceAdapter.getDataSource();
+        this.networkTimeout = networkTimeout;
+        this.queryTimeout = queryTimeout;
     }
 
     public Connection getExclusiveConnection() throws IOException {
@@ -68,6 +73,9 @@ public class TransactionContext {
             toLock.lock();
             try {
                 connection = dataSource.getConnection();
+                if (networkTimeout > 0) {
+                    connection.setNetworkTimeout(Executors.newSingleThreadExecutor(), networkTimeout);
+                }
                 if (persistenceAdapter.isChangeAutoCommitAllowed()) {
                     boolean autoCommit = !inTx;
                     if (connection.getAutoCommit() != autoCommit) {
@@ -84,7 +92,7 @@ public class TransactionContext {
                 } catch (IllegalMonitorStateException oops) {
                     LOG.error("Thread does not hold the context lock on close of:"  + connection, oops);
                 }
-                close();
+                silentClose();
                 IOException ioe = IOExceptionSupport.create(e);
                 if (persistenceAdapter.getBrokerService() != null) {
                     persistenceAdapter.getBrokerService().handleIOException(ioe);
@@ -137,45 +145,39 @@ public class TransactionContext {
         } finally {
             try {
                 p.close();
-            } catch (Throwable e) {
-            }
+            } catch (Throwable ignored) {}
         }
     }
+
+    private void silentClose() {
+        silentClosePreparedStatements();
+        if (connection != null) {
+            try {
+                connection.close();
+            } catch (Throwable ignored) {}
+            connection = null;
+        }
+    }
+
 
     public void close() throws IOException {
         if (!inTx) {
             try {
-
-                /**
-                 * we are not in a transaction so should not be committing ??
-                 * This was previously commented out - but had adverse affects
-                 * on testing - so it's back!
-                 * 
-                 */
-                try {
+                // can be null for topic ops that bypass the store via existing cursor state
+                if (connection != null) {
+                    final boolean needsCommit = !connection.getAutoCommit();
                     executeBatch();
-                } finally {
-                    if (connection != null && !connection.getAutoCommit()) {
+                    if (needsCommit) {
                         connection.commit();
                     }
                 }
-
             } catch (SQLException e) {
                 JDBCPersistenceAdapter.log("Error while closing connection: ", e);
                 IOException ioe = IOExceptionSupport.create(e);
                 persistenceAdapter.getBrokerService().handleIOException(ioe);
                 throw ioe;
             } finally {
-                try {
-                    if (connection != null) {
-                        connection.close();
-                    }
-                } catch (Throwable e) {
-                    // ignore
-                    LOG.trace("Closing connection failed due: " + e.getMessage() + ". This exception is ignored.", e);
-                } finally {
-                    connection = null;
-                }
+                silentClose();
                 for (Runnable completion: completions) {
                     completion.run();
                 }
@@ -197,8 +199,9 @@ public class TransactionContext {
             throw new IOException("Not started.");
         }
         try {
+            final boolean needsCommit = !connection.getAutoCommit();
             executeBatch();
-            if (!connection.getAutoCommit()) {
+            if (needsCommit) {
                 connection.commit();
             }
         } catch (SQLException e) {
@@ -230,19 +233,24 @@ public class TransactionContext {
         }
     }
 
+    private PreparedStatement silentClosePreparedStatement(PreparedStatement preparedStatement) {
+        if (preparedStatement != null) {
+            try {
+                preparedStatement.close();
+            } catch (Throwable ignored) {}
+        }
+        return null;
+    }
+
+    private void silentClosePreparedStatements() {
+        addMessageStatement = silentClosePreparedStatement(addMessageStatement);
+        removedMessageStatement = silentClosePreparedStatement(removedMessageStatement);
+        updateLastAckStatement = silentClosePreparedStatement(updateLastAckStatement);
+    }
+
     private void doRollback() throws SQLException {
-        if (addMessageStatement != null) {
-            addMessageStatement.close();
-            addMessageStatement = null;
-        }
-        if (removedMessageStatement != null) {
-            removedMessageStatement.close();
-            removedMessageStatement = null;
-        }
-        if (updateLastAckStatement != null) {
-            updateLastAckStatement.close();
-            updateLastAckStatement = null;
-        }
+        silentClosePreparedStatements();
+        completions.clear();
         connection.rollback();
     }
 
@@ -300,17 +308,29 @@ public class TransactionContext {
         // simple delegate for the  rest of the impl..
         @Override
         public Statement createStatement() throws SQLException {
-            return delegate.createStatement();
+            Statement statement = delegate.createStatement();
+            if (queryTimeout > 0) {
+                statement.setQueryTimeout(queryTimeout);
+            }
+            return statement;
         }
 
         @Override
         public PreparedStatement prepareStatement(String sql) throws SQLException {
-            return delegate.prepareStatement(sql);
+            PreparedStatement statement = delegate.prepareStatement(sql);
+            if (queryTimeout > 0) {
+                statement.setQueryTimeout(queryTimeout);
+            }
+            return statement;
         }
 
         @Override
         public CallableStatement prepareCall(String sql) throws SQLException {
-            return delegate.prepareCall(sql);
+            CallableStatement statement = delegate.prepareCall(sql);
+            if (queryTimeout > 0) {
+                statement.setQueryTimeout(queryTimeout);
+            }
+            return statement;
         }
 
         @Override
@@ -390,17 +410,29 @@ public class TransactionContext {
 
         @Override
         public Statement createStatement(int resultSetType, int resultSetConcurrency) throws SQLException {
-            return delegate.createStatement(resultSetType, resultSetConcurrency);
+            Statement statement = delegate.createStatement(resultSetType, resultSetConcurrency);
+            if (queryTimeout > 0) {
+                statement.setQueryTimeout(queryTimeout);
+            }
+            return statement;
         }
 
         @Override
         public PreparedStatement prepareStatement(String sql, int resultSetType, int resultSetConcurrency) throws SQLException {
-            return delegate.prepareStatement(sql, resultSetType, resultSetConcurrency);
+            PreparedStatement statement = delegate.prepareStatement(sql, resultSetType, resultSetConcurrency);
+            if (queryTimeout > 0) {
+                statement.setQueryTimeout(queryTimeout);
+            }
+            return statement;
         }
 
         @Override
         public CallableStatement prepareCall(String sql, int resultSetType, int resultSetConcurrency) throws SQLException {
-            return delegate.prepareCall(sql, resultSetType, resultSetConcurrency);
+            CallableStatement statement = delegate.prepareCall(sql, resultSetType, resultSetConcurrency);
+            if (queryTimeout > 0) {
+                statement.setQueryTimeout(queryTimeout);
+            }
+            return statement;
         }
 
         @Override
@@ -445,32 +477,56 @@ public class TransactionContext {
 
         @Override
         public Statement createStatement(int resultSetType, int resultSetConcurrency, int resultSetHoldability) throws SQLException {
-            return delegate.createStatement(resultSetType, resultSetConcurrency, resultSetHoldability);
+            Statement statement = delegate.createStatement(resultSetType, resultSetConcurrency, resultSetHoldability);
+            if (queryTimeout > 0) {
+                statement.setQueryTimeout(queryTimeout);
+            }
+            return statement;
         }
 
         @Override
         public PreparedStatement prepareStatement(String sql, int resultSetType, int resultSetConcurrency, int resultSetHoldability) throws SQLException {
-            return delegate.prepareStatement(sql, resultSetType, resultSetConcurrency, resultSetHoldability);
+            PreparedStatement statement = delegate.prepareStatement(sql, resultSetType, resultSetConcurrency, resultSetHoldability);
+            if (queryTimeout > 0) {
+                statement.setQueryTimeout(queryTimeout);
+            }
+            return statement;
         }
 
         @Override
         public CallableStatement prepareCall(String sql, int resultSetType, int resultSetConcurrency, int resultSetHoldability) throws SQLException {
-            return delegate.prepareCall(sql, resultSetType, resultSetConcurrency, resultSetHoldability);
+            CallableStatement statement = delegate.prepareCall(sql, resultSetType, resultSetConcurrency, resultSetHoldability);
+            if (queryTimeout > 0) {
+                statement.setQueryTimeout(queryTimeout);
+            }
+            return statement;
         }
 
         @Override
         public PreparedStatement prepareStatement(String sql, int autoGeneratedKeys) throws SQLException {
-            return delegate.prepareStatement(sql, autoGeneratedKeys);
+            PreparedStatement statement = delegate.prepareStatement(sql, autoGeneratedKeys);
+            if (queryTimeout > 0) {
+                statement.setQueryTimeout(queryTimeout);
+            }
+            return statement;
         }
 
         @Override
         public PreparedStatement prepareStatement(String sql, int[] columnIndexes) throws SQLException {
-            return delegate.prepareStatement(sql, columnIndexes);
+            PreparedStatement statement = delegate.prepareStatement(sql, columnIndexes);
+            if (queryTimeout > 0) {
+                statement.setQueryTimeout(queryTimeout);
+            }
+            return statement;
         }
 
         @Override
         public PreparedStatement prepareStatement(String sql, String[] columnNames) throws SQLException {
-            return delegate.prepareStatement(sql, columnNames);
+            PreparedStatement statement = delegate.prepareStatement(sql, columnNames);
+            if (queryTimeout > 0) {
+                statement.setQueryTimeout(queryTimeout);
+            }
+            return statement;
         }
 
         @Override

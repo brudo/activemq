@@ -16,20 +16,23 @@
  */
 package org.apache.activemq.bugs;
 
-import javax.jms.Connection;
-import javax.jms.Message;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.Message;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 
 import org.apache.activemq.EmbeddedBrokerTestSupport;
 import org.apache.activemq.broker.region.Queue;
 import org.junit.Assert;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  * This test demonstrates a bug in which calling
  * Queue#removeMatchingMessages("") generates an exception, whereas the JMS
  * specification states that an empty selector is valid.
  */
+@Category(ParallelTest.class)
 public class AMQ2528Test extends EmbeddedBrokerTestSupport {
 
 	/**

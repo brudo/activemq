@@ -22,17 +22,20 @@ import java.io.IOException;
 import java.net.Socket;
 
 import org.apache.activemq.command.ActiveMQQueue;
-import org.apache.log4j.Appender;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.LogEvent;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.jms.Connection;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.Session;
 import javax.net.SocketFactory;
 import javax.net.ssl.SSLSocketFactory;
 
 import org.apache.activemq.util.DefaultTestAppender;
+
+import org.junit.experimental.categories.Category;
 
 /**
  * Testcase for AMQ-6526.
@@ -40,6 +43,7 @@ import org.apache.activemq.util.DefaultTestAppender;
  * with the proper Stomp operation.
  *
  */
+@Category(ParallelTest.class)
 public class StompNIOSSLLargeMessageTest extends StompTestSupport {
 
     protected static final Logger LOG = LoggerFactory.getLogger(StompNIOSSLLargeMessageTest.class);
@@ -56,7 +60,7 @@ public class StompNIOSSLLargeMessageTest extends StompTestSupport {
     protected Appender appender = new DefaultTestAppender() {
         //@Override
         @Override
-        public void doAppend(org.apache.log4j.spi.LoggingEvent event) {
+        public void append(LogEvent event) {
             if (event.getMessage().toString().contains("<Unknown>") &&
                 event.getMessage().toString().contains("The maximum data length was exceeded")) {
                 gotUnknownOperationInLog = true;
@@ -89,7 +93,8 @@ public class StompNIOSSLLargeMessageTest extends StompTestSupport {
         super.setUp();
 
         // register custom Log4J Appender
-        org.apache.log4j.Logger.getRootLogger().addAppender(appender);
+        org.apache.logging.log4j.core.Logger rootLogger = (org.apache.logging.log4j.core.Logger) org.apache.logging.log4j.LogManager.getRootLogger();
+        rootLogger.addAppender(appender);
 
         stompConnect();
         connection = cf.createConnection("system", "manager");
@@ -101,8 +106,10 @@ public class StompNIOSSLLargeMessageTest extends StompTestSupport {
 
     @Override
     public void tearDown() throws Exception {
+        super.tearDown();
         // unregister Log4J appender
-        org.apache.log4j.Logger.getRootLogger().removeAppender(appender);
+        org.apache.logging.log4j.core.Logger rootLogger = (org.apache.logging.log4j.core.Logger) org.apache.logging.log4j.LogManager.getRootLogger();
+        rootLogger.removeAppender(appender);
     }
 
 

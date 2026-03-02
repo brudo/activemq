@@ -18,17 +18,20 @@ package org.apache.activemq.bugs;
 
 import static org.junit.Assert.fail;
 
-import javax.jms.Connection;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.Session;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerService;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+@Category(ParallelTest.class)
 public class AMQ4671Test {
 
     private static final transient Logger LOG = LoggerFactory.getLogger(AMQ4671Test.class);
@@ -68,7 +71,7 @@ public class AMQ4671Test {
             try {
                 ts.unsubscribe("invalid-subscription-name");
                 fail("this should fail");
-            } catch (javax.jms.InvalidDestinationException e) {
+            } catch (jakarta.jms.InvalidDestinationException e) {
                 LOG.info("Test caught correct invalid destination exception");
             }
         } finally {

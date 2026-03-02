@@ -17,25 +17,28 @@
 
 package org.apache.activemq.usecases;
 
-import javax.jms.Connection;
-import javax.jms.Message;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.Topic;
-import javax.jms.TopicSubscriber;
+import jakarta.jms.Connection;
+import jakarta.jms.Message;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.Topic;
+import jakarta.jms.TopicSubscriber;
 
 import junit.framework.Test;
 
 import org.apache.activemq.EmbeddedBrokerTestSupport;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.store.jdbc.JDBCPersistenceAdapter;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class DurableSubscriptionReactivationTest extends EmbeddedBrokerTestSupport {
 
     public boolean keepDurableSubsActive;
     
     public void initCombosForTestReactivateKeepaliveSubscription() {
-        addCombinationValues("keepDurableSubsActive", new Object[] { new Boolean(true), new Boolean(false) });
+        addCombinationValues("keepDurableSubsActive", new Object[] { Boolean.TRUE, Boolean.FALSE });
     }
     
     public void testReactivateKeepaliveSubscription() throws Exception {

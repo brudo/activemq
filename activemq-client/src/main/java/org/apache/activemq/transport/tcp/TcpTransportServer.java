@@ -38,8 +38,10 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import javax.net.ServerSocketFactory;
+import javax.net.ssl.SSLParameters;
 import javax.net.ssl.SSLServerSocket;
 
 import org.apache.activemq.Service;
@@ -79,6 +81,7 @@ public class TcpTransportServer extends TransportServerThreadSupport implements 
     protected int minmumWireFormatVersion;
     protected boolean useQueueForAccept = true;
     protected boolean allowLinkStealing;
+    protected boolean verifyHostName = false;
 
     /**
      * trace=true -> the Transport stack where this TcpTransport object will be, will have a TransportLogger layer
@@ -121,6 +124,7 @@ public class TcpTransportServer extends TransportServerThreadSupport implements 
      * The maximum number of sockets allowed for this server
      */
     protected int maximumConnections = Integer.MAX_VALUE;
+    protected final AtomicLong maximumConnectionsExceededCount = new AtomicLong(0l);
     protected final AtomicInteger currentTransportCount = new AtomicInteger();
 
     public TcpTransportServer(TcpTransportFactory transportFactory, URI location, ServerSocketFactory serverSocketFactory) throws IOException,
@@ -172,6 +176,18 @@ public class TcpTransportServer extends TransportServerThreadSupport implements 
             //  see: https://issues.apache.org/jira/browse/AMQ-4582
             //
             if (socket instanceof SSLServerSocket) {
+                if (transportOptions.containsKey("verifyHostName")) {
+                    verifyHostName = Boolean.parseBoolean(transportOptions.get("verifyHostName").toString());
+                } else {
+                    transportOptions.put("verifyHostName", verifyHostName);
+                }
+
+                if (verifyHostName) {
+                    SSLParameters sslParams = new SSLParameters();
+                    sslParams.setEndpointIdentificationAlgorithm("HTTPS");
+                    ((SSLServerSocket)this.serverSocket).setSSLParameters(sslParams);
+                }
+
                 if (transportOptions.containsKey("enabledCipherSuites")) {
                     Object cipherSuites = transportOptions.remove("enabledCipherSuites");
 
@@ -180,6 +196,7 @@ public class TcpTransportServer extends TransportServerThreadSupport implements 
                             "Invalid transport options {enabledCipherSuites=%s}", cipherSuites));
                     }
                 }
+
             }
 
             //AMQ-6599 - don't strip out set properties on the socket as we need to set them
@@ -564,10 +581,11 @@ public class TcpTransportServer extends TransportServerThreadSupport implements 
             do {
                 currentCount = currentTransportCount.get();
                 if (currentCount >= this.maximumConnections) {
-                     throw new ExceededMaximumConnectionsException(
-                         "Exceeded the maximum number of allowed client connections. See the '" +
-                         "maximumConnections' property on the TCP transport configuration URI " +
-                         "in the ActiveMQ configuration file (e.g., activemq.xml)");
+                    this.maximumConnectionsExceededCount.incrementAndGet();
+                    throw new ExceededMaximumConnectionsException(
+                        "Exceeded the maximum number of allowed client connections. See the '" +
+                        "maximumConnections' property on the TCP transport configuration URI " +
+                        "in the ActiveMQ configuration file (e.g., activemq.xml)");
                  }
 
             //Increment this value before configuring the transport
@@ -578,17 +596,17 @@ public class TcpTransportServer extends TransportServerThreadSupport implements 
             countIncremented = true;
 
             HashMap<String, Object> options = new HashMap<String, Object>();
-            options.put("maxInactivityDuration", Long.valueOf(maxInactivityDuration));
-            options.put("maxInactivityDurationInitalDelay", Long.valueOf(maxInactivityDurationInitalDelay));
-            options.put("minmumWireFormatVersion", Integer.valueOf(minmumWireFormatVersion));
-            options.put("trace", Boolean.valueOf(trace));
-            options.put("soTimeout", Integer.valueOf(soTimeout));
-            options.put("socketBufferSize", Integer.valueOf(socketBufferSize));
-            options.put("connectionTimeout", Integer.valueOf(connectionTimeout));
+            options.put("maxInactivityDuration", maxInactivityDuration);
+            options.put("maxInactivityDurationInitalDelay", maxInactivityDurationInitalDelay);
+            options.put("minmumWireFormatVersion", minmumWireFormatVersion);
+            options.put("trace", trace);
+            options.put("soTimeout", soTimeout);
+            options.put("socketBufferSize", socketBufferSize);
+            options.put("connectionTimeout", connectionTimeout);
             options.put("logWriterName", logWriterName);
-            options.put("dynamicManagement", Boolean.valueOf(dynamicManagement));
-            options.put("startLogging", Boolean.valueOf(startLogging));
-            options.put("jmxPort", Integer.valueOf(jmxPort));
+            options.put("dynamicManagement", dynamicManagement);
+            options.put("startLogging", startLogging);
+            options.put("jmxPort", jmxPort);
             options.putAll(transportOptions);
 
             TransportInfo transportInfo = configureTransport(this, socket);
@@ -710,5 +728,15 @@ public class TcpTransportServer extends TransportServerThreadSupport implements 
     @Override
     public void setAllowLinkStealing(boolean allowLinkStealing) {
         this.allowLinkStealing = allowLinkStealing;
+    }
+
+    @Override
+    public long getMaxConnectionExceededCount() {
+        return this.maximumConnectionsExceededCount.get();
+    }
+
+    @Override
+    public void resetStatistics() {
+        this.maximumConnectionsExceededCount.set(0l);
     }
 }

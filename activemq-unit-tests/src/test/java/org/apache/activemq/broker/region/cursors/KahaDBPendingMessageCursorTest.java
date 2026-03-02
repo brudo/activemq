@@ -25,19 +25,22 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.concurrent.atomic.AtomicLong;
 
-import javax.jms.Connection;
-import javax.jms.DeliveryMode;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TopicSession;
-import javax.jms.TopicSubscriber;
+import jakarta.jms.Connection;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.TopicSession;
+import jakarta.jms.TopicSubscriber;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.region.DurableTopicSubscription;
+import org.apache.activemq.broker.region.MessageReference;
 import org.apache.activemq.broker.region.Topic;
+import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.command.ActiveMQTopic;
+import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.store.MessageStoreSubscriptionStatistics;
 import org.apache.activemq.store.TopicMessageStore;
 import org.apache.activemq.store.kahadb.KahaDBPersistenceAdapter;
@@ -266,7 +269,7 @@ public class KahaDBPendingMessageCursorTest extends
         connection.setClientID("clientId");
         connection.start();
         Session session = connection.createSession(false, TopicSession.AUTO_ACKNOWLEDGE);
-        javax.jms.Topic dest = session.createTopic(defaultTopicName);
+        jakarta.jms.Topic dest = session.createTopic(defaultTopicName);
         session.createDurableSubscriber(dest, "sub1");
         session.createDurableSubscriber(dest, "sub2");
         MessageProducer prod = session.createProducer(dest);
@@ -301,7 +304,7 @@ public class KahaDBPendingMessageCursorTest extends
         connection.setClientID("clientId");
         connection.start();
         Session session = connection.createSession(false, TopicSession.AUTO_ACKNOWLEDGE);
-        javax.jms.Topic dest = session.createTopic(defaultTopicName);
+        jakarta.jms.Topic dest = session.createTopic(defaultTopicName);
         session.createDurableSubscriber(dest, "sub1");
         TopicSubscriber subscriber2 = session.createDurableSubscriber(dest, "sub2");
         MessageProducer prod = session.createProducer(dest);
@@ -352,4 +355,55 @@ public class KahaDBPendingMessageCursorTest extends
 
     }
 
+    // Test for AMQ-9721
+    @Test
+    public void testDurableCursorRemoveRefMessageSize() throws Exception {
+        AtomicLong publishedMessageSize = new AtomicLong();
+
+        Connection connection = new ActiveMQConnectionFactory(brokerConnectURI).createConnection();
+        connection.setClientID("clientId");
+        connection.start();
+
+        // send 100 persistent and non persistent
+        Topic topic = publishTestMessagesDurable(connection, new String[] {"sub1"}, 100,
+            publishedMessageSize, DeliveryMode.NON_PERSISTENT);
+        publishTestMessagesDurable(connection, new String[] {"sub1"}, 100,
+            publishedMessageSize, DeliveryMode.PERSISTENT);
+
+        SubscriptionKey subKey = new SubscriptionKey("clientId", "sub1");
+
+        // verify the count and size
+        verifyPendingStats(topic, subKey, 200, publishedMessageSize.get());
+
+        // Iterate and remove using the pending cursor to test removal
+        final DurableTopicSubscription sub = topic.getDurableTopicSubs().get(subKey);
+        PendingMessageCursor pending = sub.getPending();
+        try {
+            pending.reset();
+            while (pending.hasNext()) {
+                MessageReference node = pending.next();
+                node.decrementReferenceCount();
+                // test the remove(ref) method which has been updated
+                // to check persistence type
+                pending.remove(node);
+
+                // If persistent remove out of the store
+                if (node.isPersistent()) {
+                    MessageAck ack = new MessageAck();
+                    ack.setLastMessageId(node.getMessageId());
+                    ack.setAckType(MessageAck.STANDARD_ACK_TYPE);
+                    ack.setDestination(topic.getActiveMQDestination());
+                    topic.acknowledge(sub.getContext(), sub, ack, node);
+                }
+            }
+        } finally {
+            pending.release();
+        }
+
+        // verify everything has been cleared correctly, persistent and
+        // non-persistent
+        verifyPendingStats(topic, subKey, 0, 0);
+        // Memory usage should be 0 after removal
+        assertEquals(0, topic.getMemoryUsage().getUsage());
+    }
 }

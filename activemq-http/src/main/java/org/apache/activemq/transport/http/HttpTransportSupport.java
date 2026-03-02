@@ -27,10 +27,18 @@ import org.apache.activemq.transport.util.TextWireFormat;
  *
  */
 public abstract class HttpTransportSupport extends TransportThreadSupport {
+    private static final int DEFAULT_PROXY_PORT = 8080;
+    private static final String PROPERTY_PROXY_HOST = "proxyHost";
+    private static final String PROPERTY_NON_PROXY_HOST = "nonProxyHosts";
+    private static final String PROPERTY_PROXY_PORT = "proxyPort";
+    private static final String PROPERTY_PROXY_USER = "proxyUser";
+    private static final String PROPERTY_PROXY_PASSWORD = "proxyPassword";
+
     private TextWireFormat textWireFormat;
     private URI remoteUrl;
     private String proxyHost;
-    private int proxyPort = 8080;
+    private String nonProxyHosts;
+    private Integer proxyPort;
     private String proxyUser;
     private String proxyPassword;
 
@@ -62,15 +70,25 @@ public abstract class HttpTransportSupport extends TransportThreadSupport {
     }
 
     public String getProxyHost() {
-        return proxyHost;
+        return proxyHost != null ? proxyHost : getSystemProperty(PROPERTY_PROXY_HOST);
     }
 
     public void setProxyHost(String proxyHost) {
         this.proxyHost = proxyHost;
     }
 
+    public String getNonProxyHosts() {
+        return nonProxyHosts != null ? nonProxyHosts : getSystemProperty(PROPERTY_NON_PROXY_HOST);
+    }
+
+    public void setNonProxyHosts(String nonProxyHosts) {
+        this.nonProxyHosts = nonProxyHosts;
+    }
+
     public int getProxyPort() {
-        return proxyPort;
+        return proxyPort != null ? proxyPort
+                : (getSystemProperty(PROPERTY_PROXY_PORT) != null
+                        ? Integer.parseInt(getSystemProperty(PROPERTY_PROXY_PORT)) : DEFAULT_PROXY_PORT);
     }
 
     public void setProxyPort(int proxyPort) {
@@ -78,7 +96,7 @@ public abstract class HttpTransportSupport extends TransportThreadSupport {
     }
 
     public String getProxyUser() {
-       return proxyUser;
+       return proxyUser != null ? proxyUser : getSystemProperty(PROPERTY_PROXY_USER);
     }
 
     public void setProxyUser(String proxyUser) {
@@ -86,10 +104,17 @@ public abstract class HttpTransportSupport extends TransportThreadSupport {
     }
 
     public String getProxyPassword() {
-       return proxyPassword;
+       return proxyPassword != null ? proxyPassword : getSystemProperty(PROPERTY_PROXY_PASSWORD);
     }
 
     public void setProxyPassword(String proxyPassword) {
        this.proxyPassword = proxyPassword;
     }
+
+    protected abstract String getSystemPropertyPrefix();
+
+    private String getSystemProperty(String propertyName) {
+        return System.getProperty(getSystemPropertyPrefix() + propertyName);
+    }
+
 }

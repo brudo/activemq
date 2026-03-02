@@ -17,9 +17,9 @@
 package org.apache.activemq.bugs;
 
 import java.util.Arrays;
-import javax.jms.Connection;
-import javax.jms.Message;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.Message;
+import jakarta.jms.Session;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.TestSupport;
 import org.apache.activemq.broker.BrokerService;
@@ -31,6 +31,8 @@ import org.apache.activemq.command.ActiveMQQueue;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.slf4j.Logger;
@@ -40,6 +42,7 @@ import org.slf4j.LoggerFactory;
 import static org.junit.Assert.assertNotNull;
 
 @RunWith(Parameterized.class)
+@Category(ParallelTest.class)
 public class AMQ5863CompositePublishTest {
     static Logger LOG = LoggerFactory.getLogger(AMQ5863CompositePublishTest.class);
     String brokerUrl;
@@ -52,7 +55,6 @@ public class AMQ5863CompositePublishTest {
     public static Iterable<Object[]> parameters() {
         return Arrays.asList(new Object[][]{
                 {TestSupport.PersistenceAdapterChoice.KahaDB},
-                {TestSupport.PersistenceAdapterChoice.LevelDB},
                 {TestSupport.PersistenceAdapterChoice.JDBC}
         });
     }

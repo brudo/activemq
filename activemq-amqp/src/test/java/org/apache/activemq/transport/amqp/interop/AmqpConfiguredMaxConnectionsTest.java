@@ -28,15 +28,18 @@ import java.util.List;
 import org.apache.activemq.transport.amqp.client.AmqpClient;
 import org.apache.activemq.transport.amqp.client.AmqpClientTestSupport;
 import org.apache.activemq.transport.amqp.client.AmqpConnection;
+import org.apache.activemq.transport.amqp.ParallelTest;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
+import org.junit.experimental.categories.Category;
 
 /**
  * Test for the transportConnector maximumConnections URI option.
  */
 @RunWith(Parameterized.class)
+@Category(ParallelTest.class)
 public class AmqpConfiguredMaxConnectionsTest extends AmqpClientTestSupport {
 
     private static final int MAX_CONNECTIONS = 10;
@@ -68,6 +71,7 @@ public class AmqpConfiguredMaxConnectionsTest extends AmqpClientTestSupport {
         }
 
         assertEquals(MAX_CONNECTIONS, getProxyToBroker().getCurrentConnectionsCount());
+        assertEquals(Long.valueOf(0l), Long.valueOf(getProxyToConnectionView(getConnectorScheme()).getMaxConnectionExceededCount()));
 
         try {
             AmqpConnection connection = trackConnection(client.createConnection());
@@ -78,12 +82,17 @@ public class AmqpConfiguredMaxConnectionsTest extends AmqpClientTestSupport {
         }
 
         assertEquals(MAX_CONNECTIONS, getProxyToBroker().getCurrentConnectionsCount());
+        assertEquals(Long.valueOf(1l), Long.valueOf(getProxyToConnectionView(getConnectorScheme()).getMaxConnectionExceededCount()));
 
         for (AmqpConnection connection : connections) {
             connection.close();
         }
 
         assertEquals(0, getProxyToBroker().getCurrentConnectionsCount());
+
+        // Confirm reset statistics
+        getProxyToConnectionView(getConnectorScheme()).resetStatistics();
+        assertEquals(Long.valueOf(0l), Long.valueOf(getProxyToConnectionView(getConnectorScheme()).getMaxConnectionExceededCount()));
     }
 
     @Override

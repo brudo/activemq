@@ -16,6 +16,8 @@
  */
 package org.apache.activemq.openwire.v12;
 
+import static org.apache.activemq.openwire.OpenWireUtil.convertJmsPackage;
+
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
@@ -24,6 +26,7 @@ import org.apache.activemq.command.DataStructure;
 import org.apache.activemq.openwire.BooleanStream;
 import org.apache.activemq.openwire.DataStreamMarshaller;
 import org.apache.activemq.openwire.OpenWireFormat;
+import org.apache.activemq.openwire.OpenWireUtil;
 import org.apache.activemq.util.ByteSequence;
 
 public abstract class BaseDataStreamMarshaller implements DataStreamMarshaller {
@@ -174,10 +177,10 @@ public abstract class BaseDataStreamMarshaller implements DataStreamMarshaller {
         if (wireFormat.isCacheEnabled()) {
             Short index = wireFormat.getMarshallCacheIndex(o);
             if (bs.readBoolean()) {
-                dataOut.writeShort(index.shortValue());
+                dataOut.writeShort(index);
                 wireFormat.tightMarshalNestedObject2(o, dataOut, bs);
             } else {
-                dataOut.writeShort(index.shortValue());
+                dataOut.writeShort(index);
             }
         } else {
             wireFormat.tightMarshalNestedObject2(o, dataOut, bs);
@@ -196,10 +199,10 @@ public abstract class BaseDataStreamMarshaller implements DataStreamMarshaller {
                     for (int i = 0; i < ss.length; i++) {
                         try {
                             ss[i] = (StackTraceElement)STACK_TRACE_ELEMENT_CONSTRUCTOR
-                                .newInstance(new Object[] {tightUnmarshalString(dataIn, bs),
+                                .newInstance(new Object[] {convertJmsPackage(tightUnmarshalString(dataIn, bs)),
                                                            tightUnmarshalString(dataIn, bs),
                                                            tightUnmarshalString(dataIn, bs),
-                                                           Integer.valueOf(dataIn.readInt())});
+                                                           dataIn.readInt()});
                         } catch (IOException e) {
                             throw e;
                         } catch (Throwable e) {
@@ -226,9 +229,13 @@ public abstract class BaseDataStreamMarshaller implements DataStreamMarshaller {
 
     private Throwable createThrowable(String className, String message) {
         try {
+            className = convertJmsPackage(className);
             Class clazz = Class.forName(className, false, BaseDataStreamMarshaller.class.getClassLoader());
+            OpenWireUtil.validateIsThrowable(clazz);
             Constructor constructor = clazz.getConstructor(new Class[] {String.class});
             return (Throwable)constructor.newInstance(new Object[] {message});
+        } catch (IllegalArgumentException e) {
+            return e;
         } catch (Throwable e) {
             return new Throwable(className + ": " + message);
         }
@@ -405,10 +412,11 @@ public abstract class BaseDataStreamMarshaller implements DataStreamMarshaller {
         }
     }
 
-    protected byte[] tightUnmarshalByteArray(DataInput dataIn, BooleanStream bs) throws IOException {
+    protected byte[] tightUnmarshalByteArray(OpenWireFormat wireFormat, DataInput dataIn, BooleanStream bs) throws IOException {
         byte rc[] = null;
         if (bs.readBoolean()) {
             int size = dataIn.readInt();
+            OpenWireUtil.validateBufferSize(wireFormat, size);
             rc = new byte[size];
             dataIn.readFully(rc);
         }
@@ -432,10 +440,11 @@ public abstract class BaseDataStreamMarshaller implements DataStreamMarshaller {
         }
     }
 
-    protected ByteSequence tightUnmarshalByteSequence(DataInput dataIn, BooleanStream bs) throws IOException {
+    protected ByteSequence tightUnmarshalByteSequence(OpenWireFormat wireFormat, DataInput dataIn, BooleanStream bs) throws IOException {
         ByteSequence rc = null;
         if (bs.readBoolean()) {
             int size = dataIn.readInt();
+            OpenWireUtil.validateBufferSize(wireFormat, size);
             byte[] t = new byte[size];
             dataIn.readFully(t);
             return new ByteSequence(t, 0, size);
@@ -495,10 +504,10 @@ public abstract class BaseDataStreamMarshaller implements DataStreamMarshaller {
             dataOut.writeBoolean(index == null);
             if (index == null) {
                 index = wireFormat.addToMarshallCache(o);
-                dataOut.writeShort(index.shortValue());
+                dataOut.writeShort(index);
                 wireFormat.looseMarshalNestedObject(o, dataOut);
             } else {
-                dataOut.writeShort(index.shortValue());
+                dataOut.writeShort(index);
             }
         } else {
             wireFormat.looseMarshalNestedObject(o, dataOut);
@@ -517,10 +526,10 @@ public abstract class BaseDataStreamMarshaller implements DataStreamMarshaller {
                     for (int i = 0; i < ss.length; i++) {
                         try {
                             ss[i] = (StackTraceElement)STACK_TRACE_ELEMENT_CONSTRUCTOR
-                                .newInstance(new Object[] {looseUnmarshalString(dataIn),
+                                .newInstance(new Object[] {convertJmsPackage(looseUnmarshalString(dataIn)),
                                                            looseUnmarshalString(dataIn),
                                                            looseUnmarshalString(dataIn),
-                                                           Integer.valueOf(dataIn.readInt())});
+                                                           dataIn.readInt()});
                         } catch (IOException e) {
                             throw e;
                         } catch (Throwable e) {
@@ -612,10 +621,11 @@ public abstract class BaseDataStreamMarshaller implements DataStreamMarshaller {
         }
     }
 
-    protected byte[] looseUnmarshalByteArray(DataInput dataIn) throws IOException {
+    protected byte[] looseUnmarshalByteArray(OpenWireFormat wireFormat, DataInput dataIn) throws IOException {
         byte rc[] = null;
         if (dataIn.readBoolean()) {
             int size = dataIn.readInt();
+            OpenWireUtil.validateBufferSize(wireFormat, size);
             rc = new byte[size];
             dataIn.readFully(rc);
         }
@@ -631,10 +641,11 @@ public abstract class BaseDataStreamMarshaller implements DataStreamMarshaller {
         }
     }
 
-    protected ByteSequence looseUnmarshalByteSequence(DataInput dataIn) throws IOException {
+    protected ByteSequence looseUnmarshalByteSequence(OpenWireFormat wireFormat, DataInput dataIn) throws IOException {
         ByteSequence rc = null;
         if (dataIn.readBoolean()) {
             int size = dataIn.readInt();
+            OpenWireUtil.validateBufferSize(wireFormat, size);
             byte[] t = new byte[size];
             dataIn.readFully(t);
             rc = new ByteSequence(t, 0, size);

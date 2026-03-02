@@ -40,8 +40,7 @@ public class ActiveMQBrokerNdExternalCamelFeatureTest extends AbstractFeatureTes
         {
          configure("activemq"),
          // copy camel.xml into a temporary directory in karaf, so we later can hot-deploy it
-         replaceConfigurationFile("data/tmp/camel.xml", new File(RESOURCE_BASE + "camel.xml")),
-         editConfigurationFilePut("etc/system.properties", "camel.version", camelVersion())
+         replaceConfigurationFile("data/tmp/camel.xml", new File(RESOURCE_BASE + "camel.xml"))
         };
     }
 
@@ -50,13 +49,13 @@ public class ActiveMQBrokerNdExternalCamelFeatureTest extends AbstractFeatureTes
     public void test() throws Throwable {
         assertFeatureInstalled("activemq");
         installAndAssertFeature("camel");
-        installAndAssertFeature("activemq-camel");
+        installAndAssertFeature("camel-jms");
 
         assertBrokerStarted();
         withinReason(new Runnable() {
             @Override
             public void run() {
-                getBundle("org.apache.activemq.activemq-camel");
+                getBundle("org.apache.camel.camel-jms");
             }
         });
 

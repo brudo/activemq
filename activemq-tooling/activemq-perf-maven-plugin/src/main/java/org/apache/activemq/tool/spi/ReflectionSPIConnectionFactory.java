@@ -18,7 +18,7 @@ package org.apache.activemq.tool.spi;
 
 import java.util.Properties;
 
-import javax.jms.ConnectionFactory;
+import jakarta.jms.ConnectionFactory;
 
 import org.apache.activemq.tool.properties.ReflectionUtil;
 
@@ -26,7 +26,7 @@ public abstract class ReflectionSPIConnectionFactory extends ClassLoaderSPIConne
 
     public ConnectionFactory instantiateConnectionFactory(Properties settings) throws Exception {
         Class factoryClass = Thread.currentThread().getContextClassLoader().loadClass(getClassName());
-        ConnectionFactory factory = (ConnectionFactory)factoryClass.newInstance();
+        ConnectionFactory factory = ConnectionFactory.class.cast(factoryClass.getConstructor().newInstance());
         configureConnectionFactory(factory, settings);
         return factory;
     }

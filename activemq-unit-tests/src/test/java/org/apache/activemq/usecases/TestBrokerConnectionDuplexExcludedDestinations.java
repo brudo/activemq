@@ -19,15 +19,15 @@ package org.apache.activemq.usecases;
 
 import java.net.URI;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.DeliveryMode;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Queue;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 
 import junit.framework.TestCase;
 
@@ -48,33 +48,36 @@ public class TestBrokerConnectionDuplexExcludedDestinations extends TestCase {
 
     @Override
     public void setUp() throws Exception {
-        // Hub broker
+        // Hub broker - start first to get its port
         String configFileName = "org/apache/activemq/usecases/receiver-duplex.xml";
         URI uri = new URI("xbean:" + configFileName);
         receiverBroker = BrokerFactory.createBroker(uri);
         receiverBroker.setPersistent(false);
         receiverBroker.setBrokerName("Hub");
+        receiverBroker.start();
 
-        // Spoke broker
+        // Get hub's actual port and set it for the sender XML network connector
+        final int hubPort = receiverBroker.getTransportConnectors().get(0).getConnectUri().getPort();
+        System.setProperty("receiverPort", String.valueOf(hubPort));
+
+        // Spoke broker - created after hub starts so ${receiverPort} is resolved
         configFileName = "org/apache/activemq/usecases/sender-duplex.xml";
         uri = new URI("xbean:" + configFileName);
         senderBroker = BrokerFactory.createBroker(uri);
         senderBroker.setPersistent(false);
         senderBroker.setBrokerName("Spoke");
-
-        // Start both Hub and Spoke broker
-        receiverBroker.start();
         senderBroker.start();
 
-        // create hub session
-        ConnectionFactory cfHub = new ActiveMQConnectionFactory("tcp://localhost:62002");
+        final int spokePort = senderBroker.getTransportConnectors().get(0).getConnectUri().getPort();
 
+        // create hub session
+        final ConnectionFactory cfHub = new ActiveMQConnectionFactory("tcp://localhost:" + hubPort);
         hubConnection = cfHub.createConnection();
         hubConnection.start();
         hubSession = hubConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
 
         // create spoke session
-        ConnectionFactory cfSpoke = new ActiveMQConnectionFactory("tcp://localhost:62001");
+        final ConnectionFactory cfSpoke = new ActiveMQConnectionFactory("tcp://localhost:" + spokePort);
         spokeConnection = cfSpoke.createConnection();
         spokeConnection.start();
         spokeSession = spokeConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);

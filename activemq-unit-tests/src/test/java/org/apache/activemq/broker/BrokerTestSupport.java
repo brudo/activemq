@@ -25,8 +25,8 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.DeliveryMode;
-import javax.jms.MessageNotWriteableException;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.MessageNotWriteableException;
 
 import org.apache.activemq.CombinationTestSupport;
 import org.apache.activemq.broker.region.RegionBroker;
@@ -53,6 +53,8 @@ import org.apache.activemq.command.TransactionInfo;
 import org.apache.activemq.command.XATransactionId;
 import org.apache.activemq.store.PersistenceAdapter;
 import org.apache.activemq.usage.SystemUsage;
+
+
 
 public class BrokerTestSupport extends CombinationTestSupport {
 
@@ -84,6 +86,7 @@ public class BrokerTestSupport extends CombinationTestSupport {
         policyMap.setDefaultEntry(getDefaultPolicy());
         broker.setDestinationPolicy(policyMap);
         broker.start();
+        broker.waitUntilStarted();
     }
 
     protected PolicyEntry getDefaultPolicy() {
@@ -217,6 +220,11 @@ public class BrokerTestSupport extends CombinationTestSupport {
         return info;
     }
 
+    protected TransactionInfo createEndTransaction(ConnectionInfo connectionInfo, TransactionId txid) {
+        TransactionInfo info = new TransactionInfo(connectionInfo.getConnectionId(), txid, TransactionInfo.END);
+        return info;
+    }
+
     protected TransactionInfo createPrepareTransaction(ConnectionInfo connectionInfo, TransactionId txid) {
         TransactionInfo info = new TransactionInfo(connectionInfo.getConnectionId(), txid, TransactionInfo.PREPARE);
         return info;
@@ -340,7 +348,7 @@ public class BrokerTestSupport extends CombinationTestSupport {
                 return;
             }
             if (o instanceof MessageDispatch && ((MessageDispatch)o).getMessage() != null) {
-                fail("Received a message: "+((MessageDispatch)o).getMessage().getMessageId());
+                fail("Received a message: "+((MessageDispatch)o).getMessage().getMessageId() + " for: " + ((MessageDispatch)o).getMessage().getDestination().getPhysicalName());
             }
         }
     }

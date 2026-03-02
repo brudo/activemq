@@ -28,7 +28,6 @@ import org.apache.activemq.store.PersistenceAdapter;
 import org.apache.activemq.store.jdbc.JDBCPersistenceAdapter;
 import org.apache.activemq.store.kahadb.KahaDBPersistenceAdapter;
 import org.apache.activemq.store.kahadb.disk.journal.Journal;
-import org.apache.activemq.store.leveldb.LevelDBPersistenceAdapter;
 import org.apache.activemq.store.memory.MemoryPersistenceAdapter;
 import org.junit.After;
 import org.junit.Before;
@@ -37,10 +36,10 @@ import org.junit.rules.TestName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.Destination;
-import javax.jms.MessageListener;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.Destination;
+import jakarta.jms.MessageListener;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -190,10 +189,6 @@ public abstract class DurableSubscriptionOfflineTestBase {
                 LOG.debug(">>>> setPersistenceAdapter to KahaDB ");
                 adapter = new KahaDBPersistenceAdapter();
                 break;
-            case LevelDB:
-                LOG.debug(">>>> setPersistenceAdapter to LevelDB ");
-                adapter = new LevelDBPersistenceAdapter();
-                break;
             case MEM:
                 LOG.debug(">>>> setPersistenceAdapter to MEM ");
                 adapter = new MemoryPersistenceAdapter();
@@ -215,8 +210,10 @@ class DurableSubscriptionOfflineTestListener implements MessageListener {
         this.id = id;
     }
     @Override
-    public void onMessage(javax.jms.Message message) {
-        count++;
+    public void onMessage(jakarta.jms.Message message) {
+        synchronized (this) {
+            count++;
+        }
         if (id != null) {
             try {
                 LOG.info(id + ", " + message.getJMSMessageID());

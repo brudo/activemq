@@ -17,6 +17,9 @@
 
 package org.apache.activemq.usage;
 
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.Session;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.EmbeddedBrokerTestSupport;
 import org.apache.activemq.broker.BrokerService;
@@ -26,9 +29,6 @@ import org.apache.activemq.util.Wait;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.Session;
 import java.util.concurrent.TimeUnit;
 
 public class StoreUsageTest extends EmbeddedBrokerTestSupport {
@@ -37,7 +37,7 @@ public class StoreUsageTest extends EmbeddedBrokerTestSupport {
     @Override
     protected BrokerService createBroker() throws Exception {
         BrokerService broker = super.createBroker();
-        broker.getSystemUsage().getStoreUsage().setLimit(34 * 1024);
+        broker.getSystemUsage().getStoreUsage().setLimit(38 * 1024);
         broker.deleteAllMessages();
         return broker;
     }

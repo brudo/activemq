@@ -23,12 +23,12 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-import javax.jms.Queue;
-import javax.jms.Session;
-import javax.jms.Topic;
-import javax.resource.ResourceException;
-import javax.resource.spi.InvalidPropertyException;
-import javax.resource.spi.ResourceAdapter;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
+import jakarta.jms.Topic;
+import jakarta.resource.ResourceException;
+import jakarta.resource.spi.InvalidPropertyException;
+import jakarta.resource.spi.ResourceAdapter;
 
 import org.apache.activemq.RedeliveryPolicy;
 import org.apache.activemq.command.ActiveMQDestination;
@@ -147,25 +147,19 @@ public class ActiveMQActivationSpec implements MessageActivationSpec, Serializab
     }
 
     public boolean isValidUseRAManagedTransaction(List<String> errorMessages) {
-        try {
-            new Boolean(useRAManagedTransaction);
-            return true;
-        } catch (Throwable e) {
-            //
+        boolean valid = isValidBooleanString(useRAManagedTransaction); 
+        if(!valid) {
+            errorMessages.add("useRAManagedTransaction must be set to: true or false.");
         }
-        errorMessages.add("useRAManagedTransaction must be set to: true or false.");
-        return false;
+        return valid; 
     }
 
     public boolean isValidNoLocal(List<String> errorMessages) {
-        try {
-            new Boolean(noLocal);
-            return true;
-        } catch (Throwable e) {
-            //
+        boolean valid = isValidBooleanString(noLocal); 
+        if(!valid) {
+            errorMessages.add("noLocal must be set to: true or false.");
         }
-        errorMessages.add("noLocal must be set to: true or false.");
-        return false;
+        return valid;
     }
 
     public boolean isValidMessageSelector(List<String> errorMessages) {
@@ -217,14 +211,11 @@ public class ActiveMQActivationSpec implements MessageActivationSpec, Serializab
     }
 
     public boolean isValidEnableBatch(List<String> errorMessages) {
-        try {
-            new Boolean(enableBatch);
-            return true;
-        } catch (Throwable e) {
-            //
+        boolean valid = isValidBooleanString(enableBatch);
+        if(!valid) {
+            errorMessages.add("enableBatch must be set to: true or false");
         }
-        errorMessages.add("enableBatch must be set to: true or false");
-        return false;
+        return valid;
     }
 
     public ResourceAdapter getResourceAdapter() {
@@ -552,11 +543,11 @@ public class ActiveMQActivationSpec implements MessageActivationSpec, Serializab
     }
 
     public boolean isUseRAManagedTransactionEnabled() {
-        return Boolean.valueOf(useRAManagedTransaction).booleanValue();
+        return Boolean.valueOf(useRAManagedTransaction);
     }
 
     public boolean getNoLocalBooleanValue() {
-        return Boolean.valueOf(noLocal).booleanValue();
+        return Boolean.valueOf(noLocal);
     }
 
     public String getEnableBatch() {
@@ -573,7 +564,7 @@ public class ActiveMQActivationSpec implements MessageActivationSpec, Serializab
     }
 
     public boolean getEnableBatchBooleanValue() {
-        return Boolean.valueOf(enableBatch).booleanValue();
+        return Boolean.valueOf(enableBatch);
     }
 
     public int getMaxMessagesPerBatchIntValue() {
@@ -734,5 +725,9 @@ public class ActiveMQActivationSpec implements MessageActivationSpec, Serializab
 
     public void setKeyStoreKeyPassword(String keyStoreKeyPassword) {
         this.keyStoreKeyPassword = keyStoreKeyPassword;
+    }
+
+    private static boolean isValidBooleanString(String booleanString) {
+        return ("true".equalsIgnoreCase(booleanString) || ("false".equalsIgnoreCase(booleanString)));
     }
 }

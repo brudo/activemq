@@ -21,29 +21,32 @@ import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Vector;
 
-import javax.jms.BytesMessage;
-import javax.jms.ConnectionFactory;
-import javax.jms.DeliveryMode;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.MapMessage;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageEOFException;
-import javax.jms.MessageProducer;
-import javax.jms.ObjectMessage;
-import javax.jms.Session;
-import javax.jms.StreamMessage;
-import javax.jms.TextMessage;
+import jakarta.jms.BytesMessage;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.MapMessage;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageEOFException;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.ObjectMessage;
+import jakarta.jms.Session;
+import jakarta.jms.StreamMessage;
+import jakarta.jms.TextMessage;
 
 import junit.framework.Test;
 
 import org.apache.activemq.command.ActiveMQDestination;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  * Test cases used to test the JMS message consumer.
  *
  *
  */
+@Category(ParallelTest.class)
 public class JMSMessageTest extends JmsTestSupport {
 
     public ActiveMQDestination destination;
@@ -60,9 +63,9 @@ public class JMSMessageTest extends JmsTestSupport {
     public void initCombos() {
         addCombinationValues("connectURL", new Object[] {"vm://localhost?marshal=false",
                                                          "vm://localhost?marshal=true"});
-        addCombinationValues("deliveryMode", new Object[] {Integer.valueOf(DeliveryMode.NON_PERSISTENT),
-                                                           Integer.valueOf(DeliveryMode.PERSISTENT)});
-        addCombinationValues("destinationType", new Object[] {Byte.valueOf(ActiveMQDestination.QUEUE_TYPE)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT,
+                                                           DeliveryMode.PERSISTENT});
+        addCombinationValues("destinationType", new Object[] {ActiveMQDestination.QUEUE_TYPE});
     }
 
     public void testTextMessage() throws Exception {
@@ -374,6 +377,16 @@ public class JMSMessageTest extends JmsTestSupport {
         }
 
         @Override
+        public long getJMSDeliveryTime() throws JMSException {
+            return 0;
+        }
+
+        @Override
+        public void setJMSDeliveryTime(long l) throws JMSException {
+
+        }
+
+        @Override
         public int getJMSPriority() throws JMSException {
             return priority;
         }
@@ -486,6 +499,16 @@ public class JMSMessageTest extends JmsTestSupport {
 
         @Override
         public void clearBody() throws JMSException {
+        }
+
+        @Override
+        public <T> T getBody(Class<T> aClass) throws JMSException {
+            return null;
+        }
+
+        @Override
+        public boolean isBodyAssignableTo(Class aClass) throws JMSException {
+            return true;
         }
 
         @Override

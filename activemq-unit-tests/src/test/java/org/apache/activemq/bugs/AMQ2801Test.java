@@ -19,19 +19,18 @@ package org.apache.activemq.bugs;
 
 import static org.junit.Assert.*;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.jms.BytesMessage;
-import javax.jms.Connection;
-import javax.jms.DeliveryMode;
-import javax.jms.MessageConsumer;
-import javax.jms.Session;
-import javax.jms.Topic;
-import javax.jms.TopicConnection;
-import javax.jms.TopicPublisher;
-import javax.jms.TopicSession;
+import jakarta.jms.BytesMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.Session;
+import jakarta.jms.Topic;
+import jakarta.jms.TopicConnection;
+import jakarta.jms.TopicPublisher;
+import jakarta.jms.TopicSession;
 import javax.management.ObjectName;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
@@ -41,12 +40,15 @@ import org.apache.activemq.broker.region.policy.FilePendingQueueMessageStoragePo
 import org.apache.activemq.broker.region.policy.PolicyEntry;
 import org.apache.activemq.broker.region.policy.PolicyMap;
 import org.apache.activemq.usage.SystemUsage;
+import org.apache.activemq.test.annotations.ParallelTest;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+@Category(ParallelTest.class)
 public class AMQ2801Test
 {
     private static final Logger LOG = LoggerFactory.getLogger(AMQ2801Test.class);
@@ -71,7 +73,6 @@ public class AMQ2801Test
     @Before
     public void setUp() throws Exception {
         broker = new BrokerService();
-        broker.setDataDirectory("target" + File.separator + "activemq-data");
         broker.setPersistent(true);
         broker.setUseJmx(true);
         broker.setAdvisorySupport(false);
@@ -105,8 +106,12 @@ public class AMQ2801Test
 
     @After
     public void tearDown() throws Exception {
-        conn1.close();
-        conn2.close();
+        try {
+            conn1.close();
+            conn2.close();
+        } catch (Exception e) {
+            //swallow any error so broker can still be stopped
+        }
         if (broker != null) {
             broker.stop();
         }

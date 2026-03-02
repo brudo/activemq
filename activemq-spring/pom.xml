@@ -22,7 +22,7 @@
   <parent>
     <groupId>org.apache.activemq</groupId>
     <artifactId>activemq-parent</artifactId>
-    <version>5.16.0-SNAPSHOT</version>
+    <version>6.3.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>activemq-spring</artifactId>
@@ -31,7 +31,7 @@
 
   <properties>
     <activemq.osgi.import>
-      javax.transaction*;resolution:=optional,
+      jakarta.transaction*;resolution:=optional,
       org.apache.geronimo.transaction.manager*;resolution:=optional,
       org.springframework*;resolution:=optional
     </activemq.osgi.import>
@@ -39,6 +39,15 @@
 
   <dependencies>
 
+    <dependency>
+      <groupId>jakarta.annotation</groupId>
+      <artifactId>jakarta.annotation-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>jakarta.transaction</groupId>
+      <artifactId>jakarta.transaction-api</artifactId>
+      <optional>true</optional>
+    </dependency>
     <!-- =============================== -->
     <!-- Required Dependencies -->
     <!-- =============================== -->
@@ -69,16 +78,6 @@
       <artifactId>activemq-kahadb-store</artifactId>
       <optional>true</optional>
     </dependency>
-    <dependency>
-      <groupId>${project.groupId}</groupId>
-      <artifactId>activeio-core</artifactId>
-      <optional>true</optional>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.activemq</groupId>
-      <artifactId>activemq-leveldb-store</artifactId>
-      <optional>true</optional>
-    </dependency>
     
     <!-- add the optional replication deps -->
     <dependency>
@@ -88,43 +87,17 @@
       <scope>provided</scope>
     </dependency>
     <dependency>
-      <groupId>org.linkedin</groupId>
-      <artifactId>org.linkedin.zookeeper-impl</artifactId>
-      <version>${linkedin-zookeeper-version}</version>
-      <scope>provided</scope>
-      <exclusions>
-        <exclusion>
-          <groupId>org.json</groupId>
-          <artifactId>json</artifactId>
-        </exclusion>
-      </exclusions>
-    </dependency>
-    <dependency>
-      <groupId>org.linkedin</groupId>
-      <artifactId>org.linkedin.util-core</artifactId>
-      <version>${linkedin-zookeeper-version}</version>
-      <scope>provided</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.zookeeper</groupId>
-      <artifactId>zookeeper</artifactId>
-      <version>${zookeeper-version}</version>
-      <scope>provided</scope>
-    </dependency>
-    <dependency>
       <groupId>org.osgi</groupId>
-      <artifactId>org.osgi.core</artifactId>
+      <artifactId>osgi.core</artifactId>
       <scope>provided</scope>
       <optional>true</optional>
     </dependency>
     <dependency>
       <groupId>org.osgi</groupId>
-      <artifactId>org.osgi.compendium</artifactId>
-      <version>${org.osgi.core-version}</version>
+      <artifactId>osgi.cmpn</artifactId>
       <scope>provided</scope>
     </dependency>
 
-    
     <dependency>
       <groupId>org.apache.activemq</groupId>
       <artifactId>activemq-mqtt</artifactId>
@@ -141,17 +114,52 @@
     </dependency>
     <dependency>
       <groupId>org.apache.geronimo.components</groupId>
+      <artifactId>geronimo-connector</artifactId>
+      <classifier>jakarta</classifier>
+      <version>3.1.5</version>
+      <scope>test</scope>
+      <optional>true</optional>
+      <exclusions>
+        <exclusion>
+                <groupId>org.apache.geronimo.specs</groupId>
+                <artifactId>geronimo-jta_1.1_spec</artifactId>
+        </exclusion>
+        <exclusion>
+                <groupId>org.apache.geronimo.specs</groupId>
+                <artifactId>geronimo-j2ee-connector_1.6_spec</artifactId>
+        </exclusion>
+        <exclusion>
+        	<groupId>org.apache.geronimo.components</groupId>
+        	<artifactId>geronimo-transaction</artifactId>
+        </exclusion>
+        <exclusion>
+        	<groupId>org.apache.geronimo.specs</groupId>
+        	<artifactId>geronimo-validation_1.0_spec</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.geronimo.components</groupId>
       <artifactId>geronimo-transaction</artifactId>
+      <classifier>jakarta</classifier>
+      <scope>test</scope>
       <optional>true</optional>
+      <exclusions>
+      	<exclusion>
+      		<groupId>org.apache.geronimo.specs</groupId>
+      		<artifactId>geronimo-j2ee-connector_1.6_spec</artifactId>
+      	</exclusion>
+      	<exclusion>
+      		<groupId>org.apache.geronimo.specs</groupId>
+      		<artifactId>geronimo-jta_1.1_spec</artifactId>
+      	</exclusion>
+      </exclusions>
     </dependency>
     <dependency>
-      <groupId>org.apache.geronimo.specs</groupId>
-      <artifactId>geronimo-jta_1.0.1B_spec</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.geronimo.specs</groupId>
-      <artifactId>geronimo-annotation_1.0_spec</artifactId>
-      <optional>true</optional>
+        <groupId>org.objectweb.howl</groupId>
+        <artifactId>howl</artifactId>
+        <version>1.0.1-1</version>
+        <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.apache.commons</groupId>
@@ -184,19 +192,21 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>log4j</groupId>
-      <artifactId>log4j</artifactId>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-core</artifactId>
       <scope>test</scope>
     </dependency>
+    <!--
     <dependency>
       <groupId>org.jencks</groupId>
       <artifactId>jencks</artifactId>
       <version>2.2</version>
       <scope>test</scope>
     </dependency>
+    -->
     <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-log4j12</artifactId>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-slf4j2-impl</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -211,7 +221,7 @@
       <plugin>
         <groupId>org.apache.xbean</groupId>
         <artifactId>maven-xbean-plugin</artifactId>
-        <version>3.12</version>
+        <version>${xbean-version}</version>
         <executions>
           <execution>
             <phase>process-classes</phase>
@@ -219,13 +229,10 @@
               <includes>
                 <include>${basedir}/../activemq-client/src/main/java</include>
                 <include>${basedir}/../activemq-broker/src/main/java</include>
-                <include>${basedir}/../activemq-camel/src/main/java</include>
-                <include>${basedir}/../activemq-leveldb-store/src/main/java</include>
                 <include>${basedir}/../activemq-jdbc-store/src/main/java</include>
                 <include>${basedir}/../activemq-kahadb-store/src/main/java</include>
                 <include>${basedir}/../activemq-mqtt/src/main/java</include>
                 <include>${basedir}/../activemq-stomp/src/main/java</include>
-                <include>${basedir}/../activemq-partition/src/main/java</include>
                 <include>${basedir}/../activemq-runtime-config/src/main/java</include>
               </includes>
               <strictXsdOrder>false</strictXsdOrder>
@@ -244,9 +251,35 @@
           <dependency>
             <groupId>com.thoughtworks.qdox</groupId>
             <artifactId>qdox</artifactId>
-            <version>1.12</version>
+            <version>1.12.1</version>
           </dependency>
         </dependencies>
+      </plugin>
+      <plugin><!-- workaround for https://issues.apache.org/jira/browse/XBEAN-335 -->
+        <groupId>com.google.code.maven-replacer-plugin</groupId>
+        <artifactId>replacer</artifactId>
+        <version>1.5.3</version>
+        <executions>
+          <execution>
+            <phase>process-classes</phase>
+            <goals>
+              <goal>replace</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <basedir>${project.build.directory}/classes/META-INF</basedir>
+          <includes>
+            <include>spring.*</include>
+          </includes>
+          <replacements>
+            <replacement>
+              <token>#... ... .+</token>
+              <value>#</value>
+            </replacement>
+          </replacements>
+          <regex>true</regex>
+        </configuration>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -282,29 +315,29 @@
     </plugins>
   </build>
 
-    <profiles>
-      <profile>
-        <id>activemq.tests-sanity</id>
-        <activation>
-          <property>
-            <name>activemq.tests</name>
-            <value>smoke</value>
-          </property>
-        </activation>
-        <build>
-          <plugins>
-            <plugin>
-              <artifactId>maven-surefire-plugin</artifactId>
-              <configuration>
-                <includes>
-                  <include>**/SpringBrokerFactoryTest.*</include>
-                </includes>
-              </configuration>
-            </plugin>
-          </plugins>
-        </build>
-      </profile>
-	<profile>
+  <profiles>
+    <profile>
+      <id>activemq.tests-sanity</id>
+      <activation>
+        <property>
+          <name>activemq.tests</name>
+          <value>smoke</value>
+        </property>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <includes>
+                <include>**/SpringBrokerFactoryTest.*</include>
+              </includes>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
       <id>activemq.tests-autoTransport</id>
       <activation>
         <property>
@@ -325,110 +358,6 @@
         </plugins>
       </build>
     </profile>
-
-        <profile>
-            <id>activemq.tests.windows.excludes</id>
-            <activation>
-                <os>
-                    <family>Windows</family>
-                </os>
-            </activation>
-            <build>
-                <plugins>
-                    <plugin>
-                        <artifactId>maven-surefire-plugin</artifactId>
-                        <configuration>
-                            <excludes combine.children="append">
-                                <exclude>**/LevelDBConfigTest.*</exclude>
-                            </excludes>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-        <profile>
-            <id>activemq.tests.solaris.excludes</id>
-            <activation>
-                <property>
-                    <name>os.name</name>
-                    <value>SunOS</value>
-                </property>
-            </activation>
-            <build>
-                <plugins>
-                    <plugin>
-                        <artifactId>maven-surefire-plugin</artifactId>
-                        <configuration>
-                            <excludes combine.children="append">
-                                <exclude>**/LevelDBConfigTest.*</exclude>
-                            </excludes>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-        <profile>
-            <id>activemq.tests.aix.excludes</id>
-            <activation>
-                <property>
-                    <name>os.name</name>
-                    <value>AIX</value>
-                </property>
-            </activation>
-            <build>
-                <plugins>
-                    <plugin>
-                        <artifactId>maven-surefire-plugin</artifactId>
-                        <configuration>
-                            <excludes combine.children="append">
-                                <exclude>**/LevelDBConfigTest.*</exclude>
-                            </excludes>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-        <profile>
-            <id>activemq.tests.mac.excludes</id>
-            <activation>
-                <os>
-                    <family>mac</family>
-                </os>
-            </activation>
-            <build>
-                <plugins>
-                    <plugin>
-                        <artifactId>maven-surefire-plugin</artifactId>
-                        <configuration>
-                            <excludes combine.children="append">
-                                <exclude>**/LevelDBConfigTest.*</exclude>
-                            </excludes>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-        <profile>
-            <id>activemq.tests.hpux.excludes</id>
-            <activation>
-                <os>
-                    <family>HP-UX</family>
-                </os>
-            </activation>
-            <build>
-                <plugins>
-                    <plugin>
-                        <artifactId>maven-surefire-plugin</artifactId>
-                        <configuration>
-                            <excludes combine.children="append">
-                                <exclude>**/LevelDBConfigTest.*</exclude>
-                            </excludes>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-    </profiles>
-
+  </profiles>
 
 </project>

@@ -20,6 +20,7 @@ import java.beans.Transient;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.ObjectStreamException;
 import java.io.OutputStream;
 import java.util.Collections;
 import java.util.HashMap;
@@ -27,7 +28,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.DeflaterOutputStream;
 
-import javax.jms.JMSException;
+import jakarta.jms.JMSException;
 
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.advisory.AdvisorySupport;
@@ -62,6 +63,7 @@ public abstract class Message extends BaseCommand implements MarshallAware, Mess
     protected ActiveMQDestination destination;
     protected TransactionId transactionId;
 
+    protected long deliveryTime;
     protected long expiration;
     protected long timestamp;
     protected long arrival;
@@ -79,7 +81,7 @@ public abstract class Message extends BaseCommand implements MarshallAware, Mess
     protected String userID;
 
     protected ByteSequence content;
-    protected ByteSequence marshalledProperties;
+    protected volatile ByteSequence marshalledProperties;
     protected DataStructure dataStructure;
     protected int redeliveryCounter;
 
@@ -110,21 +112,21 @@ public abstract class Message extends BaseCommand implements MarshallAware, Mess
     public abstract void storeContent();
     public abstract void storeContentAndClear();
 
-    /**
-     * @deprecated - This method name is misnamed
-     * @throws JMSException
-     */
-    public void clearMarshalledState() throws JMSException {
-        clearUnMarshalledState();
-    }
-
     // useful to reduce the memory footprint of a persisted message
     public void clearUnMarshalledState() throws JMSException {
         properties = null;
     }
 
     public boolean isMarshalled() {
-        return content != null && (marshalledProperties != null || properties == null);
+        return isContentMarshalled() && isPropertiesMarshalled();
+    }
+
+    protected boolean isPropertiesMarshalled() {
+        return marshalledProperties != null || properties == null;
+    }
+
+    protected boolean isContentMarshalled() {
+        return content != null;
     }
 
     protected void copy(Message copy) {
@@ -135,6 +137,7 @@ public abstract class Message extends BaseCommand implements MarshallAware, Mess
         copy.messageId = messageId != null ? messageId.copy() : null;
         copy.originalDestination = originalDestination;
         copy.originalTransactionId = originalTransactionId;
+        copy.deliveryTime = deliveryTime;
         copy.expiration = expiration;
         copy.timestamp = timestamp;
         copy.correlationId = correlationId;
@@ -855,5 +858,17 @@ public abstract class Message extends BaseCommand implements MarshallAware, Mess
     @Override
     public boolean canProcessAsExpired() {
         return processAsExpired.compareAndSet(false, true);
+    }
+
+    /**
+     * Initialize the transient fields at deserialization to get a normal state.
+     *
+     * @see <a href="https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/io/Serializable.html">Serializable Javadoc</a>
+     */
+    protected Object readResolve() throws ObjectStreamException {
+        if (this.processAsExpired == null) {
+            this.processAsExpired = new AtomicBoolean();
+        }
+        return this;
     }
 }

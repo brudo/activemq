@@ -23,12 +23,12 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
-import javax.jms.TextMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.TextMessage;
 import javax.naming.Context;
 import javax.naming.InitialContext;
 import javax.naming.NamingException;
@@ -49,7 +49,7 @@ import org.apache.activemq.command.ActiveMQTopic;
  * @since 2007-08-10
  * @version $Id: ActiveMQTestCase.java 12 2007-08-14 12:02:02Z rke $
  */
-public class ActiveMQTestCase extends TestCase
+public abstract class ActiveMQTestCase extends TestCase
 {
     private Context context;
     private BrokerService broker;

@@ -20,12 +20,12 @@ package org.apache.activemq.store.jdbc;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 
-import javax.jms.DeliveryMode;
-import javax.jms.Destination;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Destination;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 
 import junit.framework.TestCase;
 
@@ -76,23 +76,27 @@ public class JDBCCommitExceptionTest extends TestCase {
         broker.stop();
     }
 
-     protected void dumpMessages() throws Exception {
+     protected int dumpMessages() throws Exception {
+        int count = 0;
         WireFormat wireFormat = new OpenWireFormat();
         java.sql.Connection conn = ((JDBCPersistenceAdapter) broker.getPersistenceAdapter()).getDataSource().getConnection();
-        PreparedStatement statement = conn.prepareStatement("SELECT ID, MSG FROM ACTIVEMQ_MSGS");
+        PreparedStatement statement = conn.prepareStatement("SELECT ID, XID, MSG FROM ACTIVEMQ_MSGS");
         ResultSet result = statement.executeQuery();
         LOG.info("Messages left in broker after test");
         while(result.next()) {
             long id = result.getLong(1);
-            org.apache.activemq.command.Message message = (org.apache.activemq.command.Message)wireFormat.unmarshal(new ByteSequence(result.getBytes(2)));
-            LOG.info("id: " + id + ", message SeqId: " + message.getMessageId().getBrokerSequenceId() + ", MSG: " + message);
+            String xid = result.getString(2);
+            org.apache.activemq.command.Message message = (org.apache.activemq.command.Message)wireFormat.unmarshal(new ByteSequence(result.getBytes(3)));
+            LOG.info("id: " + id + ", xid: " + xid + ", message SeqId: " + message.getMessageId().getBrokerSequenceId() + ", MSG: " + message);
+            count++;
         }
         statement.close();
         conn.close();
+        return count;
     }
 
     protected int receiveMessages(int messagesExpected) throws Exception {
-        javax.jms.Connection connection = factory.createConnection();
+        jakarta.jms.Connection connection = factory.createConnection();
         connection.start();
         Session session = connection.createSession(true, Session.SESSION_TRANSACTED);
 
@@ -135,7 +139,7 @@ public class JDBCCommitExceptionTest extends TestCase {
     }
 
     protected void sendMessages(int messagesExpected) throws Exception {
-        javax.jms.Connection connection = factory.createConnection();
+        jakarta.jms.Connection connection = factory.createConnection();
         connection.start();
         Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
         Destination destination = session.createQueue("TEST");
@@ -151,6 +155,7 @@ public class JDBCCommitExceptionTest extends TestCase {
     protected BrokerService createBroker() throws Exception {
 
         BrokerService broker = new BrokerService();
+        broker.setAdvisorySupport(false);
         jdbc = new BrokenPersistenceAdapter();
 
         jdbc.setUseLock(false);

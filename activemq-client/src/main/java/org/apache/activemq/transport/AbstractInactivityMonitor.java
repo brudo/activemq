@@ -18,7 +18,10 @@ package org.apache.activemq.transport;
 
 import java.io.IOException;
 import java.util.Timer;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -42,6 +45,9 @@ import org.slf4j.LoggerFactory;
 public abstract class AbstractInactivityMonitor extends TransportFilter {
 
     private static final Logger LOG = LoggerFactory.getLogger(AbstractInactivityMonitor.class);
+
+    public static final String READ_CHECK_THREAD_NAME = "ActiveMQ InactivityMonitor ReadCheckTimer";
+    public static final String WRITE_CHECK_THREAD_NAME = "ActiveMQ InactivityMonitor WriteCheckTimer";
 
     private static final long DEFAULT_CHECK_TIME_MILLS = 30000;
 
@@ -217,8 +223,7 @@ public abstract class AbstractInactivityMonitor extends TransportFilter {
                 });
             } catch (RejectedExecutionException ex) {
                 if (!ASYNC_TASKS.isShutdown()) {
-                    LOG.error("Async write check was rejected from the executor: ", ex);
-                    throw ex;
+                    LOG.warn("Async write check was rejected from the executor: ", ex);
                 }
             }
         } else {
@@ -253,13 +258,12 @@ public abstract class AbstractInactivityMonitor extends TransportFilter {
                 });
             } catch (RejectedExecutionException ex) {
                 if (!ASYNC_TASKS.isShutdown()) {
-                    LOG.error("Async read check was rejected from the executor: ", ex);
-                    throw ex;
+                    LOG.warn("Async read check was rejected from the executor: ", ex);
                 }
             }
         } else {
             if (LOG.isTraceEnabled()) {
-                LOG.trace("Message received since last read check, resetting flag: ");
+                LOG.trace("Message received since last read check, resetting flag: {}", this);
             }
         }
         commandReceived.set(false);
@@ -418,7 +422,7 @@ public abstract class AbstractInactivityMonitor extends TransportFilter {
                         ASYNC_TASKS = createExecutor();
                     }
                     if (READ_CHECK_TIMER == null) {
-                        READ_CHECK_TIMER = new Timer("ActiveMQ InactivityMonitor ReadCheckTimer", true);
+                        READ_CHECK_TIMER = new Timer(READ_CHECK_THREAD_NAME, true);
                     }
                 }
                 CHECKER_COUNTER++;
@@ -427,17 +431,26 @@ public abstract class AbstractInactivityMonitor extends TransportFilter {
         }
     }
 
-    public synchronized void stopConnectCheckTask() {
+    /**
+     * Stops the Connect checker task is if it is running.
+     * If the task was already stopped this method
+     * will return false.
+     *
+     * @return true if the task was stopped, else false
+     */
+    public synchronized boolean stopConnectCheckTask() {
         if (connectCheckerTask != null) {
             LOG.trace("Stopping connection check task for: {}", this);
             connectCheckerTask.cancel();
             connectCheckerTask = null;
 
             synchronized (AbstractInactivityMonitor.class) {
-                READ_CHECK_TIMER.purge();
+                purgeTimers(READ_CHECK_TIMER);
                 CHECKER_COUNTER--;
             }
+            return true;
         }
+        return false;
     }
 
     protected synchronized void startMonitorThreads() throws IOException {
@@ -464,10 +477,10 @@ public abstract class AbstractInactivityMonitor extends TransportFilter {
                     ASYNC_TASKS = createExecutor();
                 }
                 if (READ_CHECK_TIMER == null) {
-                    READ_CHECK_TIMER = new Timer("ActiveMQ InactivityMonitor ReadCheckTimer", true);
+                    READ_CHECK_TIMER = new Timer(READ_CHECK_THREAD_NAME, true);
                 }
                 if (WRITE_CHECK_TIMER == null) {
-                    WRITE_CHECK_TIMER = new Timer("ActiveMQ InactivityMonitor WriteCheckTimer", true);
+                    WRITE_CHECK_TIMER = new Timer(WRITE_CHECK_THREAD_NAME, true);
                 }
 
                 CHECKER_COUNTER++;
@@ -482,26 +495,35 @@ public abstract class AbstractInactivityMonitor extends TransportFilter {
     }
 
     protected synchronized void stopMonitorThreads() {
-        stopConnectCheckTask();
-        if (monitorStarted.compareAndSet(true, false)) {
-            if (readCheckerTask != null) {
-                readCheckerTask.cancel();
-            }
-            if (writeCheckerTask != null) {
-                writeCheckerTask.cancel();
-            }
+        final boolean stoppedConnectTask = stopConnectCheckTask();
+        final boolean stoppingMonitor = monitorStarted.compareAndSet(true, false);
 
+        // If the monitor threads are stopping then cancel the tasks
+        if (stoppingMonitor) {
+            cancelTasks(readCheckerTask, writeCheckerTask);
+        }
+
+        // If either the connect task was stopped or the monitor
+        // threads were stopped then the CHECKER_COUNTER static variable
+        // needs to be checked to see if it is 0. If it is 0 then
+        // the timer threads and thread pool should also be shut down.
+        if (stoppedConnectTask || stoppingMonitor) {
             synchronized (AbstractInactivityMonitor.class) {
-                WRITE_CHECK_TIMER.purge();
-                READ_CHECK_TIMER.purge();
-                CHECKER_COUNTER--;
+                // If we are stopping the monitor threads then purge
+                // the timers and decrement the counter.
+                if (stoppingMonitor) {
+                    purgeTimers(WRITE_CHECK_TIMER, READ_CHECK_TIMER, null);
+                    CHECKER_COUNTER--;
+                }
+
+                // There are no active checker tasks so cancel any active
+                // timer threads and shutdown the executor
                 if (CHECKER_COUNTER == 0) {
-                    WRITE_CHECK_TIMER.cancel();
-                    READ_CHECK_TIMER.cancel();
+                    cancelTimers(WRITE_CHECK_TIMER, READ_CHECK_TIMER);
                     WRITE_CHECK_TIMER = null;
                     READ_CHECK_TIMER = null;
                     try {
-                        ThreadPoolUtils.shutdownGraceful(ASYNC_TASKS, TimeUnit.SECONDS.toMillis(10));
+                        ThreadPoolUtils.shutdownGraceful(ASYNC_TASKS, 0);
                     } finally {
                         ASYNC_TASKS = null;
                     }
@@ -510,22 +532,73 @@ public abstract class AbstractInactivityMonitor extends TransportFilter {
         }
     }
 
+    private static void purgeTimers(Timer... timers) {
+        for (Timer timer : timers) {
+            if (timer != null) {
+                timer.purge();
+            }
+        }
+    }
+
+    private static void cancelTimers(Timer... timers) {
+        for (Timer timer : timers) {
+            if (timer != null) {
+                timer.cancel();
+            }
+        }
+    }
+
+    private static void cancelTasks(SchedulerTimerTask... tasks) {
+        for (SchedulerTimerTask task : tasks) {
+            if (task != null) {
+                task.cancel();
+            }
+        }
+    }
+
     private final ThreadFactory factory = new ThreadFactory() {
+        private long i = 0;
         @Override
         public Thread newThread(Runnable runnable) {
-            Thread thread = new Thread(runnable, "ActiveMQ InactivityMonitor Worker");
+            Thread thread = new Thread(runnable, "ActiveMQ InactivityMonitor Worker " + (i++));
             thread.setDaemon(true);
             return thread;
         }
     };
 
     private ThreadPoolExecutor createExecutor() {
-        ThreadPoolExecutor exec = new ThreadPoolExecutor(0, Integer.MAX_VALUE, getDefaultKeepAliveTime(), TimeUnit.SECONDS, new SynchronousQueue<Runnable>(), factory);
+        ThreadPoolExecutor exec = new ThreadPoolExecutor(getDefaultCorePoolSize(), getDefaultMaximumPoolSize(), getDefaultKeepAliveTime(),
+                TimeUnit.SECONDS, newWorkQueue(), factory, newRejectionHandler());
         exec.allowCoreThreadTimeOut(true);
         return exec;
     }
 
     private static int getDefaultKeepAliveTime() {
         return Integer.getInteger("org.apache.activemq.transport.AbstractInactivityMonitor.keepAliveTime", 30);
+    }
+
+    private static int getDefaultCorePoolSize() {
+        return Integer.getInteger("org.apache.activemq.transport.AbstractInactivityMonitor.corePoolSize", 0);
+    }
+
+    private static int getDefaultMaximumPoolSize() {
+        return Integer.getInteger("org.apache.activemq.transport.AbstractInactivityMonitor.maximumPoolSize", Integer.MAX_VALUE);
+    }
+
+    private static int getDefaultWorkQueueCapacity() {
+        return Integer.getInteger("org.apache.activemq.transport.AbstractInactivityMonitor.workQueueCapacity", 0);
+    }
+
+    private static boolean canRejectWork() {
+        return Boolean.getBoolean("org.apache.activemq.transport.AbstractInactivityMonitor.rejectWork");
+    }
+
+    private BlockingQueue<Runnable> newWorkQueue() {
+        final int workQueueCapacity = getDefaultWorkQueueCapacity();
+        return workQueueCapacity > 0 ? new LinkedBlockingQueue<Runnable>(workQueueCapacity) : new SynchronousQueue<Runnable>();
+    }
+
+    private RejectedExecutionHandler newRejectionHandler() {
+        return canRejectWork() ? new ThreadPoolExecutor.AbortPolicy() : new ThreadPoolExecutor.CallerRunsPolicy();
     }
 }

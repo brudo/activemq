@@ -16,7 +16,7 @@
  */
 package org.apache.activemq.karaf.itest;
 
-import javax.jms.Connection;
+import jakarta.jms.Connection;
 
 import org.apache.qpid.jms.JmsConnectionFactory;
 import org.junit.Test;
@@ -32,7 +32,7 @@ public class ActiveMQAMQPBrokerFeatureTest extends AbstractFeatureTest {
         return new Option[] //
         {
          CoreOptions.mavenBundle("org.apache.geronimo.specs","geronimo-jms_2.0_spec").version("1.0-alpha-2"),
-         configure("activemq", "activemq-amqp-client"), //
+         configure("activemq", "activemq-shell", "activemq-amqp-client"), //
          configureBrokerStart()
         };
     }

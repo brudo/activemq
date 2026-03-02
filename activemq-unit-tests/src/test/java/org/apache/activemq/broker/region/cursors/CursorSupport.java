@@ -26,16 +26,16 @@ import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageListener;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageListener;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 
 /**
  *
@@ -87,10 +87,10 @@ public abstract class CursorSupport extends CombinationTestSupport {
 
 
     public void initCombosForTestSendWhilstConsume() {
-        addCombinationValues("MESSAGE_COUNT", new Object[] {Integer.valueOf(400),
-                                                           Integer.valueOf(500)});
-        addCombinationValues("PREFETCH_SIZE", new Object[] {Integer.valueOf(100),
-                Integer.valueOf(50)});
+        addCombinationValues("MESSAGE_COUNT", new Object[] {400,
+                                                           500});
+        addCombinationValues("PREFETCH_SIZE", new Object[] {100,
+                50});
     }
 
     public void testSendWhilstConsume() throws Exception {

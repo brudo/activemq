@@ -18,20 +18,23 @@
 
 
 package org.apache.activemq.bugs;
-import javax.jms.Connection;
-import javax.jms.DeliveryMode;
-import javax.jms.JMSException;
-import javax.jms.MapMessage;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.Topic;
+import jakarta.jms.Connection;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.JMSException;
+import jakarta.jms.MapMessage;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.Topic;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.EmbeddedBrokerTestSupport;
 import org.apache.activemq.broker.BrokerService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class ConnectionPerMessageTest extends EmbeddedBrokerTestSupport {
 
 	private static final Logger LOG = LoggerFactory.getLogger(ConnectionPerMessageTest.class);
@@ -48,7 +51,7 @@ public class ConnectionPerMessageTest extends EmbeddedBrokerTestSupport {
 		for (int i = 0; i < COUNT; i++) {
 
 			if (i % 100 == 0) {
-				LOG.info(new Integer(i).toString());
+				LOG.info(Integer.toString(i));
 			}
 
 			Connection conn = null;

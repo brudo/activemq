@@ -23,8 +23,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.StringJoiner;
 
-import javax.jms.JMSException;
+import jakarta.jms.JMSException;
+import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
@@ -41,7 +43,7 @@ public final class XPathExpression implements BooleanExpression {
 
     private static final Logger LOG = LoggerFactory.getLogger(XPathExpression.class);
     private static final String EVALUATOR_SYSTEM_PROPERTY = "org.apache.activemq.XPathEvaluatorClassName";
-    private static final String DEFAULT_EVALUATOR_CLASS_NAME = "org.apache.activemq.filter.XalanXPathEvaluator";
+    private static final String DEFAULT_EVALUATOR_CLASS_NAME = "org.apache.activemq.filter.JAXPXPathEvaluator";
     public static final String DOCUMENT_BUILDER_FACTORY_FEATURE = "org.apache.activemq.documentBuilderFactory.feature";
 
     private static final Constructor EVALUATOR_CONSTRUCTOR;
@@ -59,6 +61,7 @@ public final class XPathExpression implements BooleanExpression {
                 builderFactory.setIgnoringComments(true);
                 try {
                     // set some reasonable defaults
+                    builderFactory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, Boolean.TRUE);
                     builderFactory.setFeature("http://xml.org/sax/features/external-general-entities", false);
                     builderFactory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
                     builderFactory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
@@ -118,15 +121,14 @@ public final class XPathExpression implements BooleanExpression {
                 }
             }
         }
-        if (features.size() > 0) {
-            StringBuffer featureString = new StringBuffer();
+
+        if (LOG.isTraceEnabled() && !features.isEmpty()) {
+            StringJoiner featureString = new StringJoiner(", ");
             // just log the configured feature
             for (String feature : features) {
-                if (featureString.length() != 0) {
-                    featureString.append(", ");
-                }
-                featureString.append(feature);
+                featureString.add(feature);
             }
+            LOG.trace("Configured features {}", featureString);
         }
 
     }

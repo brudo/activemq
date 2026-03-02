@@ -24,7 +24,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.StringTokenizer;
 
-import javax.jms.ConnectionFactory;
+import jakarta.jms.ConnectionFactory;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,14 +57,14 @@ public abstract class ClassLoaderSPIConnectionFactory implements SPIConnectionFa
                     } else {
                         LOG.info("Adding extension dir: " + f.getAbsolutePath());
 
-                        urls.add(f.toURL());
+                        urls.add(f.toURI().toURL());
 
                         File[] files = f.listFiles();
                         if (files != null) {
                             for (int j = 0; j < files.length; j++) {
                                 if (files[j].getName().endsWith(".zip") || files[j].getName().endsWith(".jar")) {
                                     LOG.info("Adding extension dir: " + files[j].getAbsolutePath());
-                                    urls.add(files[j].toURL());
+                                    urls.add(files[j].toURI().toURL());
                                 }
                             }
                         }

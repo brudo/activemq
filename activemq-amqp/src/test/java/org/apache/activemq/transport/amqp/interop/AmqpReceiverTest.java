@@ -41,6 +41,7 @@ import org.apache.activemq.transport.amqp.client.AmqpReceiver;
 import org.apache.activemq.transport.amqp.client.AmqpSession;
 import org.apache.activemq.transport.amqp.client.AmqpUnknownFilterType;
 import org.apache.activemq.transport.amqp.client.AmqpValidator;
+import org.apache.activemq.transport.amqp.ParallelTest;
 import org.apache.activemq.util.Wait;
 import org.apache.qpid.proton.amqp.DescribedType;
 import org.apache.qpid.proton.amqp.Symbol;
@@ -54,11 +55,13 @@ import org.apache.qpid.proton.engine.Session;
 import org.apache.qpid.proton.message.Message;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.junit.experimental.categories.Category;
 
 /**
  * Test various behaviors of AMQP receivers with the broker.
  */
 @RunWith(ActiveMQTestRunner.class)
+@Category(ParallelTest.class)
 public class AmqpReceiverTest extends AmqpClientTestSupport {
 
     @Override
@@ -434,7 +437,10 @@ public class AmqpReceiverTest extends AmqpClientTestSupport {
         assertNotNull(receiver2.receive(5, TimeUnit.SECONDS));
         assertNotNull(receiver2.receive(5, TimeUnit.SECONDS));
 
-        assertEquals(MSG_COUNT, queueView.getDispatchCount());
+        // Wait for dispatch count to be updated - it may not be synchronous
+        assertTrue("All messages should be dispatched",
+                Wait.waitFor(() -> queueView.getDispatchCount() == MSG_COUNT,
+                        5000, 50));
         assertEquals(0, queueView.getDequeueCount());
 
         receiver1.close();

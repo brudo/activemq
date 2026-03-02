@@ -1,4 +1,4 @@
-<%@ page contentType="text/xml;charset=ISO-8859-1"%>
+<%@ page contentType="text/xml;charset=UTF-8"%>
 <%--
     Licensed to the Apache Software Foundation (ASF) under one or more
     contributor license agreements.  See the NOTICE file distributed with
@@ -20,13 +20,10 @@
 <queues>
 <c:forEach items="${requestContext.brokerQuery.queues}" var="row">
 <queue name="<c:out value="${row.name}" />">
-
   <stats size="${row.queueSize}"
          consumerCount="${row.consumerCount}"
          enqueueCount="${row.enqueueCount}"
          dequeueCount="${row.dequeueCount}"/>
-
-
   <feed>
     <atom><c:out value="queueBrowse/${row.name}?view=rss&amp;feedType=atom_1.0"/></atom>
     <rss><c:out value="queueBrowse/${row.name}?view=rss&amp;feedType=rss_2.0"/></rss>

@@ -18,11 +18,11 @@ package org.apache.activemq.web.view;
 
 import java.io.PrintWriter;
 
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.QueueBrowser;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.QueueBrowser;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 import com.thoughtworks.xstream.XStream;
 
@@ -42,6 +42,7 @@ public class XmlMessageRenderer extends SimpleMessageRenderer {
     public XStream getXstream() {
         if (xstream == null) {
             xstream = new XStream();
+            XStream.setupDefaultSecurity(xstream);
         }
         return xstream;
     }

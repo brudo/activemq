@@ -19,6 +19,7 @@ package org.apache.activemq;
 import java.lang.Thread.UncaughtExceptionHandler;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -26,30 +27,41 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javax.jms.BytesMessage;
-import javax.jms.IllegalStateException;
-import javax.jms.JMSException;
-import javax.jms.DeliveryMode;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageListener;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
-import javax.jms.Topic;
+import jakarta.jms.BytesMessage;
+import jakarta.jms.IllegalStateException;
+import jakarta.jms.JMSException;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageListener;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
+import jakarta.jms.Topic;
 import javax.management.ObjectName;
 
 import junit.framework.Test;
 
 import org.apache.activemq.broker.jmx.DestinationViewMBean;
+import org.apache.activemq.broker.region.Destination;
+import org.apache.activemq.broker.region.Queue;
+import org.apache.activemq.broker.region.QueueSubscription;
+import org.apache.activemq.broker.region.Subscription;
+import org.apache.activemq.broker.region.TopicSubscription;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQQueue;
+import org.apache.activemq.util.Wait;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static org.apache.activemq.TestSupport.getDestinationConsumers;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 /**
  * Test cases used to test the JMS message consumer.
  */
+@Category(ParallelTest.class)
 public class JMSConsumerTest extends JmsTestSupport {
 
     private static final Logger LOG = LoggerFactory.getLogger(JMSConsumerTest.class);
@@ -70,9 +82,9 @@ public class JMSConsumerTest extends JmsTestSupport {
     }
 
     public void initCombosForTestMessageListenerWithConsumerCanBeStopped() {
-        addCombinationValues("deliveryMode", new Object[] {Integer.valueOf(DeliveryMode.NON_PERSISTENT), Integer.valueOf(DeliveryMode.PERSISTENT)});
-        addCombinationValues("destinationType", new Object[] {Byte.valueOf(ActiveMQDestination.QUEUE_TYPE), Byte.valueOf(ActiveMQDestination.TOPIC_TYPE),
-                                                              Byte.valueOf(ActiveMQDestination.TEMP_QUEUE_TYPE), Byte.valueOf(ActiveMQDestination.TEMP_TOPIC_TYPE)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT, DeliveryMode.PERSISTENT});
+        addCombinationValues("destinationType", new Object[] {ActiveMQDestination.QUEUE_TYPE, ActiveMQDestination.TOPIC_TYPE,
+                                                              ActiveMQDestination.TEMP_QUEUE_TYPE, ActiveMQDestination.TEMP_TOPIC_TYPE});
     }
 
     public void testMessageListenerWithConsumerCanBeStopped() throws Exception {
@@ -192,11 +204,11 @@ public class JMSConsumerTest extends JmsTestSupport {
     }
 
     public void initCombosForTestMutiReceiveWithPrefetch1() {
-        addCombinationValues("deliveryMode", new Object[] {Integer.valueOf(DeliveryMode.NON_PERSISTENT), Integer.valueOf(DeliveryMode.PERSISTENT)});
-        addCombinationValues("ackMode", new Object[] {Integer.valueOf(Session.AUTO_ACKNOWLEDGE), Integer.valueOf(Session.DUPS_OK_ACKNOWLEDGE),
-                                                      Integer.valueOf(Session.CLIENT_ACKNOWLEDGE)});
-        addCombinationValues("destinationType", new Object[] {Byte.valueOf(ActiveMQDestination.QUEUE_TYPE), Byte.valueOf(ActiveMQDestination.TOPIC_TYPE),
-                                                              Byte.valueOf(ActiveMQDestination.TEMP_QUEUE_TYPE), Byte.valueOf(ActiveMQDestination.TEMP_TOPIC_TYPE)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT, DeliveryMode.PERSISTENT});
+        addCombinationValues("ackMode", new Object[] {Session.AUTO_ACKNOWLEDGE, Session.DUPS_OK_ACKNOWLEDGE,
+                                                      Session.CLIENT_ACKNOWLEDGE});
+        addCombinationValues("destinationType", new Object[] {ActiveMQDestination.QUEUE_TYPE, ActiveMQDestination.TOPIC_TYPE,
+                                                              ActiveMQDestination.TEMP_QUEUE_TYPE, ActiveMQDestination.TEMP_TOPIC_TYPE});
     }
 
     public void testMutiReceiveWithPrefetch1() throws Exception {
@@ -223,9 +235,91 @@ public class JMSConsumerTest extends JmsTestSupport {
         message.acknowledge();
     }
 
+    public void testReceiveTopicWithPrefetch1() throws Exception {
+
+        // Set prefetch to 1
+        connection.getPrefetchPolicy().setAll(1);
+        connection.start();
+
+        Session session = connection.createSession(false, Session.CLIENT_ACKNOWLEDGE);
+        destination = createDestination(session, Byte.valueOf(ActiveMQDestination.TOPIC_TYPE));
+        MessageConsumer consumer = session.createConsumer(destination);
+
+        // Send the messages
+        sendMessages(session, destination, 4);
+
+        // Make sure 4 messages were delivered.
+        Message message = null;
+        for (int i = 0; i < 4; i++) {
+            message = consumer.receive(1000);
+            assertNotNull(message);
+        }
+
+        final List<Subscription> subscriptions = getDestinationConsumers(broker, destination);
+
+        assertTrue("prefetch extension..", Wait.waitFor(() ->
+                subscriptions.stream().
+                        filter(s -> s instanceof TopicSubscription).
+                        mapToInt(s -> ((TopicSubscription)s).getPrefetchExtension().get()).
+                        allMatch(e -> e == 4)
+        , TimeUnit.SECONDS.toMillis(5), 100));
+
+        assertNull(consumer.receiveNoWait());
+        message.acknowledge();
+
+        assertTrue("prefetch extension back to 0", Wait.waitFor(() ->
+                subscriptions.stream().
+                        filter(s -> s instanceof TopicSubscription).
+                        mapToInt(s -> ((TopicSubscription)s).getPrefetchExtension().get()).
+                        allMatch(e -> e == 0)
+        ));
+
+    }
+
+    public void testReceiveQueueWithPrefetch1() throws Exception {
+
+        // Set prefetch to 1
+        connection.getPrefetchPolicy().setAll(1);
+        connection.start();
+
+        Session session = connection.createSession(false, Session.CLIENT_ACKNOWLEDGE);
+        destination = createDestination(session, Byte.valueOf(ActiveMQDestination.QUEUE_TYPE));
+        MessageConsumer consumer = session.createConsumer(destination);
+
+        // Send the messages
+        sendMessages(session, destination, 4);
+
+        // Make sure 4 messages were delivered.
+        Message message = null;
+        for (int i = 0; i < 4; i++) {
+            message = consumer.receive(1000);
+            assertNotNull(message);
+        }
+
+        final List<Subscription> subscriptions = getDestinationConsumers(broker, destination);
+
+        assertTrue("prefetch extension..", Wait.waitFor(() ->
+                subscriptions.stream().
+                        filter(s -> s instanceof QueueSubscription).
+                        mapToInt(s -> ((QueueSubscription)s).getPrefetchExtension().get()).
+                        allMatch(e -> e == 4)
+        ));
+
+
+        assertNull(consumer.receiveNoWait());
+        message.acknowledge();
+
+        assertTrue("prefetch extension back to 0", Wait.waitFor(() ->
+                subscriptions.stream().
+                        filter(s -> s instanceof QueueSubscription).
+                        mapToInt(s -> ((QueueSubscription)s).getPrefetchExtension().get()).
+                        allMatch(e -> e == 0)
+        ));
+    }
+
     public void initCombosForTestDurableConsumerSelectorChange() {
-        addCombinationValues("deliveryMode", new Object[] {Integer.valueOf(DeliveryMode.NON_PERSISTENT), Integer.valueOf(DeliveryMode.PERSISTENT)});
-        addCombinationValues("destinationType", new Object[] {Byte.valueOf(ActiveMQDestination.TOPIC_TYPE)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT, DeliveryMode.PERSISTENT});
+        addCombinationValues("destinationType", new Object[] {ActiveMQDestination.TOPIC_TYPE});
     }
 
     public void testDurableConsumerSelectorChange() throws Exception {
@@ -268,9 +362,9 @@ public class JMSConsumerTest extends JmsTestSupport {
     }
 
     public void initCombosForTestSendReceiveBytesMessage() {
-        addCombinationValues("deliveryMode", new Object[] {Integer.valueOf(DeliveryMode.NON_PERSISTENT), Integer.valueOf(DeliveryMode.PERSISTENT)});
-        addCombinationValues("destinationType", new Object[] {Byte.valueOf(ActiveMQDestination.QUEUE_TYPE), Byte.valueOf(ActiveMQDestination.TOPIC_TYPE),
-                                                              Byte.valueOf(ActiveMQDestination.TEMP_QUEUE_TYPE), Byte.valueOf(ActiveMQDestination.TEMP_TOPIC_TYPE)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT, DeliveryMode.PERSISTENT});
+        addCombinationValues("destinationType", new Object[] {ActiveMQDestination.QUEUE_TYPE, ActiveMQDestination.TOPIC_TYPE,
+                                                              ActiveMQDestination.TEMP_QUEUE_TYPE, ActiveMQDestination.TEMP_TOPIC_TYPE});
     }
 
     public void testSendReceiveBytesMessage() throws Exception {
@@ -297,9 +391,9 @@ public class JMSConsumerTest extends JmsTestSupport {
     }
 
     public void initCombosForTestSetMessageListenerAfterStart() {
-        addCombinationValues("deliveryMode", new Object[] {Integer.valueOf(DeliveryMode.NON_PERSISTENT), Integer.valueOf(DeliveryMode.PERSISTENT)});
-        addCombinationValues("destinationType", new Object[] {Byte.valueOf(ActiveMQDestination.QUEUE_TYPE), Byte.valueOf(ActiveMQDestination.TOPIC_TYPE),
-                                                              Byte.valueOf(ActiveMQDestination.TEMP_QUEUE_TYPE), Byte.valueOf(ActiveMQDestination.TEMP_TOPIC_TYPE)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT, DeliveryMode.PERSISTENT});
+        addCombinationValues("destinationType", new Object[] {ActiveMQDestination.QUEUE_TYPE, ActiveMQDestination.TOPIC_TYPE,
+                                                              ActiveMQDestination.TEMP_QUEUE_TYPE, ActiveMQDestination.TEMP_TOPIC_TYPE});
     }
 
     public void testSetMessageListenerAfterStart() throws Exception {
@@ -328,14 +422,13 @@ public class JMSConsumerTest extends JmsTestSupport {
         });
 
         assertTrue(done.await(1000, TimeUnit.MILLISECONDS));
-        Thread.sleep(200);
 
         // Make sure only 4 messages were delivered.
-        assertEquals(4, counter.get());
+        assertNoAdditionalMessages(counter, 4);
     }
 
     public void initCombosForTestPassMessageListenerIntoCreateConsumer() {
-        addCombinationValues("destinationType", new Object[] {Byte.valueOf(ActiveMQDestination.QUEUE_TYPE), Byte.valueOf(ActiveMQDestination.TOPIC_TYPE)});
+        addCombinationValues("destinationType", new Object[] {ActiveMQDestination.QUEUE_TYPE, ActiveMQDestination.TOPIC_TYPE});
     }
 
     public void testPassMessageListenerIntoCreateConsumer() throws Exception {
@@ -362,16 +455,15 @@ public class JMSConsumerTest extends JmsTestSupport {
         sendMessages(session, destination, 4);
 
         assertTrue(done.await(1000, TimeUnit.MILLISECONDS));
-        Thread.sleep(200);
 
         // Make sure only 4 messages were delivered.
-        assertEquals(4, counter.get());
+        assertNoAdditionalMessages(counter, 4);
     }
 
     public void initCombosForTestMessageListenerOnMessageCloseUnackedWithPrefetch1StayInQueue() {
-        addCombinationValues("deliveryMode", new Object[] {Integer.valueOf(DeliveryMode.NON_PERSISTENT), Integer.valueOf(DeliveryMode.PERSISTENT)});
-        addCombinationValues("ackMode", new Object[] {Integer.valueOf(Session.CLIENT_ACKNOWLEDGE)});
-        addCombinationValues("destinationType", new Object[] {Byte.valueOf(ActiveMQDestination.QUEUE_TYPE)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT, DeliveryMode.PERSISTENT});
+        addCombinationValues("ackMode", new Object[] {Session.CLIENT_ACKNOWLEDGE});
+        addCombinationValues("destinationType", new Object[] {ActiveMQDestination.QUEUE_TYPE});
     }
 
     public void testMessageListenerOnMessageCloseUnackedWithPrefetch1StayInQueue() throws Exception {
@@ -450,16 +542,16 @@ public class JMSConsumerTest extends JmsTestSupport {
         });
 
         assertTrue(done2.await(1000, TimeUnit.MILLISECONDS));
-        Thread.sleep(200);
+        assertNoAdditionalMessages(counter, 5);
 
         // assert msg 2 was redelivered as close() from onMessages() will only ack in auto_ack and dups_ok mode
         assertEquals(5, counter.get());
     }
 
     public void initCombosForTestMessageListenerAutoAckOnCloseWithPrefetch1() {
-        addCombinationValues("deliveryMode", new Object[] {Integer.valueOf(DeliveryMode.NON_PERSISTENT), Integer.valueOf(DeliveryMode.PERSISTENT)});
-        addCombinationValues("ackMode", new Object[] {Integer.valueOf(Session.AUTO_ACKNOWLEDGE), Integer.valueOf(Session.CLIENT_ACKNOWLEDGE)});
-        addCombinationValues("destinationType", new Object[] {Byte.valueOf(ActiveMQDestination.QUEUE_TYPE)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT, DeliveryMode.PERSISTENT});
+        addCombinationValues("ackMode", new Object[] {Session.AUTO_ACKNOWLEDGE, Session.CLIENT_ACKNOWLEDGE});
+        addCombinationValues("destinationType", new Object[] {ActiveMQDestination.QUEUE_TYPE});
     }
 
     public void testMessageListenerAutoAckOnCloseWithPrefetch1() throws Exception {
@@ -536,17 +628,15 @@ public class JMSConsumerTest extends JmsTestSupport {
         });
 
         assertTrue(done2.await(1000, TimeUnit.MILLISECONDS));
-        Thread.sleep(200);
 
-        // close from onMessage with Auto_ack will ack
         // Make sure only 4 messages were delivered.
-        assertEquals(4, counter.get());
+        assertNoAdditionalMessages(counter, 4);
     }
 
     public void initCombosForTestMessageListenerWithConsumerWithPrefetch1() {
-        addCombinationValues("deliveryMode", new Object[] {Integer.valueOf(DeliveryMode.NON_PERSISTENT), Integer.valueOf(DeliveryMode.PERSISTENT)});
-        addCombinationValues("destinationType", new Object[] {Byte.valueOf(ActiveMQDestination.QUEUE_TYPE), Byte.valueOf(ActiveMQDestination.TOPIC_TYPE),
-                                                              Byte.valueOf(ActiveMQDestination.TEMP_QUEUE_TYPE), Byte.valueOf(ActiveMQDestination.TEMP_TOPIC_TYPE)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT, DeliveryMode.PERSISTENT});
+        addCombinationValues("destinationType", new Object[] {ActiveMQDestination.QUEUE_TYPE, ActiveMQDestination.TOPIC_TYPE,
+                                                              ActiveMQDestination.TEMP_QUEUE_TYPE, ActiveMQDestination.TEMP_TOPIC_TYPE});
     }
 
     public void testMessageListenerWithConsumerWithPrefetch1() throws Exception {
@@ -575,16 +665,15 @@ public class JMSConsumerTest extends JmsTestSupport {
         sendMessages(session, destination, 4);
 
         assertTrue(done.await(1000, TimeUnit.MILLISECONDS));
-        Thread.sleep(200);
 
         // Make sure only 4 messages were delivered.
-        assertEquals(4, counter.get());
+        assertNoAdditionalMessages(counter, 4);
     }
 
     public void initCombosForTestMessageListenerWithConsumer() {
-        addCombinationValues("deliveryMode", new Object[] {Integer.valueOf(DeliveryMode.NON_PERSISTENT), Integer.valueOf(DeliveryMode.PERSISTENT)});
-        addCombinationValues("destinationType", new Object[] {Byte.valueOf(ActiveMQDestination.QUEUE_TYPE), Byte.valueOf(ActiveMQDestination.TOPIC_TYPE),
-                                                              Byte.valueOf(ActiveMQDestination.TEMP_QUEUE_TYPE), Byte.valueOf(ActiveMQDestination.TEMP_TOPIC_TYPE)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT, DeliveryMode.PERSISTENT});
+        addCombinationValues("destinationType", new Object[] {ActiveMQDestination.QUEUE_TYPE, ActiveMQDestination.TOPIC_TYPE,
+                                                              ActiveMQDestination.TEMP_QUEUE_TYPE, ActiveMQDestination.TEMP_TOPIC_TYPE});
     }
 
     public void testMessageListenerWithConsumer() throws Exception {
@@ -611,17 +700,16 @@ public class JMSConsumerTest extends JmsTestSupport {
         sendMessages(session, destination, 4);
 
         assertTrue(done.await(1000, TimeUnit.MILLISECONDS));
-        Thread.sleep(200);
 
         // Make sure only 4 messages were delivered.
-        assertEquals(4, counter.get());
+        assertNoAdditionalMessages(counter, 4);
     }
 
     public void initCombosForTestUnackedWithPrefetch1StayInQueue() {
-        addCombinationValues("deliveryMode", new Object[] {Integer.valueOf(DeliveryMode.NON_PERSISTENT), Integer.valueOf(DeliveryMode.PERSISTENT)});
-        addCombinationValues("ackMode", new Object[] {Integer.valueOf(Session.AUTO_ACKNOWLEDGE), Integer.valueOf(Session.DUPS_OK_ACKNOWLEDGE),
-                                                      Integer.valueOf(Session.CLIENT_ACKNOWLEDGE)});
-        addCombinationValues("destinationType", new Object[] {Byte.valueOf(ActiveMQDestination.QUEUE_TYPE)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT, DeliveryMode.PERSISTENT});
+        addCombinationValues("ackMode", new Object[] {Session.AUTO_ACKNOWLEDGE, Session.DUPS_OK_ACKNOWLEDGE,
+                                                      Session.CLIENT_ACKNOWLEDGE});
+        addCombinationValues("destinationType", new Object[] {ActiveMQDestination.QUEUE_TYPE});
     }
 
     public void testUnackedWithPrefetch1StayInQueue() throws Exception {
@@ -666,7 +754,7 @@ public class JMSConsumerTest extends JmsTestSupport {
     }
 
     public void initCombosForTestPrefetch1MessageNotDispatched() {
-        addCombinationValues("deliveryMode", new Object[] {Integer.valueOf(DeliveryMode.NON_PERSISTENT), Integer.valueOf(DeliveryMode.PERSISTENT)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT, DeliveryMode.PERSISTENT});
     }
 
     public void testPrefetch1MessageNotDispatched() throws Exception {
@@ -687,18 +775,43 @@ public class JMSConsumerTest extends JmsTestSupport {
         // Since prefetch is still full, the 2nd message should get dispatched
         // to another consumer.. lets create the 2nd consumer test that it does
         // make sure it does.
-        ActiveMQConnection connection2 = (ActiveMQConnection)factory.createConnection();
+        final ActiveMQConnection connection2 = (ActiveMQConnection)factory.createConnection();
         connection2.start();
         connections.add(connection2);
-        Session session2 = connection2.createSession(true, 0);
-        MessageConsumer consumer2 = session2.createConsumer(destination);
+        final Session session2 = connection2.createSession(true, 0);
+        final MessageConsumer consumer2 = session2.createConsumer(destination);
+
+        // Wait for consumer2 to fully register with the broker
+        // Note: getDestinationConsumers must be called inside the condition because the list reference may change
+        assertTrue("consumer2 registered", Wait.waitFor(() -> {
+            final List<Subscription> subs = getDestinationConsumers(broker, destination);
+            return subs != null && subs.size() == 2;
+        }, TimeUnit.SECONDS.toMillis(5), 100));
+
+        // Critical: Wait for message2 to be dispatched to consumer2 BEFORE consumer1 receives message1
+        // Otherwise, when consumer1.receive() frees its prefetch slot, the broker may dispatch
+        // message2 to consumer1 instead of consumer2, causing consumer2.receive() to timeout
+        assertTrue("message2 dispatched to consumer2", Wait.waitFor(() -> {
+            final List<Subscription> subscriptions = getDestinationConsumers(broker, destination);
+            // consumer2 is the second subscription (index 1)
+            if (subscriptions != null && subscriptions.size() >= 2) {
+                final Subscription sub2 = subscriptions.get(1);
+                // Check if consumer2 has at least one message dispatched or pending
+                if (sub2 instanceof QueueSubscription) {
+                    final QueueSubscription queueSub2 = (QueueSubscription) sub2;
+                    return queueSub2.getPendingQueueSize() > 0 ||
+                           queueSub2.getDispatchedQueueSize() > 0;
+                }
+            }
+            return false;
+        }, TimeUnit.SECONDS.toMillis(10), 100));
 
         // Pick up the first message.
-        Message message1 = consumer.receive(1000);
+        final Message message1 = consumer.receive(10_000);
         assertNotNull(message1);
 
         // Pick up the 2nd messages.
-        Message message2 = consumer2.receive(5000);
+        final Message message2 = consumer2.receive(10_000);
         assertNotNull(message2);
 
         session.commit();
@@ -708,8 +821,8 @@ public class JMSConsumerTest extends JmsTestSupport {
     }
 
     public void initCombosForTestDontStart() {
-        addCombinationValues("deliveryMode", new Object[] {Integer.valueOf(DeliveryMode.NON_PERSISTENT)});
-        addCombinationValues("destinationType", new Object[] {Byte.valueOf(ActiveMQDestination.QUEUE_TYPE), Byte.valueOf(ActiveMQDestination.TOPIC_TYPE)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT});
+        addCombinationValues("destinationType", new Object[] {ActiveMQDestination.QUEUE_TYPE, ActiveMQDestination.TOPIC_TYPE});
     }
 
     public void testDontStart() throws Exception {
@@ -726,8 +839,8 @@ public class JMSConsumerTest extends JmsTestSupport {
     }
 
     public void initCombosForTestStartAfterSend() {
-        addCombinationValues("deliveryMode", new Object[] {Integer.valueOf(DeliveryMode.NON_PERSISTENT)});
-        addCombinationValues("destinationType", new Object[] {Byte.valueOf(ActiveMQDestination.QUEUE_TYPE), Byte.valueOf(ActiveMQDestination.TOPIC_TYPE)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT});
+        addCombinationValues("destinationType", new Object[] {ActiveMQDestination.QUEUE_TYPE, ActiveMQDestination.TOPIC_TYPE});
     }
 
     public void testStartAfterSend() throws Exception {
@@ -748,9 +861,9 @@ public class JMSConsumerTest extends JmsTestSupport {
     }
 
     public void initCombosForTestReceiveMessageWithConsumer() {
-        addCombinationValues("deliveryMode", new Object[] {Integer.valueOf(DeliveryMode.NON_PERSISTENT), Integer.valueOf(DeliveryMode.PERSISTENT)});
-        addCombinationValues("destinationType", new Object[] {Byte.valueOf(ActiveMQDestination.QUEUE_TYPE), Byte.valueOf(ActiveMQDestination.TOPIC_TYPE),
-                                                              Byte.valueOf(ActiveMQDestination.TEMP_QUEUE_TYPE), Byte.valueOf(ActiveMQDestination.TEMP_TOPIC_TYPE)});
+        addCombinationValues("deliveryMode", new Object[] {DeliveryMode.NON_PERSISTENT, DeliveryMode.PERSISTENT});
+        addCombinationValues("destinationType", new Object[] {ActiveMQDestination.QUEUE_TYPE, ActiveMQDestination.TOPIC_TYPE,
+                                                              ActiveMQDestination.TEMP_QUEUE_TYPE, ActiveMQDestination.TEMP_TOPIC_TYPE});
     }
 
     public void testReceiveMessageWithConsumer() throws Exception {
@@ -892,7 +1005,7 @@ public class JMSConsumerTest extends JmsTestSupport {
 
     public void initCombosForTestAckOfExpired() {
         addCombinationValues("destinationType",
-            new Object[] {Byte.valueOf(ActiveMQDestination.QUEUE_TYPE), Byte.valueOf(ActiveMQDestination.TOPIC_TYPE)});
+            new Object[] {ActiveMQDestination.QUEUE_TYPE, ActiveMQDestination.TOPIC_TYPE});
     }
 
     public void testAckOfExpired() throws Exception {
@@ -910,26 +1023,27 @@ public class JMSConsumerTest extends JmsTestSupport {
 
         Session sendSession = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
         MessageProducer producer = sendSession.createProducer(destination);
-        producer.setTimeToLive(500);
+        final int ttl = 500;
+        producer.setTimeToLive(ttl);
         final int count = 4;
         for (int i = 0; i < count; i++) {
-            TextMessage message = sendSession.createTextMessage("" + i);
+            final TextMessage message = sendSession.createTextMessage("" + i);
             producer.send(message);
         }
 
-        // let first bunch in queue expire
-        Thread.sleep(1000);
+        // let first bunch expire - messages expire based on TTL
+        Thread.sleep(ttl * 2L);
 
         producer.setTimeToLive(0);
         for (int i = 0; i < count; i++) {
-            TextMessage message = sendSession.createTextMessage("no expiry" + i);
+            final TextMessage message = sendSession.createTextMessage("no expiry" + i);
             producer.send(message);
         }
 
-        ActiveMQMessageConsumer amqConsumer = (ActiveMQMessageConsumer) consumer;
+        final ActiveMQMessageConsumer amqConsumer = (ActiveMQMessageConsumer) consumer;
 
         for (int i=0; i<count; i++) {
-            TextMessage msg = (TextMessage) amqConsumer.receive();
+            final TextMessage msg = (TextMessage) amqConsumer.receive();
             assertNotNull(msg);
             assertTrue("message has \"no expiry\" text: " + msg.getText(), msg.getText().contains("no expiry"));
 
@@ -938,12 +1052,14 @@ public class JMSConsumerTest extends JmsTestSupport {
         }
         assertEquals("consumer has expiredMessages", count, amqConsumer.getConsumerStats().getExpiredMessageCount().getCount());
 
-        DestinationViewMBean view = createView(destination);
-
-        assertEquals("Wrong inFlightCount: " + view.getInFlightCount(), 0, view.getInFlightCount());
-        assertEquals("Wrong dispatch count: " + view.getDispatchCount(), 8, view.getDispatchCount());
-        assertEquals("Wrong dequeue count: " + view.getDequeueCount(), 8, view.getDequeueCount());
-        assertEquals("Wrong expired count: " + view.getExpiredCount(), 4, view.getExpiredCount());
+        // Wait for broker to update statistics
+        assertTrue("broker statistics updated", Wait.waitFor(() -> {
+            final DestinationViewMBean view = createView(destination);
+            return view.getInFlightCount() == 0 &&
+                   view.getDispatchCount() == 8 &&
+                   view.getDequeueCount() == 8 &&
+                   view.getExpiredCount() == 4;
+        }, TimeUnit.SECONDS.toMillis(5), 100));
     }
 
     protected DestinationViewMBean createView(ActiveMQDestination destination) throws Exception {
@@ -956,5 +1072,11 @@ public class JMSConsumerTest extends JmsTestSupport {
             name = new ObjectName(domain + ":type=Broker,brokerName=localhost,destinationType=Topic,destinationName=test");
         }
         return (DestinationViewMBean) broker.getManagementContext().newProxyInstance(name, DestinationViewMBean.class, true);
+    }
+
+    private void assertNoAdditionalMessages(final AtomicInteger counter, final int expected) throws Exception {
+        assertFalse("unexpected additional messages received", Wait.waitFor(
+            (Wait.Condition) () -> counter.get() > expected,
+            TimeUnit.SECONDS.toMillis(2), 50));
     }
 }

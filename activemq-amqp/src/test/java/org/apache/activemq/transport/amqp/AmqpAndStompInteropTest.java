@@ -19,30 +19,33 @@ package org.apache.activemq.transport.amqp;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
-import javax.jms.Connection;
-import javax.jms.ExceptionListener;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Queue;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.ExceptionListener;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.TransportConnector;
 import org.apache.qpid.jms.JmsConnectionFactory;
 import org.fusesource.stomp.jms.StompJmsConnectionFactory;
+
+
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 import org.junit.rules.TestName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@Ignore
+@Category(ParallelTest.class)
 public class AmqpAndStompInteropTest {
 
     private static final Logger LOG = LoggerFactory.getLogger(AmqpAndStompInteropTest.class);
@@ -73,7 +76,7 @@ public class AmqpAndStompInteropTest {
     protected BrokerService createBroker() throws Exception {
         BrokerService broker = new BrokerService();
         broker.setPersistent(false);
-        broker.setUseJmx(false);
+        broker.setUseJmx(true);
         broker.setAdvisorySupport(false);
         broker.setSchedulerSupport(false);
 
@@ -83,12 +86,14 @@ public class AmqpAndStompInteropTest {
         return broker;
     }
 
+    @Ignore
     @Test(timeout = 30000)
     public void testSendFromAMQPToSTOMP() throws Exception {
         sendMessageToQueueUsingAmqp();
         readMessageFromQueueUsingStomp();
     }
 
+    @Ignore
     @Test(timeout = 30000)
     public void testSendFromSTOMPToAMQP() throws Exception {
         sendMessageToQueueUsingStomp();
@@ -135,6 +140,7 @@ public class AmqpAndStompInteropTest {
 
         try {
             TextMessage message = session.createTextMessage("test-message-stomp-source");
+            message.setIntProperty("content-length", message.getText().length());
             producer.send(message);
 
             LOG.info("Send STOMP message with Message ID -> {}", message.getJMSMessageID());
@@ -223,4 +229,5 @@ public class AmqpAndStompInteropTest {
         connection.start();
         return connection;
     }
+
 }

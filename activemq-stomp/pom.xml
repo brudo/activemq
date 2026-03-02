@@ -22,12 +22,17 @@
   <parent>
     <groupId>org.apache.activemq</groupId>
     <artifactId>activemq-parent</artifactId>
-    <version>5.16.0-SNAPSHOT</version>
+    <version>6.3.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>activemq-stomp</artifactId>
   <packaging>jar</packaging>
   <name>ActiveMQ :: STOMP Protocol</name>
+
+  <properties>
+    <surefire.version>3.5.3</surefire.version>
+  </properties>
+
   <description>The ActiveMQ STOMP Protocol Implementation</description>
 
   <dependencies>
@@ -51,6 +56,11 @@
     <dependency>
       <groupId>org.codehaus.jettison</groupId>
       <artifactId>jettison</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.dataformat</groupId>
+      <artifactId>jackson-dataformat-xml</artifactId>
       <optional>true</optional>
     </dependency>
 
@@ -90,13 +100,13 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-log4j12</artifactId>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-slf4j2-impl</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>log4j</groupId>
-      <artifactId>log4j</artifactId>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-core</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -120,26 +130,71 @@
 
     <plugins>
       <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
+        <version>${surefire.version}</version>
         <configuration>
-          <forkCount>1</forkCount>
-          <reuseForks>false</reuseForks>
           <argLine>${surefire.argLine}</argLine>
           <runOrder>alphabetical</runOrder>
+          <reportFormat>plain</reportFormat>
           <failIfNoTests>false</failIfNoTests>
-          <systemProperties>
-            <property>
-              <name>org.apache.activemq.default.directory.prefix</name>
-              <value>target/</value>
-            </property>
-          </systemProperties>
+              <excludedGroups>org.apache.activemq.transport.stomp.ParallelTest</excludedGroups>
+              <systemPropertyVariables>
+                <org.apache.activemq.default.directory.prefix>${project.build.directory}/</org.apache.activemq.default.directory.prefix>
+              </systemPropertyVariables>
+          <consoleOutputReporter>
+            <disable>true</disable>
+          </consoleOutputReporter>
+          <statelessTestsetInfoReporter
+            implementation="org.apache.maven.plugin.surefire.extensions.junit5.JUnit5StatelessTestsetInfoTreeReporter">
+            <printStacktraceOnError>true</printStacktraceOnError>
+            <printStacktraceOnFailure>true</printStacktraceOnFailure>
+            <printStdoutOnError>true</printStdoutOnError>
+            <printStdoutOnFailure>true</printStdoutOnFailure>
+            <printStderrOnError>true</printStderrOnError>
+            <printStderrOnFailure>true</printStderrOnFailure>
+          </statelessTestsetInfoReporter>
           <includes>
             <include>**/*Test.*</include>
           </includes>
           <excludes>
-            <exclude>**/StompNIOSSLLoadTest.java</exclude>
+            <exclude>**/*LoadTest.java</exclude>
           </excludes>
         </configuration>
+        <executions>
+          <execution>
+            <id>parallel</id>
+            <phase>test</phase>
+            <goals>
+              <goal>test</goal>
+            </goals>
+            <configuration>
+              <!-- drop the default excludedGroups -->
+              <excludedGroups combine.self="override"/>
+              <groups>org.apache.activemq.transport.stomp.ParallelTest</groups>
+              <forkCount>2C</forkCount>
+              <forkedProcessTimeoutInSeconds>600</forkedProcessTimeoutInSeconds>
+              <failIfNoTests>false</failIfNoTests>
+              <systemPropertyVariables>
+                <org.apache.activemq.default.directory.prefix>${project.build.directory}/parallel-tests-${surefire.forkNumber}/</org.apache.activemq.default.directory.prefix>
+                <!-- when running tests in parallel in the CI (quite slow) we need to bump the wireformat negotiation timeout (5s by default) -->
+                <org.apache.activemq.transport.wireFormatNegotiationTimeout>30000</org.apache.activemq.transport.wireFormatNegotiationTimeout>
+              </systemPropertyVariables>
+            </configuration>
+          </execution>
+        </executions>
+        <dependencies>
+          <dependency>
+            <groupId>org.apache.maven.surefire</groupId>
+            <artifactId>surefire-junit47</artifactId>
+            <version>${surefire.version}</version>
+          </dependency>
+          <dependency>
+            <groupId>me.fabriciorby</groupId>
+            <artifactId>maven-surefire-junit5-tree-reporter</artifactId>
+            <version>1.5.1</version>
+          </dependency>
+        </dependencies>
       </plugin>
     </plugins>
   </build>
@@ -207,27 +262,6 @@
                                 <exclude>**/Stomp11*.*</exclude>
                                 <exclude>**/Stomp12*.*</exclude>
                                 <exclude>**/Stomp*LoadTest.*</exclude>
-                            </excludes>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-        <profile>
-            <id>activemq.tests.solaris.excludes</id>
-            <activation>
-                <property>
-                    <name>os.name</name>
-                    <value>SunOS</value>
-                </property>
-            </activation>
-            <build>
-                <plugins>
-                    <plugin>
-                        <artifactId>maven-surefire-plugin</artifactId>
-                        <configuration>
-                            <excludes combine.children="append">
-                                <exclude>*NIO*/*.*</exclude>
                             </excludes>
                         </configuration>
                     </plugin>

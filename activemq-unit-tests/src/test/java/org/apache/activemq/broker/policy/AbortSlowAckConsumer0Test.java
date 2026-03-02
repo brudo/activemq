@@ -19,12 +19,14 @@ package org.apache.activemq.broker.policy;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
 
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.ConnectionFactory;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.Session;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.Session;
 
 import org.apache.activemq.ActiveMQConnection;
 import org.apache.activemq.ActiveMQConnectionFactory;
@@ -35,15 +37,24 @@ import org.apache.activemq.broker.region.policy.PolicyMap;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
 @RunWith(value = Parameterized.class)
+@Category(ParallelTest.class)
 public class AbortSlowAckConsumer0Test extends AbortSlowConsumer0Test {
 
     protected long maxTimeSinceLastAck = 5 * 1000;
     protected AbortSlowAckConsumerStrategy strategy;
 
+    @Parameterized.Parameters(name = "isTopic({0})")
+    public static Collection<Object[]> getTestParameters() {
+        return Arrays.asList(new Object[][]{{Boolean.TRUE}, {Boolean.FALSE}});
+    }
+
     public AbortSlowAckConsumer0Test(Boolean isTopic) {
-        super(isTopic);
+        super();
+        this.topic = isTopic;
     }
 
     @Override

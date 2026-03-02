@@ -23,8 +23,8 @@ import java.net.UnknownHostException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.ExceptionListener;
-import javax.jms.JMSException;
+import jakarta.jms.ExceptionListener;
+import jakarta.jms.JMSException;
 import javax.net.SocketFactory;
 
 import org.apache.activemq.ActiveMQConnection;
@@ -37,7 +37,10 @@ import org.apache.activemq.transport.tcp.TcpTransportFactory;
 import org.apache.activemq.util.URISupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
 
+@Category(ParallelTest.class)
 public class DurableConsumerCloseAndReconnectTcpTest extends DurableConsumerCloseAndReconnectTest
 implements ExceptionListener, TransportListener {
     private static final Logger LOG = LoggerFactory.getLogger(DurableConsumerCloseAndReconnectTcpTest.class);

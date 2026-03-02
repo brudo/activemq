@@ -18,8 +18,6 @@ package org.apache.activemq.transport.discovery;
 
 import java.io.IOException;
 
-import javax.jms.JMSException;
-
 import org.apache.activemq.Service;
 import org.apache.activemq.command.DiscoveryEvent;
 
@@ -41,8 +39,7 @@ public interface DiscoveryAgent extends Service {
     /**
      * register a service
      * @param name
-     * @param details
-     * @throws JMSException
+     * @throws IOException
      */
     void registerService(String name) throws IOException;
     

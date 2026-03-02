@@ -27,27 +27,38 @@ import org.apache.activemq.broker.region.policy.PolicyMap;
 import org.apache.activemq.broker.region.policy.VMPendingQueueMessageStoragePolicy;
 import org.apache.activemq.broker.region.policy.VMPendingSubscriberMessageStoragePolicy;
 import org.apache.activemq.command.ActiveMQQueue;
-import org.apache.activemq.util.DefaultTestAppender;
+import org.apache.activemq.util.IOHelper;
 import org.apache.activemq.util.Wait;
-import org.apache.log4j.Level;
-import org.apache.log4j.spi.LoggingEvent;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.Property;
+import org.apache.logging.log4j.core.filter.AbstractFilter;
+import org.apache.logging.log4j.core.layout.MessageLayout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.jms.ConnectionFactory;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+
+
+import org.apache.activemq.test.annotations.ParallelTest;
+import org.junit.experimental.categories.Category;
+@Category(ParallelTest.class)
 public class AMQ6463Test extends JmsTestSupport {
     static final Logger LOG = LoggerFactory.getLogger(AMQ6463Test.class);
     ActiveMQQueue queueA = new ActiveMQQueue("QUEUE.A");
     protected TransportConnector connector;
     protected ActiveMQConnection connection;
-    protected DefaultTestAppender appender;
+    protected Appender appender;
     final AtomicInteger errors = new AtomicInteger(0);
     final AtomicBoolean gotUsageBlocked = new AtomicBoolean();
 
@@ -63,10 +74,9 @@ public class AMQ6463Test extends JmsTestSupport {
 
         TextMessage message = session.createTextMessage("test msg");
         final int numMessages = 20;
-        long time = 5;
-        message.setStringProperty(ScheduledMessage.AMQ_SCHEDULED_CRON, "* * * * *");
-        message.setLongProperty(ScheduledMessage.AMQ_SCHEDULED_DELAY, time);
-        message.setLongProperty(ScheduledMessage.AMQ_SCHEDULED_PERIOD, 5);
+
+        message.setLongProperty(ScheduledMessage.AMQ_SCHEDULED_DELAY, 0);
+        message.setLongProperty(ScheduledMessage.AMQ_SCHEDULED_PERIOD, 0);
         message.setIntProperty(ScheduledMessage.AMQ_SCHEDULED_REPEAT, numMessages - 1);
 
         producer.send(message);
@@ -78,14 +88,14 @@ public class AMQ6463Test extends JmsTestSupport {
             public boolean isSatisified() throws Exception {
                 return gotUsageBlocked.get();
             }
-        }));
+        }, 60000));
 
         MessageConsumer consumer = session.createConsumer(queueA);
         TextMessage msg;
         for (int idx = 0; idx < numMessages; ++idx) {
-        	msg = (TextMessage) consumer.receive(10000);
-        	assertNotNull("received: " + idx, msg);
-        	msg.acknowledge();
+            msg = (TextMessage) consumer.receive(10000);
+            assertNotNull("received: " + idx, msg);
+            msg.acknowledge();
         }
         assertTrue("no errors in the log", errors.get() == 0);
         assertTrue("got blocked message", gotUsageBlocked.get());
@@ -98,6 +108,10 @@ public class AMQ6463Test extends JmsTestSupport {
         service.setUseJmx(false);
         service.setSchedulerSupport(true);
         service.setDeleteAllMessagesOnStartup(true);
+
+        IOHelper.deleteChildren(service.getSchedulerDirectoryFile());
+
+        service.getSystemUsage().getMemoryUsage().setLimit(512);
 
         // Setup a destination policy where it takes only 1 message at a time.
         PolicyMap policyMap = new PolicyMap();
@@ -116,25 +130,28 @@ public class AMQ6463Test extends JmsTestSupport {
 
     public void setUp() throws Exception {
         setAutoFail(true);
-        DefaultTestAppender appender = new DefaultTestAppender() {
+
+        final var logger = org.apache.logging.log4j.core.Logger.class.cast(LogManager.getRootLogger());
+        appender = new AbstractAppender("testAppender", new AbstractFilter() {}, new MessageLayout(), false, new Property[0]) {
             @Override
-            public void doAppend(LoggingEvent event) {
+            public void append(LogEvent event) {
                 if (event.getLevel().equals(Level.ERROR)) {
                     errors.incrementAndGet();
-                } else if (event.getLevel().equals(Level.INFO) && event.getRenderedMessage().contains("Usage Manager Memory Limit")) {
+                } else if (event.getLevel().equals(Level.WARN) && event.getMessage().getFormattedMessage().contains("Usage Manager Memory Limit")) {
                     gotUsageBlocked.set(true);
                 }
             }
         };
-        org.apache.log4j.Logger rootLogger = org.apache.log4j.Logger.getRootLogger();
-        rootLogger.addAppender(appender);
+        appender.start();
+
+        logger.get().addAppender(appender, Level.DEBUG, new AbstractFilter() {});
+        logger.addAppender(appender);
 
         super.setUp();
     }
-    
+
     protected void tearDown() throws Exception {
-        org.apache.log4j.Logger rootLogger = org.apache.log4j.Logger.getRootLogger();
-        rootLogger.removeAppender(appender);
+        org.apache.logging.log4j.core.Logger.class.cast(LogManager.getRootLogger()).removeAppender(appender);
 
         if (connection != null) {
             connection.close();

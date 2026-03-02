@@ -25,11 +25,11 @@ import org.junit.runners.Parameterized;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.jms.Connection;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 import javax.management.ObjectName;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -55,7 +55,7 @@ public class DurableSubscriptionOffline2Test extends DurableSubscriptionOfflineT
     }
 
     public DurableSubscriptionOffline2Test(Boolean keepDurableSubsActive) {
-        this.keepDurableSubsActive = keepDurableSubsActive.booleanValue();
+        this.keepDurableSubsActive = keepDurableSubsActive;
 
         LOG.info(">>>> running {} with keepDurableSubsActive: {}", testName.getMethodName(), this.keepDurableSubsActive);
     }

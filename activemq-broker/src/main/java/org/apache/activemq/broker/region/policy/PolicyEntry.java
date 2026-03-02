@@ -51,6 +51,7 @@ public class PolicyEntry extends DestinationMapEntry {
     private DispatchPolicy dispatchPolicy;
     private SubscriptionRecoveryPolicy subscriptionRecoveryPolicy;
     private boolean sendAdvisoryIfNoConsumers;
+    private boolean sendDuplicateFromStoreToDLQ = false;
     private DeadLetterStrategy deadLetterStrategy = Destination.DEFAULT_DEAD_LETTER_STRATEGY;
     private PendingMessageLimitStrategy pendingMessageLimitStrategy;
     private MessageEvictionStrategy messageEvictionStrategy;
@@ -83,6 +84,7 @@ public class PolicyEntry extends DestinationMapEntry {
     private boolean advisoryWhenFull;
     private boolean advisoryForDelivery;
     private boolean advisoryForConsumed;
+    private boolean advisoryForDispatched;
     private boolean includeBodyForAdvisory;
     private long expireMessagesPeriod = BaseDestination.EXPIRE_MESSAGE_PERIOD;
     private int maxExpirePageSize = BaseDestination.MAX_BROWSE_PAGE_SIZE;
@@ -103,13 +105,19 @@ public class PolicyEntry extends DestinationMapEntry {
     private NetworkBridgeFilterFactory networkBridgeFilterFactory;
     private boolean doOptimzeMessageStorage = true;
     private int maxDestinations = -1;
+    private boolean useTopicSubscriptionInflightStats = true;
+    private boolean advancedNetworkStatisticsEnabled = false; // [AMQ-9437]
+    private boolean advancedMessageStatisticsEnabled = false; // [AMQ-8463]
 
     /*
      * percentage of in-flight messages above which optimize message store is disabled
      */
     private int optimizeMessageStoreInFlightLimit = 10;
     private boolean persistJMSRedelivered = false;
+    private int sendFailIfNoSpace = -1;
+    private long sendFailIfNoSpaceAfterTimeout = -1;
 
+    private MessageInterceptorStrategy messageInterceptorStrategy = null;
 
     public void configure(Broker broker,Queue queue) {
         baseConfiguration(broker,queue);
@@ -134,6 +142,7 @@ public class PolicyEntry extends DestinationMapEntry {
         queue.setConsumersBeforeDispatchStarts(getConsumersBeforeDispatchStarts());
         queue.setAllConsumersExclusiveByDefault(isAllConsumersExclusiveByDefault());
         queue.setPersistJMSRedelivered(isPersistJMSRedelivered());
+        queue.setMessageInterceptorStrategy(getMessageInterceptorStrategy());
     }
 
     public void update(Queue queue) {
@@ -147,7 +156,7 @@ public class PolicyEntry extends DestinationMapEntry {
      *
      * If includedProperties is null then all of the properties will be set as
      * isUpdate will return true
-     * @param baseDestination
+     * @param queue
      * @param includedProperties
      */
     public void update(Queue queue, Set<String> includedProperties) {
@@ -196,6 +205,7 @@ public class PolicyEntry extends DestinationMapEntry {
             topic.getMemoryUsage().setLimit(memoryLimit);
         }
         topic.setLazyDispatch(isLazyDispatch());
+        topic.setMessageInterceptorStrategy(getMessageInterceptorStrategy());
     }
 
     public void update(Topic topic) {
@@ -238,7 +248,6 @@ public class PolicyEntry extends DestinationMapEntry {
         if (isUpdate("maxBrowsePageSize", includedProperties)) {
             destination.setMaxBrowsePageSize(getMaxBrowsePageSize());
         }
-
         if (isUpdate("minimumMessageSize", includedProperties)) {
             destination.setMinimumMessageSize((int) getMinimumMessageSize());
         }
@@ -272,6 +281,9 @@ public class PolicyEntry extends DestinationMapEntry {
         if (isUpdate("advisoryForConsumed", includedProperties)) {
             destination.setAdvisoryForConsumed(isAdvisoryForConsumed());
         }
+        if (isUpdate("advisoryForDispatched", includedProperties)) {
+            destination.setAdvisoryForDispatched(isAdvisoryForDispatched());
+        }
         if (isUpdate("advisoryForDelivery", includedProperties)) {
             destination.setAdvisoryForDelivery(isAdvisoryForDelivery());
         }
@@ -293,6 +305,15 @@ public class PolicyEntry extends DestinationMapEntry {
         if (isUpdate("sendAdvisoryIfNoConsumers", includedProperties)) {
             destination.setSendAdvisoryIfNoConsumers(isSendAdvisoryIfNoConsumers());
         }
+        if (isUpdate("sendDuplicateFromStoreToDLQ", includedProperties)) {
+            destination.setSendDuplicateFromStoreToDLQ(isSendDuplicateFromStoreToDLQ());
+        }
+        if (isUpdate("advancedNetworkStatisticsEnabled", includedProperties)) {
+            destination.setAdvancedNetworkStatisticsEnabled(isAdvancedNetworkStatisticsEnabled());
+        }
+        if (isUpdate("advancedMessageStatisticsEnabled", includedProperties)) {
+            destination.setAdvancedMessageStatisticsEnabled(isAdvancedMessageStatisticsEnabled());
+        }
     }
 
     public void baseConfiguration(Broker broker, BaseDestination destination) {
@@ -309,12 +330,19 @@ public class PolicyEntry extends DestinationMapEntry {
         }
         destination.setSlowConsumerStrategy(scs);
         destination.setPrioritizedMessages(isPrioritizedMessages());
+        if (sendFailIfNoSpace != -1) {
+            destination.getSystemUsage().setSendFailIfNoSpace(isSendFailIfNoSpace());
+        }
+        if (sendFailIfNoSpaceAfterTimeout != -1) {
+            destination.getSystemUsage().setSendFailIfNoSpaceAfterTimeout(getSendFailIfNoSpaceAfterTimeout());
+        }
     }
 
     public void configure(Broker broker, SystemUsage memoryManager, TopicSubscription subscription) {
         configurePrefetch(subscription);
         subscription.setUsePrefetchExtension(isUsePrefetchExtension());
         subscription.setCursorMemoryHighWaterMark(getCursorMemoryHighWaterMark());
+        subscription.setUseTopicSubscriptionInflightStats(isUseTopicSubscriptionInflightStats());
         if (pendingMessageLimitStrategy != null) {
             int value = pendingMessageLimitStrategy.getMaximumPendingMessageLimit(subscription);
             int consumerLimit = subscription.getInfo().getMaximumPendingMessageLimit();
@@ -444,6 +472,18 @@ public class PolicyEntry extends DestinationMapEntry {
      */
     public void setSendAdvisoryIfNoConsumers(boolean sendAdvisoryIfNoConsumers) {
         this.sendAdvisoryIfNoConsumers = sendAdvisoryIfNoConsumers;
+    }
+
+    public boolean isSendDuplicateFromStoreToDLQ() {
+        return sendDuplicateFromStoreToDLQ;
+    }
+
+    /**
+     * Sends a copy of message to DLQ if a duplicate messages are paged-in from
+     * the messages store
+     */
+    public void setSendDuplicateFromStoreToDLQ(boolean sendDuplicateFromStoreToDLQ) {
+        this.sendDuplicateFromStoreToDLQ = sendDuplicateFromStoreToDLQ;
     }
 
     public DeadLetterStrategy getDeadLetterStrategy() {
@@ -823,6 +863,14 @@ public class PolicyEntry extends DestinationMapEntry {
         this.advisoryForConsumed = advisoryForConsumed;
     }
 
+    public boolean isAdvisoryForDispatched() {
+        return advisoryForDispatched;
+    }
+
+    public void setAdvisoryForDispatched(boolean advisoryForDispatched) {
+        this.advisoryForDispatched = advisoryForDispatched;
+    }
+
     /**
      * @return the advisdoryForFastProducers
      */
@@ -997,7 +1045,7 @@ public class PolicyEntry extends DestinationMapEntry {
     /**
      * @return the amount of time spent inactive before GC of the destination kicks in.
      *
-     * @deprecated use getInactiveTimeoutBeforeGC instead.
+     * @deprecated use {@link #getInactiveTimeoutBeforeGC} instead.
      */
     @Deprecated
     public long getInactiveTimoutBeforeGC() {
@@ -1010,7 +1058,7 @@ public class PolicyEntry extends DestinationMapEntry {
      * @param inactiveTimoutBeforeGC
      *        time in milliseconds to configure as the inactive timeout.
      *
-     * @deprecated use getInactiveTimeoutBeforeGC instead.
+     * @deprecated use {@link #setInactiveTimeoutBeforeGC} instead.
      */
     @Deprecated
     public void setInactiveTimoutBeforeGC(long inactiveTimoutBeforeGC) {
@@ -1027,7 +1075,7 @@ public class PolicyEntry extends DestinationMapEntry {
     /**
      * Sets the amount of time a destination is inactive before it is marked for GC
      *
-     * @param inactiveTimoutBeforeGC
+     * @param inactiveTimeoutBeforeGC
      *        time in milliseconds to configure as the inactive timeout.
      */
     public void setInactiveTimeoutBeforeGC(long inactiveTimeoutBeforeGC) {
@@ -1099,5 +1147,57 @@ public class PolicyEntry extends DestinationMapEntry {
     @Override
     public String toString() {
         return "PolicyEntry [" + destination + "]";
+    }
+
+    public void setSendFailIfNoSpace(boolean val) {
+        if (val) {
+            this.sendFailIfNoSpace = 1;
+        } else {
+            this.sendFailIfNoSpace = 0;
+        }
+    }
+
+    public boolean isSendFailIfNoSpace() {
+        return sendFailIfNoSpace == 1;
+    }
+
+    public void setSendFailIfNoSpaceAfterTimeout(long sendFailIfNoSpaceAfterTimeout) {
+        this.sendFailIfNoSpaceAfterTimeout = sendFailIfNoSpaceAfterTimeout;
+    }
+
+    public long getSendFailIfNoSpaceAfterTimeout() {
+        return this.sendFailIfNoSpaceAfterTimeout;
+    }
+
+    public boolean isUseTopicSubscriptionInflightStats() {
+        return useTopicSubscriptionInflightStats;
+    }
+
+    public void setUseTopicSubscriptionInflightStats(boolean useTopicSubscriptionInflightStats) {
+        this.useTopicSubscriptionInflightStats = useTopicSubscriptionInflightStats;
+    }
+
+    public void setMessageInterceptorStrategy(MessageInterceptorStrategy messageInterceptorStrategy) {
+        this.messageInterceptorStrategy = messageInterceptorStrategy;
+    }
+
+    public MessageInterceptorStrategy getMessageInterceptorStrategy() {
+        return this.messageInterceptorStrategy;
+    } 
+
+    public boolean isAdvancedNetworkStatisticsEnabled() {
+        return this.advancedNetworkStatisticsEnabled;
+    }
+
+    public void setAdvancedNetworkStatisticsEnabled(boolean advancedNetworkStatisticsEnabled) {
+        this.advancedNetworkStatisticsEnabled = advancedNetworkStatisticsEnabled;
+    }
+
+    public boolean isAdvancedMessageStatisticsEnabled() {
+        return this.advancedMessageStatisticsEnabled;
+    }
+
+    public void setAdvancedMessageStatisticsEnabled(boolean advancedMessageStatisticsEnabled) {
+        this.advancedMessageStatisticsEnabled = advancedMessageStatisticsEnabled;
     }
 }

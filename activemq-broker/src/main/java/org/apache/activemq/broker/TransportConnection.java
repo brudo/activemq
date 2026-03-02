@@ -19,7 +19,6 @@ package org.apache.activemq.broker;
 import java.io.EOFException;
 import java.io.IOException;
 import java.net.SocketException;
-import java.net.URI;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -101,10 +100,11 @@ import org.apache.activemq.transport.TransportDisposedIOException;
 import org.apache.activemq.util.IntrospectionSupport;
 import org.apache.activemq.util.MarshallingSupport;
 import org.apache.activemq.util.NetworkBridgeUtils;
-import org.apache.activemq.util.SubscriptionKey;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+
+import jakarta.jms.ResourceAllocationException;
 
 public class TransportConnection implements Connection, Task, CommandVisitor {
     private static final Logger LOG = LoggerFactory.getLogger(TransportConnection.class);
@@ -138,8 +138,14 @@ public class TransportConnection implements Connection, Task, CommandVisitor {
     private boolean blocked;
     private boolean connected;
     private boolean active;
-    private final AtomicBoolean starting = new AtomicBoolean();
-    private final AtomicBoolean pendingStop = new AtomicBoolean();
+
+    // state management around pending stop
+    private static final int NEW           = 0;
+    private static final int STARTING      = 1;
+    private static final int STARTED       = 2;
+    private static final int PENDING_STOP  = 3;
+    private final AtomicInteger status = new AtomicInteger(NEW);
+
     private long timeStamp;
     private final AtomicBoolean stopping = new AtomicBoolean(false);
     private final CountDownLatch stopped = new CountDownLatch(1);
@@ -157,6 +163,7 @@ public class TransportConnection implements Connection, Task, CommandVisitor {
     private TransportConnectionStateRegister connectionStateRegister = new SingleTransportConnectionStateRegister();
     private final ReentrantReadWriteLock serviceLock = new ReentrantReadWriteLock();
     private String duplexNetworkConnectorId;
+    private final long connectedTimestamp;
 
     /**
      * @param taskRunnerFactory - can be null if you want direct dispatch to the transport
@@ -214,6 +221,7 @@ public class TransportConnection implements Connection, Task, CommandVisitor {
             }
         });
         connected = true;
+        connectedTimestamp = System.currentTimeMillis();
     }
 
     /**
@@ -229,24 +237,23 @@ public class TransportConnection implements Connection, Task, CommandVisitor {
     }
 
     public void serviceTransportException(IOException e) {
-        if (!stopping.get() && !pendingStop.get()) {
+        if (!stopping.get() && status.get() != PENDING_STOP) {
             transportException.set(e);
             if (TRANSPORTLOG.isDebugEnabled()) {
-                TRANSPORTLOG.debug(this + " failed: " + e, e);
-            } else if (TRANSPORTLOG.isWarnEnabled() && !expected(e)) {
-                TRANSPORTLOG.warn(this + " failed: " + e);
+                TRANSPORTLOG.debug("{} failed: {}", this, e.getMessage(), e);
+            } else if (TRANSPORTLOG.isWarnEnabled() && !suppressed(e)) {
+                if (connector.isDisplayStackTrace()) {
+                    TRANSPORTLOG.warn("{} failed", this, e);
+                } else {
+                    TRANSPORTLOG.warn("{} failed: {}", this, e.getMessage());
+                }
             }
             stopAsync(e);
         }
     }
 
-    private boolean expected(IOException e) {
-        return isStomp() && ((e instanceof SocketException && e.getMessage().indexOf("reset") != -1) || e instanceof EOFException);
-    }
-
-    private boolean isStomp() {
-        URI uri = connector.getUri();
-        return uri != null && uri.getScheme() != null && uri.getScheme().indexOf("stomp") != -1;
+    private boolean suppressed(IOException e) {
+        return (!connector.isWarnOnRemoteClose()) && ((e instanceof SocketException && e.getMessage().indexOf("reset") != -1) || e instanceof EOFException);
     }
 
     /**
@@ -302,13 +309,13 @@ public class TransportConnection implements Connection, Task, CommandVisitor {
             inServiceException = true;
             try {
                 if (SERVICELOG.isDebugEnabled()) {
-                    SERVICELOG.debug("Async error occurred: " + e, e);
+                    SERVICELOG.debug("Async error occurred: {}", e.getMessage(), e);
                 } else {
-                    SERVICELOG.warn("Async error occurred: " + e);
+                    SERVICELOG.warn("Async error occurred: {}", e.getMessage());
                 }
                 ConnectionError ce = new ConnectionError();
                 ce.setException(e);
-                if (pendingStop.get()) {
+                if (status.get() == PENDING_STOP) {
                     dispatchSync(ce);
                 } else {
                     dispatchAsync(ce);
@@ -326,19 +333,22 @@ public class TransportConnection implements Connection, Task, CommandVisitor {
         boolean responseRequired = command.isResponseRequired();
         int commandId = command.getCommandId();
         try {
-            if (!pendingStop.get()) {
+            if (status.get() != PENDING_STOP) {
                 response = command.visit(this);
             } else {
                 response = new ExceptionResponse(transportException.get());
             }
         } catch (Throwable e) {
             if (SERVICELOG.isDebugEnabled() && e.getClass() != BrokerStoppedException.class) {
-                SERVICELOG.debug("Error occured while processing " + (responseRequired ? "sync" : "async")
-                        + " command: " + command + ", exception: " + e, e);
+                SERVICELOG.debug("Error occurred while processing {} command: {}, exception: {}",
+                        (responseRequired ? "sync" : "async"),
+                        command,
+                        e.getMessage(),
+                        e);
             }
 
             if (e instanceof SuppressReplyException || (e.getCause() instanceof SuppressReplyException)) {
-                LOG.info("Suppressing reply to: " + command + " on: " + e + ", cause: " + e.getCause());
+                LOG.info("Suppressing reply to: {} on: {}, cause: {}", command, e, e.getCause());
                 responseRequired = false;
             }
 
@@ -376,7 +386,7 @@ public class TransportConnection implements Connection, Task, CommandVisitor {
         if (brokerService.isRollbackOnlyOnAsyncException() && !(e instanceof IOException) && isInTransaction(command)) {
             Transaction transaction = getActiveTransaction(command);
             if (transaction != null && !transaction.isRollbackOnly()) {
-                LOG.debug("on async exception, force rollback of transaction for: " + command, e);
+                LOG.debug("on async exception, force rollback of transaction for: {}", command, e);
                 transaction.setRollbackOnly(e);
             }
         }
@@ -398,7 +408,7 @@ public class TransportConnection implements Connection, Task, CommandVisitor {
                 }
             }
         } catch(Exception ignored){
-            LOG.trace("failed to find active transaction for command: " + command, ignored);
+            LOG.trace("failed to find active transaction for command: {}", command, ignored);
         }
         return transaction;
     }
@@ -580,7 +590,7 @@ public class TransportConnection implements Connection, Task, CommandVisitor {
         if (consumerExchange != null) {
             broker.acknowledge(consumerExchange, ack);
         } else if (ack.isInTransaction()) {
-            LOG.warn("no matching consumer, ignoring ack {}", consumerExchange, ack);
+            LOG.warn("no matching consumer {}, ignoring ack {}", consumerExchange, ack);
         }
         return null;
     }
@@ -813,7 +823,8 @@ public class TransportConnection implements Connection, Task, CommandVisitor {
             }
         }
         registerConnectionState(info.getConnectionId(), state);
-        LOG.debug("Setting up new connection id: {}, address: {}, info: {}", new Object[]{ info.getConnectionId(), getRemoteAddress(), info });
+        LOG.debug("Setting up new connection id: {}, address: {}, info: {}",
+                info.getConnectionId(), getRemoteAddress(), info);
         this.faultTolerantConnection = info.isFaultTolerant();
         // Setup the context.
         String clientId = info.getClientId();
@@ -846,7 +857,8 @@ public class TransportConnection implements Connection, Task, CommandVisitor {
                 brokerConnectionStates.remove(info.getConnectionId());
             }
             unregisterConnectionState(info.getConnectionId());
-            LOG.warn("Failed to add Connection id={}, clientId={} due to {}", info.getConnectionId(), clientId, e);
+            LOG.warn("Failed to add Connection id={}, clientId={}, clientIP={} due to {}",
+                    info.getConnectionId(), clientId, info.getClientIp(), e.getLocalizedMessage());
             //AMQ-6561 - stop for all exceptions on addConnection
             // close this down - in case the peer of this transport doesn't play nice
             delayedStop(2000, "Failed with SecurityException: " + e.getLocalizedMessage(), e);
@@ -882,14 +894,17 @@ public class TransportConnection implements Connection, Task, CommandVisitor {
                 }
             }
             // Cascade the connection stop to temp destinations.
-            for (Iterator<DestinationInfo> iter = cs.getTempDestinations().iterator(); iter.hasNext(); ) {
-                DestinationInfo di = iter.next();
-                try {
-                    broker.removeDestination(cs.getContext(), di.getDestination(), 0);
-                } catch (Throwable e) {
-                    SERVICELOG.warn("Failed to remove tmp destination {}", di.getDestination(), e);
+            List<DestinationInfo> tempDestinations = cs.getTempDestinations();
+            synchronized (tempDestinations) {
+                for (Iterator<DestinationInfo> iter = tempDestinations.iterator(); iter.hasNext(); ) {
+                    DestinationInfo di = iter.next();
+                    try {
+                        broker.removeDestination(cs.getContext(), di.getDestination(), 0);
+                    } catch (Throwable e) {
+                        SERVICELOG.warn("Failed to remove tmp destination {}", di.getDestination(), e);
+                    }
+                    iter.remove();
                 }
-                iter.remove();
             }
             try {
                 broker.removeConnection(cs.getContext(), cs.getInfo(), transportException.get());
@@ -981,7 +996,8 @@ public class TransportConnection implements Connection, Task, CommandVisitor {
                 throw e;
             } else {
                 if (TRANSPORTLOG.isDebugEnabled()) {
-                    TRANSPORTLOG.debug("Unexpected exception on asyncDispatch, command of type: " + command.getDataStructureType(), e);
+                    TRANSPORTLOG.debug("Unexpected exception on asyncDispatch, command of type: {}",
+                            command.getDataStructureType(), e);
                 }
             }
         } finally {
@@ -998,7 +1014,7 @@ public class TransportConnection implements Connection, Task, CommandVisitor {
     @Override
     public boolean iterate() {
         try {
-            if (pendingStop.get() || stopping.get()) {
+            if (status.get() == PENDING_STOP || stopping.get()) {
                 if (dispatchStopped.compareAndSet(false, true)) {
                     if (transportException.get() == null) {
                         try {
@@ -1054,39 +1070,39 @@ public class TransportConnection implements Connection, Task, CommandVisitor {
 
     @Override
     public void start() throws Exception {
-        try {
-            synchronized (this) {
-                starting.set(true);
-                if (taskRunnerFactory != null) {
-                    taskRunner = taskRunnerFactory.createTaskRunner(this, "ActiveMQ Connection Dispatcher: "
-                            + getRemoteAddress());
-                } else {
-                    taskRunner = null;
-                }
-                transport.start();
-                active = true;
-                BrokerInfo info = connector.getBrokerInfo().copy();
-                if (connector.isUpdateClusterClients()) {
-                    info.setPeerBrokerInfos(this.broker.getPeerBrokerInfos());
-                } else {
-                    info.setPeerBrokerInfos(null);
-                }
-                dispatchAsync(info);
+        if (status.compareAndSet(NEW, STARTING)) {
+            try {
+                synchronized (this) {
+                    if (taskRunnerFactory != null) {
+                        taskRunner = taskRunnerFactory.createTaskRunner(this, "ActiveMQ Connection Dispatcher: "
+                                + getRemoteAddress());
+                    } else {
+                        taskRunner = null;
+                    }
+                    transport.start();
+                    active = true;
+                    BrokerInfo info = connector.getBrokerInfo().copy();
+                    if (connector.isUpdateClusterClients()) {
+                        info.setPeerBrokerInfos(this.broker.getPeerBrokerInfos());
+                    } else {
+                        info.setPeerBrokerInfos(null);
+                    }
+                    dispatchAsync(info);
 
-                connector.onStarted(this);
-            }
-        } catch (Exception e) {
-            // Force clean up on an error starting up.
-            pendingStop.set(true);
-            throw e;
-        } finally {
-            // stop() can be called from within the above block,
-            // but we want to be sure start() completes before
-            // stop() runs, so queue the stop until right now:
-            setStarting(false);
-            if (isPendingStop()) {
-                LOG.debug("Calling the delayed stop() after start() {}", this);
-                stop();
+                    connector.onStarted(this);
+                }
+            } catch (Exception e) {
+                // Force clean up on an error starting up.
+                status.set(PENDING_STOP);
+                throw e;
+            } finally {
+                // stop() can be called from within the above block,
+                // but we want to be sure start() completes before
+                // stop() runs, so queue the stop until right now:
+                if (!status.compareAndSet(STARTING, STARTED)) {
+                    LOG.debug("Calling the delayed stop() after start() {}", this);
+                    stop();
+                }
             }
         }
     }
@@ -1104,10 +1120,8 @@ public class TransportConnection implements Connection, Task, CommandVisitor {
 
     public void delayedStop(final int waitTime, final String reason, Throwable cause) {
         if (waitTime > 0) {
-            synchronized (this) {
-                pendingStop.set(true);
-                transportException.set(cause);
-            }
+            status.compareAndSet(STARTING, PENDING_STOP);
+            transportException.set(cause);
             try {
                 stopTaskRunnerFactory.execute(new Runnable() {
                     @Override
@@ -1133,12 +1147,9 @@ public class TransportConnection implements Connection, Task, CommandVisitor {
 
     public void stopAsync() {
         // If we're in the middle of starting then go no further... for now.
-        synchronized (this) {
-            pendingStop.set(true);
-            if (starting.get()) {
-                LOG.debug("stopAsync() called in the middle of start(). Delaying till start completes..");
-                return;
-            }
+        if (status.compareAndSet(STARTING, PENDING_STOP)) {
+            LOG.debug("stopAsync() called in the middle of start(). Delaying till start completes..");
+            return;
         }
         if (stopping.compareAndSet(false, true)) {
             // Let all the connection contexts know we are shutting down
@@ -1203,8 +1214,7 @@ public class TransportConnection implements Connection, Task, CommandVisitor {
         // Run the MessageDispatch callbacks so that message references get
         // cleaned up.
         synchronized (dispatchQueue) {
-            for (Iterator<Command> iter = dispatchQueue.iterator(); iter.hasNext(); ) {
-                Command command = iter.next();
+            for (Command command : dispatchQueue) {
                 if (command.isMessageDispatch()) {
                     MessageDispatch md = (MessageDispatch) command;
                     TransmitCallback sub = md.getTransmitCallback();
@@ -1221,7 +1231,6 @@ public class TransportConnection implements Connection, Task, CommandVisitor {
         // from the broker.
         if (!broker.isStopped()) {
             List<TransportConnectionState> connectionStates = listConnectionStates();
-            connectionStates = listConnectionStates();
             for (TransportConnectionState cs : connectionStates) {
                 cs.getContext().getStopping().set(true);
                 try {
@@ -1347,7 +1356,7 @@ public class TransportConnection implements Connection, Task, CommandVisitor {
      * @return true if the Connection is starting
      */
     public boolean isStarting() {
-        return starting.get();
+        return status.get() == STARTING;
     }
 
     @Override
@@ -1360,19 +1369,11 @@ public class TransportConnection implements Connection, Task, CommandVisitor {
         return this.faultTolerantConnection;
     }
 
-    protected void setStarting(boolean starting) {
-        this.starting.set(starting);
-    }
-
     /**
      * @return true if the Connection needs to stop
      */
     public boolean isPendingStop() {
-        return pendingStop.get();
-    }
-
-    protected void setPendingStop(boolean pendingStop) {
-        this.pendingStop.set(pendingStop);
+        return status.get() == PENDING_STOP;
     }
 
     private NetworkBridgeConfiguration getNetworkConfiguration(final BrokerInfo info) throws IOException {
@@ -1419,8 +1420,7 @@ public class TransportConnection implements Connection, Task, CommandVisitor {
                 String duplexNetworkConnectorId = config.getName() + "@" + info.getBrokerId();
                 CopyOnWriteArrayList<TransportConnection> connections = this.connector.getConnections();
                 synchronized (connections) {
-                    for (Iterator<TransportConnection> iter = connections.iterator(); iter.hasNext(); ) {
-                        TransportConnection c = iter.next();
+                    for (TransportConnection c : connections) {
                         if ((c != this) && (duplexNetworkConnectorId.equals(c.getDuplexNetworkConnectorId()))) {
                             LOG.warn("Stopping an existing active duplex connection [{}] for network connector ({}).", c, duplexNetworkConnectorId);
                             c.stopAsync();
@@ -1442,7 +1442,7 @@ public class TransportConnection implements Connection, Task, CommandVisitor {
                 }
                 MBeanNetworkListener listener = new MBeanNetworkListener(brokerService, config, brokerService.createDuplexNetworkConnectorObjectName(duplexName));
                 listener.setCreatedByDuplex(true);
-                duplexBridge = NetworkBridgeFactory.createBridge(config, localTransport, remoteBridgeTransport, listener);
+                duplexBridge = config.getBridgeFactory().createNetworkBridge(config, localTransport, remoteBridgeTransport, listener);
                 duplexBridge.setBrokerService(brokerService);
                 //Need to set durableDestinations to properly restart subs when dynamicOnly=false
                 duplexBridge.setDurableDestinations(NetworkConnector.getDurableTopicDestinations(
@@ -1728,5 +1728,10 @@ public class TransportConnection implements Connection, Task, CommandVisitor {
     @Override
     public Response processBrokerSubscriptionInfo(BrokerSubscriptionInfo info) throws Exception {
         return null;
+    }
+
+    @Override
+    public Long getConnectedTimestamp() {
+        return this.connectedTimestamp;
     }
 }

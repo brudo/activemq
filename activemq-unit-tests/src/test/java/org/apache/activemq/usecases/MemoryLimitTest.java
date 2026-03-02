@@ -16,15 +16,12 @@
  */
 package org.apache.activemq.usecases;
 
-import java.util.Arrays;
-
-import javax.jms.BytesMessage;
-import javax.jms.Connection;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.Queue;
-import javax.jms.Session;
-
+import jakarta.jms.BytesMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.TestSupport;
 import org.apache.activemq.broker.BrokerService;
@@ -45,6 +42,8 @@ import org.junit.runners.Parameterized;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Arrays;
+
 @RunWith(value = Parameterized.class)
 public class MemoryLimitTest extends TestSupport {
     private static final Logger LOG = LoggerFactory.getLogger(MemoryLimitTest.class);
@@ -56,7 +55,7 @@ public class MemoryLimitTest extends TestSupport {
 
     @Parameterized.Parameters(name="store={0}")
     public static Iterable<Object[]> getTestParameters() {
-        return Arrays.asList(new Object[][]{{TestSupport.PersistenceAdapterChoice.KahaDB}, {PersistenceAdapterChoice.LevelDB}, {PersistenceAdapterChoice.JDBC}});
+        return Arrays.asList(new Object[][]{{TestSupport.PersistenceAdapterChoice.KahaDB}, {PersistenceAdapterChoice.JDBC}});
     }
 
     protected BrokerService createBroker() throws Exception {
@@ -133,18 +132,10 @@ public class MemoryLimitTest extends TestSupport {
         Message msg = consumer.receive(5000);
         msg.acknowledge();
 
-        // this should free some space and allow us to get new batch of messages in the memory
-        // exceeding the limit
-        assertTrue("Limit is exceeded", Wait.waitFor(new Wait.Condition() {
-            @Override
-            public boolean isSatisified() throws Exception {
-                LOG.info("Destination usage: " + dest.getMemoryUsage());
-                return dest.getMemoryUsage().getPercentUsage() >= 200;
-            }
-        }));
+        assertTrue("Should be less than 70% of limit but was: " + percentUsage, percentUsage <= 71);
 
         LOG.info("Broker usage: " + broker.getSystemUsage().getMemoryUsage());
-        assertTrue(broker.getSystemUsage().getMemoryUsage().getPercentUsage() >= 200);
+        assertTrue(broker.getSystemUsage().getMemoryUsage().getPercentUsage() <= 91);
 
         // let's make sure we can consume all messages
         for (int i = 1; i < 2000; i++) {

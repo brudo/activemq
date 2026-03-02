@@ -19,8 +19,8 @@ package org.apache.activemq.bugs;
 import java.io.File;
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.JMSException;
-import javax.jms.TextMessage;
+import jakarta.jms.JMSException;
+import jakarta.jms.TextMessage;
 import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
 
@@ -43,7 +43,6 @@ import org.apache.activemq.command.XATransactionId;
 import org.apache.activemq.store.PersistenceAdapter;
 import org.apache.activemq.store.jdbc.JDBCPersistenceAdapter;
 import org.apache.activemq.store.kahadb.KahaDBPersistenceAdapter;
-import org.apache.activemq.store.leveldb.LevelDBPersistenceAdapter;
 import org.apache.activemq.util.IOHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -77,7 +76,6 @@ public class AMQ5567Test extends BrokerRestartTestSupport {
     public void initCombosForTestPreparedTransactionNotDispatched() throws Exception {
         PersistenceAdapter[] persistenceAdapters = new PersistenceAdapter[]{
                 new KahaDBPersistenceAdapter(),
-                new LevelDBPersistenceAdapter(),
                 new JDBCPersistenceAdapter()
         };
         for (PersistenceAdapter adapter : persistenceAdapters) {
@@ -145,7 +143,6 @@ public class AMQ5567Test extends BrokerRestartTestSupport {
     public void initCombosForTestCursorStoreSync() throws Exception {
         PersistenceAdapter[] persistenceAdapters = new PersistenceAdapter[]{
                 new KahaDBPersistenceAdapter(),
-                new LevelDBPersistenceAdapter(),
                 new JDBCPersistenceAdapter()
         };
         for (PersistenceAdapter adapter : persistenceAdapters) {

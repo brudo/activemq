@@ -23,11 +23,11 @@ import static org.junit.Assert.assertTrue;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.MessageConsumer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 
 import org.apache.activemq.broker.BrokerPlugin;
 import org.apache.activemq.broker.region.policy.DeadLetterStrategy;
@@ -39,6 +39,9 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.junit.experimental.categories.Category;
+
+@Category(ParallelTest.class)
 public class StompTimeStampingBrokerPluginTest extends StompTestSupport {
 
     private static final Logger LOG = LoggerFactory.getLogger(StompTimeStampingBrokerPluginTest.class);

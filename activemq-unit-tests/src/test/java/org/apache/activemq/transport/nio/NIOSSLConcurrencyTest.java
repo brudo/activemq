@@ -16,15 +16,15 @@
  */
 package org.apache.activemq.transport.nio;
 
-import javax.jms.BytesMessage;
-import javax.jms.Connection;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Queue;
-import javax.jms.Session;
+import jakarta.jms.BytesMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.Destination;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
 
 import junit.framework.TestCase;
 
@@ -70,7 +70,7 @@ public class NIOSSLConcurrencyTest extends TestCase {
         broker = new BrokerService();
         broker.setPersistent(false);
         broker.setUseJmx(false);
-        TransportConnector connector = broker.addConnector("nio+ssl://localhost:0?transport.needClientAuth=true&transport.enabledCipherSuites=SSL_RSA_WITH_RC4_128_SHA,SSL_DH_anon_WITH_3DES_EDE_CBC_SHA");
+        TransportConnector connector = broker.addConnector("nio+ssl://localhost:0?socket.verifyHostName=false&transport.needClientAuth=true");
         broker.start();
         broker.waitUntilStarted();
 

@@ -22,25 +22,13 @@
   <parent>
     <groupId>org.apache.activemq</groupId>
     <artifactId>activemq-parent</artifactId>
-    <version>5.16.0-SNAPSHOT</version>
+    <version>6.3.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>activemq-jms-pool</artifactId>
   <name>ActiveMQ :: Generic JMS Pool</name>
   <description>Generic JMS Pooled ConnectionFactory</description>
   <packaging>bundle</packaging>
-
-  <properties>
-    <activemq.osgi.import.pkg>
-      javax.jms*;version="[1.1,3)",
-      javax.transaction*;resolution:=optional,
-      org.apache.geronimo.transaction.manager*;resolution:=optional,
-      *
-    </activemq.osgi.import.pkg>
-    <activemq.osgi.export>
-      org.apache.activemq.jms.pool*;version=${project.version};-noimport:=true,
-    </activemq.osgi.export>
-  </properties>
 
   <dependencies>
 
@@ -52,22 +40,23 @@
       <artifactId>slf4j-api</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.apache.geronimo.specs</groupId>
-      <artifactId>geronimo-jms_1.1_spec</artifactId>
+      <groupId>jakarta.jms</groupId>
+      <artifactId>jakarta.jms-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>jakarta.transaction</groupId>
+      <artifactId>jakarta.transaction-api</artifactId>
+      <optional>true</optional>
     </dependency>
     <dependency>
       <groupId>org.apache.geronimo.components</groupId>
       <artifactId>geronimo-transaction</artifactId>
+      <classifier>jakarta</classifier>
       <optional>true</optional>
     </dependency>
     <dependency>
-      <groupId>org.apache.geronimo.specs</groupId>
-      <artifactId>geronimo-jta_1.0.1B_spec</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.geronimo.specs</groupId>
-      <artifactId>geronimo-annotation_1.0_spec</artifactId>
-      <optional>true</optional>
+      <groupId>jakarta.annotation</groupId>
+      <artifactId>jakarta.annotation-api</artifactId>
     </dependency>
     <dependency>
       <groupId>org.apache.commons</groupId>
@@ -101,16 +90,40 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-log4j12</artifactId>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-slf4j2-impl</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>log4j</groupId>
-      <artifactId>log4j</artifactId>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-core</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.felix</groupId>
+        <artifactId>maven-bundle-plugin</artifactId>
+        <extensions>true</extensions>
+        <inherited>true</inherited>
+        <configuration>
+          <instructions>
+            <Export-Package>org.apache.activemq.jms.pool*;version=${project.version};-noimport:=true</Export-Package>
+            <Import-Package>
+              jakarta.jms*;version="[3,4)",
+              javax.transaction*;resolution:=optional,
+              jakarta.transaction*;resolution:=optional,
+              org.apache.geronimo.transaction.manager*;resolution:=optional,
+              *
+            </Import-Package>
+            <_noee>true</_noee>
+          </instructions>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 
   <profiles>
     <profile>

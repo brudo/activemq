@@ -20,6 +20,7 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.ListIterator;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -79,7 +80,15 @@ public abstract class AbstractStoreCursor extends AbstractPendingMessageCursor i
 
     @Override
     public void rebase() {
-        resetSize();
+        MessageId lastAdded = lastCachedIds[SYNC_ADD];
+        if (lastAdded != null) {
+            try {
+                setBatch(lastAdded);
+            } catch (Exception e) {
+                LOG.error("{} - Failed to set batch on rebase", this, e);
+                throw new RuntimeException(e);
+            }
+        }
     }
 
     @Override
@@ -105,7 +114,7 @@ public abstract class AbstractStoreCursor extends AbstractPendingMessageCursor i
                 }
             }
             message.incrementReferenceCount();
-            batchList.addMessageLast(message);
+            batchList.addMessageLast(createBatchListRef(message));
             clearIterator(true);
             recovered = true;
         } else if (!cached) {
@@ -127,6 +136,10 @@ public abstract class AbstractStoreCursor extends AbstractPendingMessageCursor i
         return recovered;
     }
 
+    protected MessageReference createBatchListRef(Message message) {
+        return message;
+    }
+
     protected boolean duplicateFromStoreExcepted(Message message) {
         // expected for messages pending acks with kahadb.concurrentStoreAndDispatchQueues=true for
         // which this existing unused flag has been repurposed
@@ -139,7 +152,9 @@ public abstract class AbstractStoreCursor extends AbstractPendingMessageCursor i
             // if the index suppressed it (original still present), or whether it was stored and needs to be removed
             Object possibleFuture = message.getMessageId().getFutureOrSequenceLong();
             if (possibleFuture instanceof Future) {
-                ((Future) possibleFuture).get();
+                try {
+                    ((Future) possibleFuture).get();
+                } catch (Exception okToErrorOrCancelStoreOp) {}
             }
             // need to access again after wait on future
             Object sequence = message.getMessageId().getFutureOrSequenceLong();
@@ -244,12 +259,20 @@ public abstract class AbstractStoreCursor extends AbstractPendingMessageCursor i
             disableCache = true;
         }
 
-        if (disableCache && isCacheEnabled()) {
+        // AMQ-9625 - use this.cacheEnabled directly because the method isCacheEnabled() is overriden
+        // to try to re-enable the cache which we don't want at this point as we already skipped
+        // adding it to the cache
+        if (disableCache && this.cacheEnabled) {
             if (LOG.isTraceEnabled()) {
                 LOG.trace("{} - disabling cache on add {} {}", this, node.getMessageId(), node.getMessageId().getFutureOrSequenceLong());
             }
             syncWithStore(node.getMessage());
             setCacheEnabled(false);
+        } else if (!this.cacheEnabled) {
+            // AMQ-9625 - Verify and wait on previous in flight async messages here if another
+            // thread triggered the cache to be disabled
+            // see the waitForAsyncMessage() method and Jira for more info
+            waitForAsyncMessage(node.getMessage());
         }
         size++;
         return true;
@@ -274,6 +297,12 @@ public abstract class AbstractStoreCursor extends AbstractPendingMessageCursor i
 
     protected boolean canEnableCash() {
         return useCache && size==0 && hasSpace() && isStarted();
+    }
+
+    @Override
+    public boolean canRecoveryNextMessage() {
+        // Should be safe to recovery messages if the overall memory usage if < 90%
+        return parentHasSpace(90);
     }
 
     private void syncWithStore(Message currentAdd) throws Exception {
@@ -301,6 +330,11 @@ public abstract class AbstractStoreCursor extends AbstractPendingMessageCursor i
             }
             break;
         }
+
+        // AMQ-9625 - If we are disabling the cache and syncing the store then
+        // we need to wait for task to finish before updating the store batch
+        // see the waitForAsyncMessage() method and Jira for more info
+        waitForAsyncMessage(currentAdd);
 
         MessageId candidate = lastCachedIds[ASYNC_ADD];
         if (candidate != null) {
@@ -342,8 +376,20 @@ public abstract class AbstractStoreCursor extends AbstractPendingMessageCursor i
             final Object futureOrLong = candidate.getFutureOrSequenceLong();
             if (futureOrLong instanceof Future) {
                 Future future = (Future) futureOrLong;
-                if (future.isCancelled()) {
-                    it.remove();
+                if (future.isDone()) {
+                    if (future.isCancelled()) {
+                        it.remove();
+                    } else {
+                        // check for exception, we may be seeing old state
+                        try {
+                            future.get(0, TimeUnit.SECONDS);
+                            // stale; if we get a result next prune will see Long
+                        } catch (ExecutionException expected) {
+                            it.remove();
+                        } catch (Exception unexpected) {
+                            LOG.debug("{} unexpected exception verifying exception state of future", this, unexpected);
+                        }
+                    }
                 } else {
                     // we don't want to wait for work to complete
                     break;
@@ -376,7 +422,7 @@ public abstract class AbstractStoreCursor extends AbstractPendingMessageCursor i
             } else if (candidateOrSequenceLong != null &&
                     Long.compare(((Long) candidateOrSequenceLong), ((Long) lastCacheFutureOrSequenceLong)) > 0) {
                 lastCachedIds[index] = candidate;
-            } if (LOG.isTraceEnabled()) {
+            } else if (LOG.isTraceEnabled()) {
                 LOG.trace("no set last cached[" + index + "] current:" + lastCacheFutureOrSequenceLong + " <= than candidate: " + candidateOrSequenceLong+ ", " + this);
             }
         }
@@ -388,7 +434,6 @@ public abstract class AbstractStoreCursor extends AbstractPendingMessageCursor i
 
     @Override
     public synchronized void addMessageFirst(MessageReference node) throws Exception {
-        setCacheEnabled(false);
         size++;
     }
 
@@ -407,12 +452,14 @@ public abstract class AbstractStoreCursor extends AbstractPendingMessageCursor i
 
     @Override
     public final synchronized void remove(MessageReference node) {
-        if (batchList.remove(node) != null) {
+        final PendingNode message = batchList.remove(node);
+        if (message != null) {
             size--;
             setCacheEnabled(false);
+            // decrement reference count if removed from batchList
+            message.getMessage().decrementReferenceCount();
         }
     }
-
 
     @Override
     public final synchronized void clear() {
@@ -483,7 +530,7 @@ public abstract class AbstractStoreCursor extends AbstractPendingMessageCursor i
     @Override
     public String toString() {
         return super.toString() + ":" + regionDestination.getActiveMQDestination().getPhysicalName() + ",batchResetNeeded=" + batchResetNeeded
-                    + ",size=" + this.size + ",cacheEnabled=" + isCacheEnabled()
+                    + ",size=" + this.size + ",cacheEnabled=" + cacheEnabled
                     + ",maxBatchSize:" + maxBatchSize + ",hasSpace:" + hasSpace() + ",pendingCachedIds.size:" + pendingCachedIds.size()
                     + ",lastSyncCachedId:" + lastCachedIds[SYNC_ADD] + ",lastSyncCachedId-seq:" + (lastCachedIds[SYNC_ADD] != null ? lastCachedIds[SYNC_ADD].getFutureOrSequenceLong() : "null")
                     + ",lastAsyncCachedId:" + lastCachedIds[ASYNC_ADD] + ",lastAsyncCachedId-seq:" + (lastCachedIds[ASYNC_ADD] != null ? lastCachedIds[ASYNC_ADD].getFutureOrSequenceLong() : "null");
@@ -501,5 +548,39 @@ public abstract class AbstractStoreCursor extends AbstractPendingMessageCursor i
 
     public Subscription getSubscription() {
         return null;
+    }
+
+    // AMQ-9625 - If the cache is disabled check if we need to wait for an async message
+    // to finish its task because the message is not being added to the cache.
+    // Normally, async messages will only be used if the cache is enabled so most of the time
+    // this check should not find any async messages to wait on if the cache is disabled
+    // and is basically a noop.
+    //
+    // However, while messages are being published, if the memory limit is reached the first
+    // thread that is adding the message that reaches the limit will disable the cache.
+    // This means there will be 1 or more potentially outstanding in flight adds that are
+    // queued up as async writes to the store.
+    //
+    // If the cache is disabled, we need to wait for any async message tasks to be
+    // finished otherwise there is a chance of missing the messages on dispatch
+    // when the queue pages in the next batch because store writes will finish after
+    // the store cursor has already moved ahead leading to a stuck message.
+    private void waitForAsyncMessage(Message node) {
+        // Note: isRecievedByDFBridge() was repurposed to be used to mark messages that
+        // are added to the store as async
+        if (node.getMessage().isRecievedByDFBridge()) {
+            final Object futureOrLong = node.getMessageId().getFutureOrSequenceLong();
+            if (futureOrLong instanceof Future) {
+                try {
+                    ((Future<?>) futureOrLong).get();
+                } catch (Exception exceptionOk) {
+                    // We don't care if we get an exception (cancelled, etc) we just want
+                    // to ensure the task is finished and not pending.
+                } finally {
+                    LOG.trace("{} - future finished inside waitForAsyncMessage {} {}", this,
+                        node.getMessageId(), futureOrLong);
+                }
+            }
+        }
     }
 }

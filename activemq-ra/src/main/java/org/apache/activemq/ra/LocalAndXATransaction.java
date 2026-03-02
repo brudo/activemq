@@ -16,9 +16,9 @@
  */
 package org.apache.activemq.ra;
 
-import javax.jms.JMSException;
-import javax.resource.ResourceException;
-import javax.resource.spi.LocalTransaction;
+import jakarta.jms.JMSException;
+import jakarta.resource.ResourceException;
+import jakarta.resource.spi.LocalTransaction;
 import javax.transaction.xa.XAException;
 import javax.transaction.xa.XAResource;
 import javax.transaction.xa.Xid;
@@ -102,6 +102,11 @@ public class LocalAndXATransaction implements XAResource, LocalTransaction {
             } catch (JMSException e) {
                 throw (XAException)new XAException(XAException.XAER_PROTO).initCause(e);
             }
+            if ((arg1 & TMFAIL) != 0) {
+                // do no further work in this context
+                LOG.debug("Marking transaction: {} rollbackOnly", this);
+                transactionContext.setRollbackOnly(true);
+            }
         }
     }
 
@@ -132,7 +137,7 @@ public class LocalAndXATransaction implements XAResource, LocalTransaction {
 
     public Xid[] recover(int arg0) throws XAException {
         Xid[] answer = null;
-        LOG.trace("{} recover({})", new Object[]{this, arg0});
+        LOG.trace("{} recover({})", this, arg0);
         answer = transactionContext.recover(arg0);
         LOG.trace("{} recover({}) = {}", new Object[]{this, arg0, answer});
         return answer;

@@ -22,7 +22,7 @@
   <parent>
     <groupId>org.apache.activemq</groupId>
     <artifactId>activemq-parent</artifactId>
-    <version>5.16.0-SNAPSHOT</version>
+    <version>6.3.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>activemq-web-demo</artifactId>
@@ -96,7 +96,7 @@
           </supportedProjectTypes>
           <instructions>
             <Webapp-Context>activemqdemo</Webapp-Context>
-            <Web-ContextPath>activemqdemo</Web-ContextPath>
+            <Web-ContextPath>/activemqdemo</Web-ContextPath>
             <Bundle-ClassPath>.,WEB-INF/classes</Bundle-ClassPath>
             <Embed-Directory>WEB-INF/lib</Embed-Directory>
             <Embed-Dependency>*;scope=compile|runtime</Embed-Dependency>
@@ -111,12 +111,12 @@
               javax.management.remote,
               javax.naming,
               org.w3c.dom,
-              javax.servlet,
-              javax.servlet.http,
-              javax.servlet.resources,
-              javax.servlet.jsp,
-              javax.servlet.jsp.tagext,
-              javax.servlet.jsp.el,
+              jakarta.servlet,
+              jakarta.servlet.http,
+              jakarta.servlet.resources,
+              jakarta.servlet.jsp,
+              jakarta.servlet.jsp.tagext,
+              jakarta.servlet.jsp.el,
               javax.management,
               javax.management.openmbean,
               javax.net,
@@ -126,8 +126,8 @@
               org.apache.xbean*;version="[3.13,5)",
               org.slf4j;version="[1.6,2)";resolution:=optional,
               org.slf4j.spi;version="[1.6,2)";resolution:=optional,
-              org.apache.log4j;version="[1.2.14,2)";resolution:=optional,
-              org.apache.log4j.spi;version="[1.2.14,2)";resolution:=optional
+              org.apache.log4j;version="[2,3)";resolution:=optional,
+              org.apache.log4j.spi;version="[2,3)";resolution:=optional
             </Import-Package>
             <Export-Package>
               !*
@@ -142,16 +142,12 @@
   <dependencies>
     <!-- j2ee jars -->
     <dependency>
-      <groupId>org.apache.geronimo.specs</groupId>
-      <artifactId>geronimo-jms_1.1_spec</artifactId>
+      <groupId>jakarta.jms</groupId>
+      <artifactId>jakarta.jms-api</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.apache.geronimo.specs</groupId>
-      <artifactId>geronimo-jta_1.0.1B_spec</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.geronimo.specs</groupId>
-      <artifactId>geronimo-j2ee-management_1.1_spec</artifactId>
+      <groupId>jakarta.transaction</groupId>
+      <artifactId>jakarta.transaction-api</artifactId>
     </dependency>
     <dependency>
       <groupId>org.apache.geronimo.specs</groupId>
@@ -176,24 +172,25 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>${project.groupId}</groupId>
-      <artifactId>activeio-core</artifactId>
-    </dependency>
-    <dependency>
       <groupId>org.apache.activemq</groupId>
       <artifactId>activemq-jaas</artifactId>
       <optional>true</optional>
     </dependency>
     <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-log4j12</artifactId>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-slf4j2-impl</artifactId>
       <scope>test</scope>
     </dependency>
 
     <!-- web container -->
     <dependency>
-      <groupId>org.eclipse.jetty.aggregate</groupId>
-      <artifactId>jetty-all</artifactId>
+      <groupId>org.eclipse.jetty</groupId>
+      <artifactId>jetty-server</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.eclipse.jetty</groupId>
+      <artifactId>jetty-client</artifactId>
       <scope>test</scope>
     </dependency>
 
@@ -217,17 +214,12 @@
       <artifactId>junit</artifactId>
       <scope>test</scope>
     </dependency>
-    <dependency>
-      <groupId>commons-lang</groupId>
-      <artifactId>commons-lang</artifactId>
-      <version>${commons-lang-version}</version>
-      <scope>test</scope>
-    </dependency>
 
     <!-- Derby SQL DB used for testing JDBC message store -->
     <dependency>
       <groupId>org.apache.derby</groupId>
       <artifactId>derby</artifactId>
+      <version>${org-apache-derby-version}</version>
     </dependency>
   </dependencies>
 
