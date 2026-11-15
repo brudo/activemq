@@ -44,7 +44,7 @@
     <!--
         The <broker> element is used to configure the ActiveMQ broker.
     -->
-    <broker xmlns="http://activemq.apache.org/schema/core" brokerName="localhost" dataDirectory="${activemq.data}">
+    <broker xmlns="http://activemq.apache.org/schema/core" brokerName="localhost" dataDirectory="${activemq.data}" id="broker">
 
         <!--
             For better performances use VM cursor and small memory limit.
@@ -133,6 +133,6 @@
         Enable web consoles, REST and Ajax APIs 
         Take a look at activemq-jetty.xml for more details
     -->
-    <import resource="jetty.xml"/>
+    <import resource="jetty-spring.xml"/>
 
 </beans>

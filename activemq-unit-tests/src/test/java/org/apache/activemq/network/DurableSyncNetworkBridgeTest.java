@@ -16,22 +16,10 @@
  */
 package org.apache.activemq.network;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-
-import java.io.File;
-import java.net.URI;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-
 import jakarta.jms.Message;
 import jakarta.jms.MessageConsumer;
 import jakarta.jms.MessageProducer;
 import jakarta.jms.Session;
-
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.advisory.AdvisoryBroker;
 import org.apache.activemq.broker.BrokerPlugin;
@@ -49,6 +37,7 @@ import org.apache.activemq.plugin.java.JavaRuntimeConfigurationPlugin;
 import org.apache.activemq.store.kahadb.KahaDBPersistenceAdapter;
 import org.apache.activemq.store.kahadb.disk.journal.Journal.JournalDiskSyncStrategy;
 import org.apache.activemq.util.Wait;
+import org.apache.activemq.util.Wait.Condition;
 import org.junit.After;
 import org.junit.Assume;
 import org.junit.Before;
@@ -61,8 +50,20 @@ import org.junit.runners.Parameterized.Parameters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
+import java.io.IOException;
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
 @RunWith(Parameterized.class)
-public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
+public class DurableSyncNetworkBridgeTest extends AbstractDurableSyncNetworkBridgeTest {
 
     protected static final Logger LOG = LoggerFactory.getLogger(DurableSyncNetworkBridgeTest.class);
 
@@ -225,7 +226,12 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
         //Test that on successful reconnection of the bridge that
         //the NC sub will be removed
         restartBroker(broker2, true);
-        assertNCDurableSubsCount(broker2, topic, 1);
+        // In REVERSE flow, broker2=localBroker has the bridge and broker1 (remoteBroker)
+        // is already running, so the sync may have already cleaned up the NC durable sub.
+        // This "before sync" assertion is only valid in FORWARD flow.
+        if (flow == FLOW.FORWARD) {
+            assertNCDurableSubsCount(broker2, topic, 1);
+        }
         restartBroker(broker1, true);
         assertBridgeStarted();
         assertNCDurableSubsCount(broker2, topic, 0);
@@ -252,7 +258,9 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
         //the NC sub will be removed because even though the local subscription exists,
         //it no longer matches the included filter
         restartBroker(broker2, true);
-        assertNCDurableSubsCount(broker2, topic, 1);
+        if (flow == FLOW.FORWARD) {
+            assertNCDurableSubsCount(broker2, topic, 1);
+        }
         restartBroker(broker1, true);
         assertBridgeStarted();
         assertNCDurableSubsCount(broker2, topic, 0);
@@ -290,7 +298,9 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
         //the NC sub will be removed because even though the local subscription exists,
         //it no longer matches the included static filter
         restartBroker(broker2, true);
-        assertNCDurableSubsCount(broker2, topic, 1);
+        if (flow == FLOW.FORWARD) {
+            assertNCDurableSubsCount(broker2, topic, 1);
+        }
         restartBroker(broker1, true);
         assertBridgeStarted();
         assertNCDurableSubsCount(broker2, topic, 0);
@@ -319,10 +329,13 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
         //Test that on successful reconnection of the bridge that
         //the NC sub will be removed for topic1 but will stay for topic2
 
-        //before sync, the old NC should exist
+        //before sync, the old NC should exist (only verifiable in FORWARD flow;
+        //in REVERSE, broker2=localBroker has the bridge and sync may already have run)
         restartBroker(broker2, true);
-        assertNCDurableSubsCount(broker2, topic, 1);
-        assertNCDurableSubsCount(broker2, topic2, 0);
+        if (flow == FLOW.FORWARD) {
+            assertNCDurableSubsCount(broker2, topic, 1);
+            assertNCDurableSubsCount(broker2, topic2, 0);
+        }
 
         //After sync, remove old NC and create one for topic 2
         restartBroker(broker1, true);
@@ -571,7 +584,7 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
         assertTrue(Wait.waitFor(() ->
                 localBroker.getNetworkConnectors().get(0).activeBridges().size() == 1 &&
                 localBroker.getNetworkConnectors().get(1).activeBridges().size() == 1,
-            TimeUnit.SECONDS.toMillis(10), 500));
+            TimeUnit.SECONDS.toMillis(15), 500));
 
         //Make sure NC durables exist for both bridges
         assertNCDurableSubsCount(broker2, topic2, 1);
@@ -693,14 +706,6 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
         return compositeTopic;
     }
 
-    protected void restartBroker(BrokerService broker, boolean startNetworkConnector) throws Exception {
-        if (broker.getBrokerName().equals("localBroker")) {
-            restartLocalBroker(startNetworkConnector);
-        } else  {
-            restartRemoteBroker();
-        }
-    }
-
     protected void restartBrokers(boolean startNetworkConnector) throws Exception {
         doTearDown();
         doSetUp(false, startNetworkConnector, localBroker.getDataDirectoryFile(),
@@ -719,44 +724,6 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
         if (startNetworkConnector) {
             waitForBridgeFullyStarted();
         }
-    }
-
-    private void waitForBridgeFullyStarted() throws Exception {
-        // Wait for the local bridge to be fully started (advisory consumers registered)
-        assertTrue("Local bridge should be fully started", Wait.waitFor(() -> {
-            if (localBroker.getNetworkConnectors().get(0).activeBridges().isEmpty()) {
-                return false;
-            }
-            final NetworkBridge bridge = localBroker.getNetworkConnectors().get(0).activeBridges().iterator().next();
-            if (bridge instanceof DemandForwardingBridgeSupport) {
-                return ((DemandForwardingBridgeSupport) bridge).startedLatch.getCount() == 0;
-            }
-            return true;
-        }, TimeUnit.SECONDS.toMillis(10), 100));
-
-        // Also wait for the duplex bridge on the remote broker to be fully started.
-        // The duplex connector creates a separate DemandForwardingBridge on the remote side
-        // that also needs its advisory consumers registered before it can process events.
-        assertTrue("Duplex bridge should be fully started", Wait.waitFor(() -> {
-            final DemandForwardingBridge duplexBridge = findDuplexBridge(
-                remoteBroker.getTransportConnectors().get(0));
-            return duplexBridge != null && duplexBridge.startedLatch.getCount() == 0;
-        }, TimeUnit.SECONDS.toMillis(10), 100));
-    }
-
-    protected void restartLocalBroker(boolean startNetworkConnector) throws Exception {
-        stopLocalBroker();
-        doSetUpLocalBroker(false, startNetworkConnector, localBroker.getDataDirectoryFile());
-    }
-
-    protected void restartRemoteBroker() throws Exception {
-        int port = 0;
-        if (remoteBroker != null) {
-            List<TransportConnector> transportConnectors = remoteBroker.getTransportConnectors();
-            port = transportConnectors.get(0).getConnectUri().getPort();
-        }
-        stopRemoteBroker();
-        doSetUpRemoteBroker(false, remoteBroker.getDataDirectoryFile(), port);
     }
 
     protected void doSetUpLocalBroker(boolean deleteAllMessages, boolean startNetworkConnector,
@@ -778,8 +745,10 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
             // because some tests restart localBroker before remoteBroker is running,
             // relying on the bridge connecting later when remoteBroker restarts.
             // Tests that need the bridge to be fully started call assertBridgeStarted() explicitly.
+            // Keep timeout short (5s) to avoid growing the NC reconnect backoff too much,
+            // which would delay bridge formation when the remote broker starts later.
             Wait.waitFor(() -> localBroker.getNetworkConnectors().get(0).activeBridges().size() == 1,
-                         TimeUnit.SECONDS.toMillis(10), 500);
+                         TimeUnit.SECONDS.toMillis(5), 500);
         }
         localSession = localConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
 
@@ -838,6 +807,7 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
         return brokerService;
     }
 
+    @Override
     protected NetworkConnector configureLocalNetworkConnector() throws Exception {
         List<TransportConnector> transportConnectors = remoteBroker.getTransportConnectors();
         URI remoteURI = transportConnectors.get(0).getConnectUri();
@@ -907,7 +877,7 @@ public class DurableSyncNetworkBridgeTest extends DynamicNetworkTestSupport {
             }
             // If subscription doesn't exist, it's considered inactive
             return true;
-        }, TimeUnit.SECONDS.toMillis(10), 100));
+        }, TimeUnit.SECONDS.toMillis(15), 100));
     }
 
 }

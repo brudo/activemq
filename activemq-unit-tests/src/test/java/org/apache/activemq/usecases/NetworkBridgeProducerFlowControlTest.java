@@ -40,6 +40,8 @@ import org.apache.activemq.util.MessageIdList;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.junit.Assert;
+import org.junit.experimental.categories.Category;
+import org.apache.activemq.test.annotations.ParallelTest;
 
 /**
  * This test demonstrates and verifies the behaviour of a network bridge when it
@@ -95,8 +97,9 @@ import org.junit.Assert;
  * <p/>
  * https://issues.apache.org/jira/browse/AMQ-3331
  *
- * @author schow
+ *
  */
+@Category(ParallelTest.class)
 public class NetworkBridgeProducerFlowControlTest extends
         JmsMultipleBrokersTestSupport {
 

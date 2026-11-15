@@ -47,7 +47,7 @@ import org.slf4j.LoggerFactory;
  * An {@link AuthorizationMap} which uses LDAP
  *
  * @org.apache.xbean.XBean
- * @author ngcutura
+ *
  */
 public class LDAPAuthorizationMap implements AuthorizationMap {
 
@@ -392,7 +392,7 @@ public class LDAPAuthorizationMap implements AuthorizationMap {
             destinationBase = advisorySearchBase;
         } else {
             if ((destination.getDestinationType() & ActiveMQDestination.QUEUE_TYPE) == ActiveMQDestination.QUEUE_TYPE) {
-                destinationBase = queueSearchMatchingFormat.format(new String[]{destination.getPhysicalName()});
+                destinationBase = queueSearchMatchingFormat.format(new String[]{Rdn.escapeValue(destination.getPhysicalName())});
                 if (queueSearchSubtreeBool) {
                     constraints.setSearchScope(SearchControls.SUBTREE_SCOPE);
                 } else {
@@ -400,7 +400,7 @@ public class LDAPAuthorizationMap implements AuthorizationMap {
                 }
             }
             if ((destination.getDestinationType() & ActiveMQDestination.TOPIC_TYPE) == ActiveMQDestination.TOPIC_TYPE) {
-                destinationBase = topicSearchMatchingFormat.format(new String[]{destination.getPhysicalName()});
+                destinationBase = topicSearchMatchingFormat.format(new String[]{Rdn.escapeValue(destination.getPhysicalName())});
                 if (topicSearchSubtreeBool) {
                     constraints.setSearchScope(SearchControls.SUBTREE_SCOPE);
                 } else {

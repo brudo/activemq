@@ -43,6 +43,8 @@ import org.apache.activemq.transport.discovery.DiscoveryAgent;
 import org.apache.activemq.transport.discovery.DiscoveryListener;
 import org.apache.activemq.transport.discovery.simple.SimpleDiscoveryAgent;
 import org.junit.Assert;
+import org.junit.experimental.categories.Category;
+import org.apache.activemq.test.annotations.ParallelTest;
 
 /**
  * This test demonstrates a number of race conditions in
@@ -50,6 +52,7 @@ import org.junit.Assert;
  * longer being reported as active and vice-versa, an inactive bridge still
  * being reported as active.
  */
+@Category(ParallelTest.class)
 public class AMQ4160Test extends JmsMultipleBrokersTestSupport {
     final long MAX_TEST_TIME = TimeUnit.MINUTES.toMillis(2);
 
@@ -327,6 +330,21 @@ public class AMQ4160Test extends JmsMultipleBrokersTestSupport {
                     @Override
                     public long getDequeueCounter() {
                         return next.getDequeueCounter();
+                    }
+
+                    @Override
+                    public long getLocalExceptionCount() {
+                        return next.getLocalExceptionCount();
+                    }
+
+                    @Override
+                    public long getRemoteExceptionCount() {
+                        return next.getRemoteExceptionCount();
+                    }
+
+                    @Override
+                    public long getStartedTimestamp() {
+                        return next.getStartedTimestamp();
                     }
 
                     @Override

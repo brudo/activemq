@@ -64,6 +64,14 @@ public class QueueView extends DestinationView implements QueueViewMBean {
         LOG.info("{} purge of {} messages", destination.getActiveMQDestination().getQualifiedName(), originalMessageCount);
     }
 
+    public synchronized void purge(long numberOfMessages) throws Exception {
+        final long originalMessageCount = destination.getDestinationStatistics().getMessages().getCount();
+
+        ((Queue)destination).purge(numberOfMessages);
+
+        LOG.info("{} purge {} of {} messages", destination.getActiveMQDestination().getQualifiedName(), numberOfMessages, originalMessageCount);
+    }
+
     public synchronized boolean removeMessage(String messageId) throws Exception {
         return ((Queue)destination).removeMessage(messageId);
     }
@@ -236,6 +244,18 @@ public class QueueView extends DestinationView implements QueueViewMBean {
     public void removeAllMessageGroups() {
         Queue queue = (Queue) destination;
         queue.getMessageGroupOwners().removeAll();
+    }
+
+    @Override
+    public boolean isUseMessageGroups() {
+        var queue = (Queue) destination;
+        return queue.isUseMessageGroups();
+    }
+
+    @Override
+    public void setUseMessageGroups(boolean useMessageGroups) {
+        var queue = (Queue) destination;
+        queue.setUseMessageGroups(useMessageGroups);
     }
 
     @Override

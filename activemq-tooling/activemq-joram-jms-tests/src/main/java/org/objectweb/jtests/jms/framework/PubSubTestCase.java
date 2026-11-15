@@ -35,7 +35,7 @@ import javax.naming.Context;
  * Classes which want that convenience should extend <code>PubSubTestCase</code> instead of 
  * <code>JMSTestCase</code>.
  *
- * @author Jeff Mesnil (jmesnil@gmail.com)
+ *
  * @version $Id: PubSubTestCase.java,v 1.2 2007/06/19 23:32:35 csuconic Exp $
  */
 public abstract class PubSubTestCase extends JMSTestCase
@@ -136,6 +136,9 @@ public abstract class PubSubTestCase extends JMSTestCase
       }
       catch (Exception e)
       {
+         // tearDown is not called when setUp fails, so release the administrated objects
+         // here or every following test fails binding them again
+         cleanUp();
          throw new RuntimeException(e);
       }
    }
@@ -146,17 +149,23 @@ public abstract class PubSubTestCase extends JMSTestCase
    @Override
    protected void tearDown() throws Exception
    {
+      cleanUp();
+      super.tearDown();
+   }
+
+   /**
+    * Close what was opened and unbind what was bound, each step on its own so that a
+    * failure in one does not leave the rest behind for the next test.
+    */
+   private void cleanUp()
+   {
       try
       {
-         publisherConnection.close();
-         subscriberConnection.close();
+         closeQuietly(publisherConnection);
+         closeQuietly(subscriberConnection);
 
-         admin.deleteTopicConnectionFactory(PubSubTestCase.TCF_NAME);
-         admin.deleteTopic(PubSubTestCase.TOPIC_NAME);
-      }
-      catch (Exception ignored)
-      {
-        ignored.printStackTrace();
+         runQuietly(() -> admin.deleteTopicConnectionFactory(PubSubTestCase.TCF_NAME));
+         runQuietly(() -> admin.deleteTopic(PubSubTestCase.TOPIC_NAME));
       }
       finally
       {
@@ -172,8 +181,6 @@ public abstract class PubSubTestCase extends JMSTestCase
          subscriberSession = null;
          subscriberConnection = null;
       }
-
-      super.tearDown();
    }
 
    public PubSubTestCase(final String name)

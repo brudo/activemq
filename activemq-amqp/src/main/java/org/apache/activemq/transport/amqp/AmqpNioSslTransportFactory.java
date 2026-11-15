@@ -30,7 +30,7 @@ import javax.net.ssl.SSLEngine;
 
 import org.apache.activemq.broker.SslContext;
 import org.apache.activemq.transport.Transport;
-import org.apache.activemq.transport.TransportServer;
+import org.apache.activemq.transport.nio.NIOSSLTransportServer;
 import org.apache.activemq.transport.tcp.TcpTransport;
 import org.apache.activemq.transport.tcp.TcpTransport.InitBuffer;
 import org.apache.activemq.transport.tcp.TcpTransportServer;
@@ -38,23 +38,28 @@ import org.apache.activemq.wireformat.WireFormat;
 
 public class AmqpNioSslTransportFactory extends AmqpNioTransportFactory {
 
-    protected SSLContext context;
-
     @Override
     protected TcpTransportServer createTcpTransportServer(URI location, ServerSocketFactory serverSocketFactory) throws IOException, URISyntaxException {
-        return new TcpTransportServer(this, location, serverSocketFactory) {
+        return createTcpTransportServer(location, serverSocketFactory, null);
+    }
+
+    @Override
+    protected TcpTransportServer createTcpTransportServer(URI location, ServerSocketFactory serverSocketFactory, SslContext sslContext) throws IOException, URISyntaxException {
+        final SSLContext context = toSSLContext(sslContext);
+        // Use NIOSSLTransportServer so needClientAuth/wantClientAuth from the connector are
+        // applied to the transport, as the openwire, stomp and mqtt nio+ssl connectors do. A
+        // plain TcpTransportServer only applies transport.-prefixed options and drops the bare
+        // form, so the client certificate would never be requested.
+        return new NIOSSLTransportServer(context, this, location, serverSocketFactory) {
             @Override
             protected Transport createTransport(Socket socket, WireFormat format) throws IOException {
                 AmqpNioSslTransport transport = new AmqpNioSslTransport(format, socket);
                 if (context != null) {
                     transport.setSslContext(context);
                 }
+                transport.setNeedClientAuth(isNeedClientAuth());
+                transport.setWantClientAuth(isWantClientAuth());
                 return transport;
-            }
-
-            @Override
-            public boolean isSslServer() {
-                return true;
             }
         };
     }
@@ -69,17 +74,5 @@ public class AmqpNioSslTransportFactory extends AmqpNioTransportFactory {
             SSLEngine engine, InitBuffer initBuffer, ByteBuffer inputBuffer)
             throws IOException {
         return new AmqpNioSslTransport(wireFormat, socket, engine, initBuffer, inputBuffer);
-    }
-
-    @Override
-    public TransportServer doBind(URI location) throws IOException {
-        if (SslContext.getCurrentSslContext() != null) {
-            try {
-                context = SslContext.getCurrentSslContext().getSSLContext();
-            } catch (Exception e) {
-                throw new IOException(e);
-            }
-        }
-        return super.doBind(location);
     }
 }

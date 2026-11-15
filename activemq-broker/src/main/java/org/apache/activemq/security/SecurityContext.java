@@ -16,10 +16,9 @@
  */
 package org.apache.activemq.security;
 
+
 import java.security.Principal;
 import java.util.Collections;
-import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -32,6 +31,10 @@ import org.apache.activemq.command.ActiveMQDestination;
  *
  */
 public abstract class SecurityContext {
+
+    static final String WILDCARD = "*";
+
+    static final Principal WILDCARD_PRINCIPAL = () -> WILDCARD;
 
     public static final SecurityContext BROKER_SECURITY_CONTEXT = new SecurityContext("ActiveMQBroker") {
         @Override
@@ -53,21 +56,56 @@ public abstract class SecurityContext {
         this.userName = userName;
     }
 
+    public static boolean isWildcardPrincipal(Object principal) {
+        return principal == WILDCARD_PRINCIPAL;
+    }
+
+    public static boolean containsWildcardPrincipal(Set<?> principals) {
+        return principals.contains(WILDCARD_PRINCIPAL);
+    }
+
     public boolean isInOneOf(Set<?> allowedPrincipals) {
-        Iterator<?> allowedIter = allowedPrincipals.iterator();
-        HashSet<?> userPrincipals = new HashSet<Object>(getPrincipals());
-        while (allowedIter.hasNext()) {
-            Iterator<?> userIter = userPrincipals.iterator();
-            Object allowedPrincipal = allowedIter.next();
-            while (userIter.hasNext()) {
-                if (allowedPrincipal.equals(userIter.next()))
-                    return true;
+        // Wildcard Principal is a special principal that allows all
+        // Check for that first using an identify check. This is
+        // a fast check that allows us to avoid iterating if true
+        if (containsWildcardPrincipal(allowedPrincipals)) {
+            return true;
+        }
+
+        // Iterate over all the principals to see if there are matches
+        for (Object allowedPrincipal : allowedPrincipals) {
+            if (contains(allowedPrincipal)) {
+                return true;
             }
         }
         return false;
     }
 
     public abstract Set<Principal> getPrincipals();
+
+    /**
+     * Whether the authenticated user may register this connection as a network
+     * connection. Consulted when a connection identifies itself as a network
+     * bridge after it has already been authenticated. Defaults to allowed so
+     * authentication plugins that do not make the distinction are unaffected.
+     */
+    public boolean isNetworkConnectionAllowed() {
+        return true;
+    }
+
+    /**
+     * Whether the authenticating plugin made a network connection decision for this
+     * connection. When false the broker applies no network connection restriction and
+     * {@link #isNetworkConnectionAllowed()} is not consulted.
+     */
+    public boolean isNetworkConnectionAuthorizationRequired() {
+        return false;
+    }
+
+    public boolean contains(Object principal) {
+        Set<Principal> principals = getPrincipals();
+        return principals != null && principals.contains(principal);
+    }
 
     public String getUserName() {
         return userName;

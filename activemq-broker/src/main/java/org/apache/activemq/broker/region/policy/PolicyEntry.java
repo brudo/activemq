@@ -27,6 +27,7 @@ import org.apache.activemq.broker.region.Queue;
 import org.apache.activemq.broker.region.QueueBrowserSubscription;
 import org.apache.activemq.broker.region.QueueSubscription;
 import org.apache.activemq.broker.region.Subscription;
+import org.apache.activemq.broker.region.TempDestination;
 import org.apache.activemq.broker.region.Topic;
 import org.apache.activemq.broker.region.TopicSubscription;
 import org.apache.activemq.broker.region.cursors.PendingMessageCursor;
@@ -56,6 +57,7 @@ public class PolicyEntry extends DestinationMapEntry {
     private PendingMessageLimitStrategy pendingMessageLimitStrategy;
     private MessageEvictionStrategy messageEvictionStrategy;
     private long memoryLimit;
+    private boolean useMessageGroups = true;
     private String messageGroupMapFactoryType = "cached";
     private MessageGroupMapFactory messageGroupMapFactory;
     private PendingQueueMessageStoragePolicy pendingQueuePolicy;
@@ -99,6 +101,7 @@ public class PolicyEntry extends DestinationMapEntry {
     private boolean prioritizedMessages;
     private boolean allConsumersExclusiveByDefault;
     private boolean gcInactiveDestinations;
+    private boolean gcWithOnlyWildcardConsumers;
     private boolean gcWithNetworkConsumers;
     private long inactiveTimeoutBeforeGC = BaseDestination.DEFAULT_INACTIVE_TIMEOUT_BEFORE_GC;
     private boolean reduceMemoryFootprint;
@@ -108,6 +111,7 @@ public class PolicyEntry extends DestinationMapEntry {
     private boolean useTopicSubscriptionInflightStats = true;
     private boolean advancedNetworkStatisticsEnabled = false; // [AMQ-9437]
     private boolean advancedMessageStatisticsEnabled = false; // [AMQ-8463]
+    private boolean allowTempDestinationStealing = false;
 
     /*
      * percentage of in-flight messages above which optimize message store is disabled
@@ -126,6 +130,7 @@ public class PolicyEntry extends DestinationMapEntry {
         }
         queue.setDeadLetterStrategy(getDeadLetterStrategy());
         queue.setMessageGroupMapFactory(getMessageGroupMapFactory());
+        queue.setUseMessageGroups(isUseMessageGroups());
         if (memoryLimit > 0) {
             queue.getMemoryUsage().setLimit(memoryLimit);
         }
@@ -166,6 +171,9 @@ public class PolicyEntry extends DestinationMapEntry {
         }
         if (isUpdate("useConsumerPriority", includedProperties)) {
             queue.setUseConsumerPriority(isUseConsumerPriority());
+        }
+        if (isUpdate("useMessageGroups", includedProperties)) {
+            queue.setUseMessageGroups(isUseMessageGroups());
         }
         if (isUpdate("strictOrderDispatch", includedProperties)) {
             queue.setStrictOrderDispatch(isStrictOrderDispatch());
@@ -263,6 +271,9 @@ public class PolicyEntry extends DestinationMapEntry {
         if (isUpdate("gcInactiveDestinations", includedProperties)) {
             destination.setGcIfInactive(isGcInactiveDestinations());
         }
+        if (isUpdate("gcWithOnlyWildcardConsumers", includedProperties)) {
+            destination.setGcWithOnlyWildcardConsumers(isGcWithOnlyWildcardConsumers());
+        }
         if (isUpdate("gcWithNetworkConsumers", includedProperties)) {
             destination.setGcWithNetworkConsumers(isGcWithNetworkConsumers());
         }
@@ -313,6 +324,12 @@ public class PolicyEntry extends DestinationMapEntry {
         }
         if (isUpdate("advancedMessageStatisticsEnabled", includedProperties)) {
             destination.setAdvancedMessageStatisticsEnabled(isAdvancedMessageStatisticsEnabled());
+        }
+        if (destination instanceof TempDestination) {
+            if (isUpdate("allowTempDestinationStealing", includedProperties)) {
+                ((TempDestination) destination).setAllowTempDestinationStealing(
+                        isAllowTempDestinationStealing());
+            }
         }
     }
 
@@ -536,6 +553,29 @@ public class PolicyEntry extends DestinationMapEntry {
      */
     public void setMemoryLimit(long memoryLimit) {
         this.memoryLimit = memoryLimit;
+    }
+
+    public boolean isUseMessageGroups() {
+        return useMessageGroups;
+    }
+
+    /**
+     * Whether JMSXGroupID is honoured for dispatch on queues matching this policy (default
+     * true). When false, messages carrying JMSXGroupID are dispatched like any other message -
+     * no consumer is ever assigned a group, no ownership is recorded and JMSXGroupFirstForConsumer
+     * is never set - so per-group in-order delivery to a single consumer is NOT provided.
+     *
+     * Use this when the group header is set by producers unintentionally, or when group
+     * ownership is harmful: a group's owner that can never be dispatched a later member of the
+     * group (its selector, or the network bridge filter on a network subscription, rejects the
+     * message) strands that message for every consumer, since the owner will not take it and no
+     * other consumer may. Enough of those fill dispatchPendingList to maxPageSize and stall the
+     * whole queue until the owning subscription is removed.
+     *
+     * @param useMessageGroups false to ignore JMSXGroupID for dispatch
+     */
+    public void setUseMessageGroups(boolean useMessageGroups) {
+        this.useMessageGroups = useMessageGroups;
     }
 
     public MessageGroupMapFactory getMessageGroupMapFactory() {
@@ -1082,6 +1122,25 @@ public class PolicyEntry extends DestinationMapEntry {
         this.inactiveTimeoutBeforeGC = inactiveTimeoutBeforeGC;
     }
 
+    /**
+     * Allow gc of inactive destinations whose only consumers are wildcard subscriptions,
+     * supporting one-time-use destination patterns where a wildcard consumer stays
+     * connected across destinations being created, drained and collected.
+     *
+     * An attached durable topic subscription always prevents gc - its registration and
+     * pending messages live in the destination's store, which gc destroys. Offline durable
+     * subscriptions remain attached only when the broker runs with keepDurableSubsActive=true
+     * (the default); with keepDurableSubsActive=false this protection does not apply while
+     * the subscriber is offline.
+     */
+    public void setGcWithOnlyWildcardConsumers(boolean gcWithOnlyWildcardConsumers) {
+        this.gcWithOnlyWildcardConsumers = gcWithOnlyWildcardConsumers;
+    }
+
+    public boolean isGcWithOnlyWildcardConsumers() {
+        return gcWithOnlyWildcardConsumers;
+    }
+
     public void setGcWithNetworkConsumers(boolean gcWithNetworkConsumers) {
         this.gcWithNetworkConsumers = gcWithNetworkConsumers;
     }
@@ -1199,5 +1258,13 @@ public class PolicyEntry extends DestinationMapEntry {
 
     public void setAdvancedMessageStatisticsEnabled(boolean advancedMessageStatisticsEnabled) {
         this.advancedMessageStatisticsEnabled = advancedMessageStatisticsEnabled;
+    }
+
+    public boolean isAllowTempDestinationStealing() {
+        return allowTempDestinationStealing;
+    }
+
+    public void setAllowTempDestinationStealing(boolean allowTempDestinationStealing) {
+        this.allowTempDestinationStealing = allowTempDestinationStealing;
     }
 }

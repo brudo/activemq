@@ -99,6 +99,9 @@ public class ActiveMQConnectionFactory extends JNDIBaseStorable implements Conne
     public static final String DEFAULT_USER = null;
     public static final String DEFAULT_PASSWORD = null;
     public static final int DEFAULT_PRODUCER_WINDOW_SIZE = 0;
+    // The default ratio for maxInflatedDataSize. The default is 10x the size
+    // of maxFrameSize
+    public static final double DEFAULT_MAX_INFLATED_DATA_SIZE_RATIO = 10.0;
 
     protected URI brokerURL;
     protected String userName;
@@ -123,12 +126,19 @@ public class ActiveMQConnectionFactory extends JNDIBaseStorable implements Conne
     private BlobTransferPolicy blobTransferPolicy = new BlobTransferPolicy();
     private MessageTransformer transformer;
 
+    /**
+     * If set to true, strict Jakarta Messaging 3.1 compliance is enforced.
+     * This strictly rejects non-standard property types such as Character, Map, and List.
+     */
+    private boolean strictCompliance = false;
+
     private boolean disableTimeStampsByDefault;
     private boolean optimizedMessageDispatch = true;
     private long optimizeAcknowledgeTimeOut = 300;
     private long optimizedAckScheduledAckInterval = 0;
     private boolean copyMessageOnSend = true;
     private boolean useCompression;
+    private double maxInflatedDataSizeRatio = DEFAULT_MAX_INFLATED_DATA_SIZE_RATIO;
     private boolean objectMessageSerializationDefered;
     private boolean useAsyncSend;
     private boolean optimizeAcknowledge;
@@ -141,6 +151,7 @@ public class ActiveMQConnectionFactory extends JNDIBaseStorable implements Conne
     private int producerWindowSize = DEFAULT_PRODUCER_WINDOW_SIZE;
     private long warnAboutUnstartedConnectionTimeout = 500L;
     private int sendTimeout = 0;
+    private int requestTimeout = 0;
     private int connectResponseTimeout = 0;
     private boolean sendAcksAsync=true;
     private TransportListener transportListener;
@@ -408,6 +419,10 @@ public class ActiveMQConnectionFactory extends JNDIBaseStorable implements Conne
     protected ActiveMQConnection createActiveMQConnection(Transport transport, JMSStatsImpl stats) throws Exception {
         ActiveMQConnection connection = new ActiveMQConnection(transport, getClientIdGenerator(),
                 getConnectionIdGenerator(), stats);
+
+        // Copy the compliance flags from the Factory to the Connection
+        connection.setStrictCompliance(isStrictCompliance());
+
         return connection;
     }
 
@@ -417,6 +432,7 @@ public class ActiveMQConnectionFactory extends JNDIBaseStorable implements Conne
         connection.setOptimizedMessageDispatch(isOptimizedMessageDispatch());
         connection.setCopyMessageOnSend(isCopyMessageOnSend());
         connection.setUseCompression(isUseCompression());
+        connection.setMaxInflatedDataSizeRatio(getMaxInflatedDataSizeRatio());
         connection.setObjectMessageSerializationDefered(isObjectMessageSerializationDefered());
         connection.setDispatchAsync(isDispatchAsync());
         connection.setUseAsyncSend(isUseAsyncSend());
@@ -434,6 +450,7 @@ public class ActiveMQConnectionFactory extends JNDIBaseStorable implements Conne
         connection.setProducerWindowSize(getProducerWindowSize());
         connection.setWarnAboutUnstartedConnectionTimeout(getWarnAboutUnstartedConnectionTimeout());
         connection.setSendTimeout(getSendTimeout());
+        connection.setRequestTimeout(getRequestTimeout());
         connection.setCloseTimeout(getCloseTimeout());
         connection.setSendAcksAsync(isSendAcksAsync());
         connection.setAuditDepth(getAuditDepth());
@@ -739,6 +756,20 @@ public class ActiveMQConnectionFactory extends JNDIBaseStorable implements Conne
     }
 
     /**
+     * @return the requestTimeout (in milliseconds)
+     */
+    public int getRequestTimeout() {
+        return requestTimeout;
+    }
+
+    /**
+     * @param requestTimeout the requestTimeout to set (in milliseconds)
+     */
+    public void setRequestTimeout(int requestTimeout) {
+        this.requestTimeout = requestTimeout;
+    }
+
+    /**
      * @return the sendAcksAsync
      */
     public boolean isSendAcksAsync() {
@@ -850,6 +881,7 @@ public class ActiveMQConnectionFactory extends JNDIBaseStorable implements Conne
 
         props.setProperty("useAsyncSend", Boolean.toString(isUseAsyncSend()));
         props.setProperty("useCompression", Boolean.toString(isUseCompression()));
+        props.setProperty("maxInflatedDataSizeRatio", Double.toString(getMaxInflatedDataSizeRatio()));
         props.setProperty("useRetroactiveConsumer", Boolean.toString(isUseRetroactiveConsumer()));
         props.setProperty("watchTopicAdvisories", Boolean.toString(isWatchTopicAdvisories()));
 
@@ -864,6 +896,7 @@ public class ActiveMQConnectionFactory extends JNDIBaseStorable implements Conne
         props.setProperty("alwaysSyncSend", Boolean.toString(isAlwaysSyncSend()));
         props.setProperty("producerWindowSize", Integer.toString(getProducerWindowSize()));
         props.setProperty("sendTimeout", Integer.toString(getSendTimeout()));
+        props.setProperty("requestTimeout", Integer.toString(getRequestTimeout()));
         props.setProperty("connectResponseTimeout", Integer.toString(getConnectResponseTimeout()));
         props.setProperty("sendAcksAsync",Boolean.toString(isSendAcksAsync()));
         props.setProperty("auditDepth", Integer.toString(getAuditDepth()));
@@ -888,6 +921,21 @@ public class ActiveMQConnectionFactory extends JNDIBaseStorable implements Conne
      */
     public void setUseCompression(boolean useCompression) {
         this.useCompression = useCompression;
+    }
+
+    public double getMaxInflatedDataSizeRatio() {
+        return maxInflatedDataSizeRatio;
+    }
+
+    /**
+     * Set the ratio to use to compute maxInflatedDataSize which controls
+     * how large a decompressed message buffer can be. maxInflatedDataSize
+     * is computed as maxFrameSize * maxInflatedDataSizeRatio.
+     *
+     * @param maxInflatedDataSizeRatio
+     */
+    public void setMaxInflatedDataSizeRatio(double maxInflatedDataSizeRatio) {
+        this.maxInflatedDataSizeRatio = maxInflatedDataSizeRatio;
     }
 
     public boolean isObjectMessageSerializationDefered() {
@@ -998,6 +1046,17 @@ public class ActiveMQConnectionFactory extends JNDIBaseStorable implements Conne
      */
     public void setNestedMapAndListEnabled(boolean structuredMapsEnabled) {
         this.nestedMapAndListEnabled = structuredMapsEnabled;
+    }
+
+    public boolean isStrictCompliance() {
+        return strictCompliance;
+    }
+
+    /**
+     * If this flag is set then the connection follows strict Jakarta Messaging compliance.
+     */
+    public void setStrictCompliance(boolean strictCompliance) {
+        this.strictCompliance = strictCompliance;
     }
 
     public String getClientIDPrefix() {

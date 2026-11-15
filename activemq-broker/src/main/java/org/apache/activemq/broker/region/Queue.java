@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -31,6 +32,7 @@ import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -98,6 +100,7 @@ import org.apache.activemq.transaction.Synchronization;
 import org.apache.activemq.usage.Usage;
 import org.apache.activemq.usage.UsageListener;
 import org.apache.activemq.util.BrokerSupport;
+import org.apache.activemq.ActiveMQMessageFormatException;
 import org.apache.activemq.util.ThreadPoolUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -119,11 +122,14 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
     private final PendingList pagedInMessages = new OrderedPendingList();
     // Messages that are paged in but have not yet been targeted at a subscription
     private final ReentrantReadWriteLock pagedInPendingDispatchLock = new ReentrantReadWriteLock();
+    // this is guarded by pagedInPendingDispatchLock
+    private final Map<QueueMessageReference, ActiveMQMessageFormatException> dispatchMessageFormatErrors = new LinkedHashMap<>();
     protected QueueDispatchPendingList dispatchPendingList = new QueueDispatchPendingList();
     private AtomicInteger pendingSends = new AtomicInteger(0);
     private MessageGroupMap messageGroupOwners;
     private DispatchPolicy dispatchPolicy = new RoundRobinDispatchPolicy();
     private MessageGroupMapFactory messageGroupMapFactory = new CachedMessageGroupMapFactory();
+    private boolean useMessageGroups = true;
     final Lock sendLock = new ReentrantLock();
     private ExecutorService executor;
     private final Map<MessageId, Runnable> messagesWaitingForSpace = new LinkedHashMap<MessageId, Runnable>();
@@ -497,6 +503,8 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
     public void removeSubscription(ConnectionContext context, Subscription sub, long lastDeliveredSequenceId)
             throws Exception {
         super.removeSubscription(context, sub, lastDeliveredSequenceId);
+
+        Map<QueueMessageReference, ActiveMQMessageFormatException> messageFormatErrors = null;
         // synchronize with dispatch method so that no new messages are sent
         // while removing up a subscription.
         pagedInPendingDispatchLock.writeLock().lock();
@@ -593,7 +601,7 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
                 }
                 // AMQ-5107: don't resend if the broker is shutting down
                 if (dispatchPendingList.hasRedeliveries() && (! this.brokerService.isStopping())) {
-                    doDispatch(new OrderedPendingList());
+                    messageFormatErrors = doDispatch(new OrderedPendingList());
                 }
             } finally {
                 consumersLock.writeLock().unlock();
@@ -610,6 +618,9 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
             // https://issues.apache.org/activemq/browse/AMQ-1878
             wakeup();
         }
+
+        // Remove any corrupt messages
+        removeMessageFormatErrorMessages(messageFormatErrors);
     }
 
     private volatile ResourceAllocationException sendMemAllocationException = null;
@@ -790,17 +801,24 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
     }
 
     public void rollbackPendingCursorAdditions(MessageId messageId) {
+        MessageContext toRollback = null;
         synchronized (indexOrderedCursorUpdates) {
             for (int i = indexOrderedCursorUpdates.size() - 1; i >= 0; i--) {
-                MessageContext mc = indexOrderedCursorUpdates.get(i);
+                final MessageContext mc = indexOrderedCursorUpdates.get(i);
                 if (mc.message.getMessageId().equals(messageId)) {
                     indexOrderedCursorUpdates.remove(mc);
-                    if (mc.onCompletion != null) {
-                        mc.onCompletion.run();
-                    }
+                    toRollback = mc;
                     break;
                 }
             }
+        }
+        // Invoke onCompletion outside synchronized(indexOrderedCursorUpdates) to avoid a
+        // lock-ordering deadlock with JDBCMessageStore.addMessage, which holds
+        // pendingAdditions while calling indexListener.onAdd() (which acquires
+        // indexOrderedCursorUpdates). The onCompletion callback acquires pendingAdditions,
+        // so calling it inside the lock produces a deadlock cycle.
+        if (toRollback != null && toRollback.onCompletion != null) {
+            toRollback.onCompletion.run();
         }
     }
 
@@ -1096,6 +1114,18 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
         return destination;
     }
 
+    public boolean isUseMessageGroups() {
+        return useMessageGroups;
+    }
+
+    /**
+     * @param useMessageGroups false to ignore JMSXGroupID for dispatch on this queue
+     * @see PolicyEntry#setUseMessageGroups(boolean)
+     */
+    public void setUseMessageGroups(boolean useMessageGroups) {
+        this.useMessageGroups = useMessageGroups;
+    }
+
     public MessageGroupMap getMessageGroupOwners() {
         if (messageGroupOwners == null) {
             messageGroupOwners = getMessageGroupMapFactory().createMessageGroupMap();
@@ -1313,9 +1343,20 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
     }
 
     public void purge() throws Exception {
+        purge(this.destinationStatistics.getMessages().getCount());
+    }
+
+    public void purge(long numberOfMessages) throws Exception {
+
+        if (numberOfMessages <= 0) {
+            return;
+        }
+
         ConnectionContext c = createConnectionContext();
         List<MessageReference> list = null;
         sendLock.lock();
+
+        long purgeCount = 0L;
         try {
             long originalMessageCount = this.destinationStatistics.getMessages().getCount();
             do {
@@ -1323,24 +1364,32 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
                 pagedInMessagesLock.readLock().lock();
                 try {
                     list = new ArrayList<MessageReference>(pagedInMessages.values());
-                }finally {
+                } finally {
                     pagedInMessagesLock.readLock().unlock();
                 }
 
-                for (MessageReference ref : list) {
+                int deleteCount = list.size();
+                if ((numberOfMessages - purgeCount) < list.size()) {
+                    deleteCount = (int)(numberOfMessages - purgeCount);
+                }
+
+                for (int n=0; n < deleteCount; n++) {
                     try {
-                        QueueMessageReference r = (QueueMessageReference) ref;
+                        QueueMessageReference r = (QueueMessageReference) list.get(n);
                         removeMessage(c, r);
                         messages.rollback(r.getMessageId());
+                        purgeCount++;
                     } catch (IOException e) {
                     }
                 }
                 // don't spin/hang if stats are out and there is nothing left in the
                 // store
-            } while (!list.isEmpty() && this.destinationStatistics.getMessages().getCount() > 0);
+            } while (!list.isEmpty() &&
+                    this.destinationStatistics.getMessages().getCount() > 0 &&
+                    purgeCount < numberOfMessages);
 
-            if (this.destinationStatistics.getMessages().getCount() > 0) {
-                LOG.warn("{} after purge of {} messages, message count stats report: {}", getActiveMQDestination().getQualifiedName(), originalMessageCount, this.destinationStatistics.getMessages().getCount());
+            if (numberOfMessages == originalMessageCount && this.destinationStatistics.getMessages().getCount() > 0) {
+                LOG.warn("{} after purge {} of {} messages, message count stats report: {}", getActiveMQDestination().getQualifiedName(), numberOfMessages, originalMessageCount, this.destinationStatistics.getMessages().getCount());
             }
         } finally {
             sendLock.unlock();
@@ -1859,6 +1908,18 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
         }
     }
 
+    private void discardAndSendToDlq(ConnectionContext c, QueueMessageReference r, Exception e) throws IOException {
+        MessageAck ack = new MessageAck();
+        ack.setAckType(MessageAck.POISON_ACK_TYPE);
+        ack.setPoisonCause(e);
+        ack.setDestination(destination);
+        ack.setMessageID(r.getMessageId());
+        removeMessage(c, null, r, ack);
+        // this.messageDiscarded() sends to the DLQ with the poison cause
+        // as well as sending the discarded advisory (if enabled).
+        this.messageDiscarded(c, null, r, e);
+    }
+
     protected void removeMessage(ConnectionContext c, Subscription subs, QueueMessageReference r) throws IOException {
         MessageAck ack = new MessageAck();
         ack.setAckType(MessageAck.STANDARD_ACK_TYPE);
@@ -2166,8 +2227,10 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
         return consumers.size() - browserSubscriptions.size() > 0;
     }
 
-    private void doDispatch(PendingList list) throws Exception {
+    private Map<QueueMessageReference, ActiveMQMessageFormatException> doDispatch(PendingList list) throws Exception {
         boolean doWakeUp = false;
+
+        Map<QueueMessageReference, ActiveMQMessageFormatException> messageFormatErrors = null;
 
         pagedInPendingDispatchLock.writeLock().lock();
         try {
@@ -2197,6 +2260,11 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
                 }
             }
         } finally {
+            // Copy the errors and clear as we need to proces outside the lock
+            if (!dispatchMessageFormatErrors.isEmpty()) {
+                messageFormatErrors = new LinkedHashMap<>(dispatchMessageFormatErrors);
+                dispatchMessageFormatErrors.clear();
+            }
             pagedInPendingDispatchLock.writeLock().unlock();
         }
 
@@ -2204,6 +2272,8 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
             // avoid lock order contention
             asyncWakeup();
         }
+
+        return messageFormatErrors;
     }
 
     /**
@@ -2211,6 +2281,7 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
      *         were not full.
      */
     private PendingList doActualDispatch(PendingList list) throws Exception {
+
         List<Subscription> consumers;
         consumersLock.readLock().lock();
 
@@ -2236,12 +2307,27 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
                 }
                 if (!fullConsumers.contains(s)) {
                     if (!s.isFull()) {
-                        if (dispatchSelector.canSelect(s, node) && assignMessageGroup(s, (QueueMessageReference)node) && !((QueueMessageReference) node).isAcked() ) {
-                            // Dispatch it.
-                            s.add(node);
-                            LOG.trace("assigned {} to consumer {}", node.getMessageId(), s.getConsumerInfo().getConsumerId());
+                        try {
+                            if (dispatchSelector.canSelect(s, node) && assignMessageGroup(s,
+                                    (QueueMessageReference) node)
+                                    && !((QueueMessageReference) node).isAcked()) {
+                                // Dispatch it.
+                                s.add(node);
+                                LOG.trace("assigned {} to consumer {}", node.getMessageId(),
+                                        s.getConsumerInfo().getConsumerId());
+                                iterator.remove();
+                                target = s;
+                                break;
+                            }
+                        } catch (ActiveMQMessageFormatException e) {
+                            // A ActiveMQMessageFormatException could occur when evaluating
+                            // the selector which could trigger the properties to unmarshal or the
+                            // body to be read (for xpath selectors). This should be rare but
+                            // if it happens the message will just be stuck so we need to remove it
+                            // from the dispatched list and collect it to be removed from this queue
+                            // and sent to the DLQ
                             iterator.remove();
-                            target = s;
+                            dispatchMessageFormatErrors.put((QueueMessageReference) node, e);
                             break;
                         }
                     } else {
@@ -2293,6 +2379,10 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
 
     protected boolean assignMessageGroup(Subscription subscription, QueueMessageReference node) throws Exception {
         boolean result = true;
+        if (!useMessageGroups) {
+            // JMSXGroupID is ignored for dispatch on this queue: no ownership, no affinity.
+            return result;
+        }
         // Keep message groups together.
         String groupId = node.getGroupID();
         int sequence = node.getGroupSequence();
@@ -2337,7 +2427,23 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
     }
 
     protected void pageInMessages(boolean force, int maxPageSize) throws Exception {
-        doDispatch(doPageInForDispatch(force, true, maxPageSize));
+        Map<QueueMessageReference, ActiveMQMessageFormatException> messageFormatErrors =
+            doDispatch(doPageInForDispatch(force, true, maxPageSize));
+        // Handle outside the pagedInPendingDispatchLock
+        removeMessageFormatErrorMessages(messageFormatErrors);
+    }
+
+    // Any bad messages were already removed from dispatchPendingList and not dispatched, so now we
+    // need to drop the message, remove it from pagedInMessages, remove from the store and
+    // send to the DLQ
+    private void removeMessageFormatErrorMessages(Map<QueueMessageReference, ActiveMQMessageFormatException> messageFormatErrors)
+            throws IOException {
+        if (messageFormatErrors != null) {
+            for (Entry<QueueMessageReference, ActiveMQMessageFormatException> error : messageFormatErrors.entrySet()) {
+                discardAndSendToDlq(broker.getAdminConnectionContext(), error.getKey(),
+                        error.getValue());
+            }
+        }
     }
 
     private void addToConsumerList(Subscription sub) {

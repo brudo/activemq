@@ -22,6 +22,8 @@ import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
 import java.util.StringTokenizer;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -40,8 +42,11 @@ import org.apache.activemq.transport.Transport;
 import org.apache.activemq.transport.TransportAcceptListener;
 import org.apache.activemq.transport.TransportFactorySupport;
 import org.apache.activemq.transport.TransportServer;
+import org.apache.activemq.transport.TransportConnectorPolicy;
 import org.apache.activemq.transport.discovery.DiscoveryAgent;
 import org.apache.activemq.transport.discovery.DiscoveryAgentFactory;
+import org.apache.activemq.transport.tcp.TcpTransportServer;
+import org.apache.activemq.util.ExceptionUtils;
 import org.apache.activemq.util.ServiceStopper;
 import org.apache.activemq.util.ServiceSupport;
 import org.slf4j.Logger;
@@ -78,9 +83,11 @@ public class TransportConnector implements Connector, BrokerServiceAware {
     private int maximumConsumersAllowedPerConnection  = Integer.MAX_VALUE;
     private PublishedAddressPolicy publishedAddressPolicy = new PublishedAddressPolicy();
     private boolean allowLinkStealing = false;
+    private TransportConnectorPolicy transportConnectorPolicy;
     private boolean warnOnRemoteClose = false;
     private boolean displayStackTrace = false;
     private boolean autoStart = true;
+    private SslContext sslContext;
 
     LinkedList<String> peerBrokers = new LinkedList<String>();
     private AtomicBoolean started = new AtomicBoolean(false);
@@ -131,6 +138,7 @@ public class TransportConnector implements Connector, BrokerServiceAware {
         rc.setMaximumProducersAllowedPerConnection(getMaximumProducersAllowedPerConnection());
         rc.setPublishedAddressPolicy(getPublishedAddressPolicy());
         rc.setAllowLinkStealing(allowLinkStealing);
+        rc.setTransportConnectorPolicy(getTransportConnectorPolicy());
         rc.setWarnOnRemoteClose(isWarnOnRemoteClose());
         rc.setAutoStart(isAutoStart());
         return rc;
@@ -258,13 +266,14 @@ public class TransportConnector implements Connector, BrokerServiceAware {
 
             private void onAcceptError(Exception error, String remoteHost) {
                 if (brokerService != null && brokerService.isStopping()) {
-                    LOG.info("Could not accept connection during shutdown {} : {} ({})", (remoteHost == null ? "" : "from " + remoteHost), error.getLocalizedMessage(), getRootCause(error).getMessage());
+                    LOG.info("Could not accept connection during shutdown {} : {} ({})", (remoteHost == null ? "" : "from " + remoteHost), error.getLocalizedMessage(),  ExceptionUtils.getRootCause(error).getMessage());
                 } else {
-                    LOG.warn("Could not accept connection {}: {} ({})", (remoteHost == null ? "" : "from " + remoteHost), error.getMessage(), getRootCause(error).getMessage());
-                    LOG.debug("Reason: " + error.getMessage(), error);
+                    LOG.warn("Could not accept connection {}: {} ({})", (remoteHost == null ? "" : "from " + remoteHost), error.getMessage(), ExceptionUtils.getRootCause(error).getMessage());
+                    LOG.debug("Reason: {}", error.getMessage(), error);
                 }
             }
         });
+        installTransportConnectorPolicy();
         getServer().setBrokerInfo(brokerInfo);
         getServer().start();
 
@@ -280,20 +289,6 @@ public class TransportConnector implements Connector, BrokerServiceAware {
 
         started.set(true);
         LOG.info("Connector {} started", getName());
-    }
-
-    public static Throwable getRootCause(final Throwable throwable) {
-        final List<Throwable> list = getThrowableList(throwable);
-        return list.isEmpty() ? null : list.get(list.size() - 1);
-    }
-
-    static List<Throwable> getThrowableList(Throwable throwable) {
-        final List<Throwable> list = new ArrayList<>();
-        while (throwable != null && !list.contains(throwable)) {
-            list.add(throwable);
-            throwable = throwable.getCause();
-        }
-        return list;
     }
 
     public String getPublishableConnectString() throws Exception {
@@ -350,7 +345,8 @@ public class TransportConnector implements Connector, BrokerServiceAware {
             throw new IllegalArgumentException(
                     "You must specify the brokerService property. Maybe this connector should be added to a broker?");
         }
-        return TransportFactorySupport.bind(brokerService, uri);
+        return TransportFactorySupport.bind(brokerService, uri,
+                Optional.ofNullable(sslContext).orElse(brokerService.getSslContext()));
     }
 
     public DiscoveryAgent getDiscoveryAgent() throws IOException {
@@ -630,6 +626,38 @@ public class TransportConnector implements Connector, BrokerServiceAware {
         this.allowLinkStealing = allowLinkStealing;
     }
 
+    /**
+     * Hands the configured policy to the transport server. Only socket based
+     * servers (tcp, nio, ssl, auto and the protocol variants built on them)
+     * can apply one.
+     */
+    private void installTransportConnectorPolicy() throws Exception {
+        if (transportConnectorPolicy == null) {
+            return;
+        }
+        var transportServer = getServer();
+        if (transportServer instanceof TcpTransportServer) {
+            ((TcpTransportServer) transportServer).setTransportConnectorPolicy(transportConnectorPolicy);
+        } else {
+            LOG.warn("transportConnectorPolicy configured on connector {} but its transport does not support socket policies", getName());
+        }
+    }
+
+    public TransportConnectorPolicy getTransportConnectorPolicy() {
+        return transportConnectorPolicy;
+    }
+
+    /**
+     * A policy applied to each accepted socket before any protocol negotiation,
+     * for example {@link RemoteAddressConnectorPolicy}. Only socket based transports
+     * apply it. Configure one policy instance per connector; a policy that
+     * implements {@link org.apache.activemq.broker.jmx.TransportConnectorPolicyMBean}
+     * is registered in JMX under the connector's object name.
+     */
+    public void setTransportConnectorPolicy(TransportConnectorPolicy transportConnectorPolicy) {
+        this.transportConnectorPolicy = transportConnectorPolicy;
+    }
+
     @Override
     public boolean isAuditNetworkProducers() {
         return auditNetworkProducers;
@@ -703,6 +731,28 @@ public class TransportConnector implements Connector, BrokerServiceAware {
         return (server != null ? server.getMaxConnectionExceededCount() : 0l);
     }
 
+    /**
+     * Once the transport server is bound its own answer is authoritative. Before
+     * that the configured scheme decides, so the flag is also usable while a broker
+     * is still being configured: ssl, nio+ssl, auto+nio+ssl, mqtt+ssl and so on,
+     * plus https and wss.
+     */
+    @Override
+    public boolean isSsl() {
+        if (server != null) {
+            return server.isSslServer();
+        }
+        if (uri == null || uri.getScheme() == null) {
+            return false;
+        }
+        for (String part : uri.getScheme().toLowerCase(Locale.ROOT).split("\\+")) {
+            if ("ssl".equals(part) || "https".equals(part) || "wss".equals(part)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Override
     public boolean isStarted() {
         return started.get();
@@ -715,6 +765,14 @@ public class TransportConnector implements Connector, BrokerServiceAware {
     @Override
     public boolean isAutoStart() {
         return autoStart;
+    }
+
+    public SslContext getSslContext() {
+        return sslContext;
+    }
+
+    public void setSslContext(SslContext sslContext) {
+        this.sslContext = sslContext;
     }
 
     @Override

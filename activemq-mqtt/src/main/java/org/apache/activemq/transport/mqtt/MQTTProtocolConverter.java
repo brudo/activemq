@@ -60,6 +60,7 @@ import org.apache.activemq.util.IdGenerator;
 import org.apache.activemq.util.JMSExceptionSupport;
 import org.apache.activemq.util.LRUCache;
 import org.apache.activemq.util.LongSequenceGenerator;
+import org.apache.activemq.util.MarshallingSupport;
 import org.fusesource.hawtbuf.Buffer;
 import org.fusesource.hawtbuf.UTF8Buffer;
 import org.fusesource.mqtt.client.QoS;
@@ -126,7 +127,9 @@ public class MQTTProtocolConverter {
 
     public int version;
 
-    private final FactoryFinder STRATAGY_FINDER = new FactoryFinder("META-INF/services/org/apache/activemq/transport/strategies/");
+    private final FactoryFinder<MQTTSubscriptionStrategy> STRATEGY_FINDER =
+            new FactoryFinder<>("META-INF/services/org/apache/activemq/transport/strategies/",
+                    MQTTSubscriptionStrategy.class, null);
 
     /*
      * Subscription strategy configuration element.
@@ -634,8 +637,12 @@ public class MQTTProtocolConverter {
                     inflater.setInput(byteSequence.data, byteSequence.offset, byteSequence.length);
                     byte[] data = new byte[4096];
                     int read;
+                    int total = 0;
                     ByteArrayOutputStream bytesOut = new ByteArrayOutputStream();
                     while ((read = inflater.inflate(data)) != 0) {
+                        total = Math.addExact(total, read);
+                        // check if we have exceeded maxInflatedSize before continuing
+                        MarshallingSupport.validateMaxInflatedDataSize(message.getMaxInflatedDataSize(), total);
                         bytesOut.write(data, 0, read);
                     }
                     byteSequence = bytesOut.toByteSequence();
@@ -861,7 +868,7 @@ public class MQTTProtocolConverter {
 
     protected MQTTSubscriptionStrategy findSubscriptionStrategy() throws IOException {
         if (subsciptionStrategy == null) {
-            synchronized (STRATAGY_FINDER) {
+            synchronized (STRATEGY_FINDER) {
                 if (subsciptionStrategy != null) {
                     return subsciptionStrategy;
                 }
@@ -869,7 +876,7 @@ public class MQTTProtocolConverter {
                 MQTTSubscriptionStrategy strategy = null;
                 if (subscriptionStrategyName != null && !subscriptionStrategyName.isEmpty()) {
                     try {
-                        strategy = (MQTTSubscriptionStrategy) STRATAGY_FINDER.newInstance(subscriptionStrategyName);
+                        strategy = STRATEGY_FINDER.newInstance(subscriptionStrategyName);
                         LOG.debug("MQTT Using subscription strategy: {}", subscriptionStrategyName);
                         if (strategy instanceof BrokerServiceAware) {
                             ((BrokerServiceAware)strategy).setBrokerService(brokerService);

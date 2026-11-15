@@ -64,6 +64,9 @@ public class ActiveMQProducer implements JMSProducer {
 
     @Override
     public JMSProducer send(Destination destination, Message message) {
+        if (message == null) {
+            throw new MessageFormatRuntimeException("Message must not be null");
+        }
         try {
             if(this.correlationId != null) {
                 message.setJMSCorrelationID(this.correlationId);
@@ -248,7 +251,7 @@ public class ActiveMQProducer implements JMSProducer {
 
     @Override
     public long getDeliveryDelay() {
-        throw new UnsupportedOperationException("getDeliveryDelay() is not supported");
+        return 0L;
     }
 
     @Override

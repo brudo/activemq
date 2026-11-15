@@ -42,12 +42,15 @@ import org.apache.activemq.store.kahadb.KahaDBPersistenceAdapter;
 import org.apache.activemq.util.JMXSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.junit.experimental.categories.Category;
+import org.apache.activemq.test.annotations.ParallelTest;
 
 /**
  * Used to simulate the recovery that occurs when a broker shuts down.
  * 
  * 
  */
+@Category(ParallelTest.class)
 public class XARecoveryBrokerTest extends BrokerRestartTestSupport {
     protected static final Logger LOG = LoggerFactory.getLogger(XARecoveryBrokerTest.class);
     public boolean prioritySupport = true;
@@ -1497,6 +1500,7 @@ public class XARecoveryBrokerTest extends BrokerRestartTestSupport {
         // unsubscribe
         connection.request(consumerInfo.createRemoveCommand());
         RemoveSubscriptionInfo removeSubscriptionInfo = new RemoveSubscriptionInfo();
+        removeSubscriptionInfo.setConnectionId(connectionInfo.getConnectionId());
         removeSubscriptionInfo.setClientId(connectionInfo.getClientId());
         removeSubscriptionInfo.setSubscriptionName(consumerInfo.getSubscriptionName());
         connection.request(removeSubscriptionInfo);
@@ -1579,6 +1583,7 @@ public class XARecoveryBrokerTest extends BrokerRestartTestSupport {
         // unsubscribe
         connection.request(consumerInfo.createRemoveCommand());
         RemoveSubscriptionInfo removeSubscriptionInfo = new RemoveSubscriptionInfo();
+        removeSubscriptionInfo.setConnectionId(connectionInfo.getConnectionId());
         removeSubscriptionInfo.setClientId(connectionInfo.getClientId());
         removeSubscriptionInfo.setSubscriptionName(consumerInfo.getSubscriptionName());
         connection.request(removeSubscriptionInfo);
@@ -1671,6 +1676,7 @@ public class XARecoveryBrokerTest extends BrokerRestartTestSupport {
         // unsubscribe
         connection.request(consumerInfo.createRemoveCommand());
         RemoveSubscriptionInfo removeSubscriptionInfo = new RemoveSubscriptionInfo();
+        removeSubscriptionInfo.setConnectionId(connectionInfo.getConnectionId());
         removeSubscriptionInfo.setClientId(connectionInfo.getClientId());
         removeSubscriptionInfo.setSubscriptionName(consumerInfo.getSubscriptionName());
         connection.request(removeSubscriptionInfo);

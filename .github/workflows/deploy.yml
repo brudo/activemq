@@ -23,20 +23,29 @@ on:
   schedule:
     - cron: '0 0 * * *'
 
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
 jobs:
   deploy:
+
+    if: github.event.repository.fork != true
 
     permissions:
       contents: read
 
+    timeout-minutes: 60
+
     runs-on: ubuntu-24.04
 
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up JDK 
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up JDK
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           java-version: 17
           distribution: temurin
+          cache: 'maven'
       - name: Deploy
         run: mvn -B -e deploy -Pdeploy -DskipTests

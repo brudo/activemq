@@ -32,6 +32,8 @@ import org.apache.activemq.openwire.OpenWireFormat;
 import org.apache.activemq.state.CommandVisitor;
 import org.apache.activemq.test.annotations.ParallelTest;
 import org.apache.activemq.util.ByteSequence;
+import org.apache.activemq.util.ByteSequenceData;
+import org.apache.activemq.util.MarshallingSupport.ActiveMQUnmarshalEOFException;
 import org.apache.activemq.wireformat.WireFormat;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
@@ -411,9 +413,10 @@ public class ActiveMQMessageTest extends TestCase {
             found3 |= element.equals(name3);
         }
         assertTrue("prop name1 found", found1);
-        // spec compliance, only non JMS (and JMSX) props returned
-        assertFalse("prop name2 not found", found2);
-        assertFalse("prop name4 not found", found3);
+        // JMSXDeliveryCount is always present per Jakarta Messaging 3.1 spec
+        assertTrue("prop name2 found", found2);
+        // JMS standard header fields (like JMSRedelivered) are not returned
+        assertFalse("prop name3 not found", found3);
     }
 
     @SuppressWarnings("rawtypes")
@@ -991,5 +994,26 @@ public class ActiveMQMessageTest extends TestCase {
         assertTrue(msg.isExpired());
         msg.setJMSExpiration(System.currentTimeMillis() + 10000);
         assertFalse(msg.isExpired());
+    }
+
+    public void testUnmarshalPropertiesException() throws Exception {
+        ActiveMQMessage msg = new ActiveMQMessage();
+        msg.setProperty("test", "test");
+
+        // marshal properties and clear unmarshaled state
+        msg.beforeMarshall(null);
+        msg.clearUnMarshalledState();
+        assertNull(msg.properties);
+
+        // corrupt the buffer
+        ByteSequenceData.writeIntBig(msg.marshalledProperties, 100000);
+
+        try {
+            // this will trigger unmarshalling
+            msg.getProperty("test");
+            fail("Should have thrown exception");
+        } catch (ActiveMQUnmarshalEOFException e) {
+            // expected
+        }
     }
 }

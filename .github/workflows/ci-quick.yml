@@ -25,31 +25,40 @@ name: CI Quick
 
 on:
   push:
-    branches: [ "main", "activemq-6.1.x", "activemq-5.19.x" ]
+    branches: [ "main", "activemq-6.4.x", "activemq-6.3.x", "activemq-5.19.x" ]
   pull_request:
-    branches: [ "main", "activemq-6.1.x", "activemq-5.19.x" ]
+    branches: [ "main", "activemq-6.4.x", "activemq-6.3.x", "activemq-5.19.x" ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     name: build
 
+    if: github.event.repository.fork != true
+
     permissions:
       contents: read
+
+    timeout-minutes: 60
 
     strategy:
       matrix:
         os: [ ubuntu-24.04, macos-26, windows-2025 ]
-        java-version: [ 17, 21, 25 ]
+        java-version: [ 17, 21, 25, 27 ]
 
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           java-version: ${{ matrix.java-version }}
           distribution: temurin
+          cache: 'maven'
       - name: Build
         run: mvn -U -B -e clean install -DskipTests
       - name: Verify
@@ -57,32 +66,36 @@ jobs:
 
   test:
     name: test
+    needs: build
 
     permissions:
       contents: read
       checks: write
       pull-requests: write
 
+    timeout-minutes: 180
+
     runs-on: ubuntu-24.04
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
-          java-version: 17
+          java-version: 25
           distribution: temurin
+          cache: 'maven'
       - name: Test
-        run: mvn -B -e -fae verify -Pactivemq.tests-quick
+        run: mvn -B -e -fae verify -Pactivemq.tests-quick -Dsurefire.rerunFailingTestsCount=3
       - name: Upload Test Results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-results
           path: '**/target/surefire-reports/*.xml'
       - name: Publish Test Results
         if: always()
-        uses: EnricoMi/publish-unit-test-result-action@v2
+        uses: EnricoMi/publish-unit-test-result-action@da5b7be67623cd59bbbd1a0ce4f022050a55605f # v2.26.0
         with:
           large_files: true
           report_individual_runs: true

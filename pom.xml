@@ -19,13 +19,13 @@
   <parent>
     <groupId>org.apache</groupId>
     <artifactId>apache</artifactId>
-    <version>37</version>
+    <version>40</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>org.apache.activemq</groupId>
   <artifactId>activemq-parent</artifactId>
-  <version>6.3.0-SNAPSHOT</version>
+  <version>6.5.0-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>ActiveMQ</name>
   <inceptionYear>2005</inceptionYear>
@@ -35,11 +35,14 @@
 
     <surefire.argLine></surefire.argLine>
     <maven.surefire.allow.securitymanager></maven.surefire.allow.securitymanager>
+    <javadoc.options>-Xdoclint:none</javadoc.options>
     <!-- Per-class JVM timeout (reuseForks=false means one JVM per test class).
          Kills a forked JVM that has been running longer than this many seconds,
          preventing CI from hanging indefinitely on Windows file-lock issues or
          any other test that never terminates. Override per-module if needed. -->
     <surefire.forkedProcessTimeout>300</surefire.forkedProcessTimeout>
+    <!-- Set to 'ping' on Windows 11+ where wmic is unavailable: -Dsurefire.enableProcessChecker=ping -->
+    <surefire.enableProcessChecker>all</surefire.enableProcessChecker>
 
     <siteId>activemq-${project.version}</siteId>
     <projectName>Apache ActiveMQ</projectName>
@@ -47,70 +50,72 @@
     <staging.siteURL>scp://people.apache.org/x1/www/activemq.apache.org</staging.siteURL>
 
     <!-- JAR dependency versions -->
-    <activemq-protobuf-version>1.1</activemq-protobuf-version>
     <activesoap-version>1.3</activesoap-version>
     <annogen-version>0.1.0</annogen-version>
-    <ant-version>1.10.15</ant-version>
+    <ant-version>1.10.18</ant-version>
     <aries-version>1.1.0</aries-version>
-    <camel-version>4.18.0</camel-version>
+    <camel-version>4.23.0</camel-version>
     <commons-beanutils-version>1.11.0</commons-beanutils-version>
     <commons-collections-version>3.2.2</commons-collections-version>
     <commons-dbcp2-version>2.14.0</commons-dbcp2-version>
-    <commons-io-version>2.21.0</commons-io-version>
-    <commons-logging-version>1.3.5</commons-logging-version>
+    <commons-io-version>2.22.0</commons-io-version>
+    <commons-logging-version>1.4.0</commons-logging-version>
     <commons-pool2-version>2.13.1</commons-pool2-version>
+    <commons-text-version>1.15.0</commons-text-version>
     <directory-version>2.0.0.AM25</directory-version>
-    <ecj.version>3.44.0</ecj.version>
-    <ftpserver-version>1.1.1</ftpserver-version>
-    <hadoop-version>1.2.1</hadoop-version>
+    <ecj.version>3.46.100</ecj.version>
     <hawtbuf-version>1.11</hawtbuf-version>
     <hawtdispatch-version>1.22</hawtdispatch-version>
     <httpclient-version>4.5.14</httpclient-version>
     <httpcore-version>4.4.16</httpcore-version>
-    <insight-version>1.2.0.Beta4</insight-version>
-    <jackson-version>2.21.1</jackson-version>
-    <jackson-annotations-version>2.21</jackson-annotations-version>
+    <jackson-version>2.23.0</jackson-version>
+    <jackson-annotations-version>2.23</jackson-annotations-version>
+    <nimbus-jose-jwt-version>10.10</nimbus-jose-jwt-version>
     <jakarta-jms-api-version>3.1.0</jakarta-jms-api-version>
+    <jakarta-annotation-api-version>3.0.0</jakarta-annotation-api-version>
+    <jakarta-servlet-api-version>6.1.0</jakarta-servlet-api-version>
+    <jakarta-servlet-jsp-api-version>4.0.0</jakarta-servlet-jsp-api-version>
+    <jakarta-el-api-version>6.0.1</jakarta-el-api-version>
+    <asm-version>9.11.1</asm-version>
     <jasypt-version>1.9.3</jasypt-version>
-    <jaxb-version>4.0.6</jaxb-version>
-    <jaxb-bundle-version>2.3.2_1</jaxb-bundle-version>
-    <jetty-version>11.0.26</jetty-version>
-    <jetty-version-range>[11,13)</jetty-version-range>
-    <jmdns-version>3.6.3</jmdns-version>
-    <javassist-version>3.30.2-GA</javassist-version>
-    <jettison-version>1.5.4</jettison-version>
-    <jmock-version>2.13.1</jmock-version>
-    <jolokia-version>2.5.1</jolokia-version>
+    <jaxb-version>4.0.9</jaxb-version>
+    <jetty-version>12.1.15</jetty-version>
+    <jetty-version-range>[12,13)</jetty-version-range>
+    <jmdns-version>3.6.5</jmdns-version>
+    <javassist-version>3.33.0-GA</javassist-version>
+    <jettison-version>1.5.7</jettison-version>
+    <jolokia-version>2.6.5</jolokia-version>
+    <jmh-version>1.37</jmh-version>
     <junit-version>4.13.2</junit-version>
-    <h2-version>2.4.240</h2-version>
+    <h2-version>2.5.252</h2-version>
     <hamcrest-version>1.3</hamcrest-version>
-    <karaf-version>4.4.10</karaf-version>
-    <log4j-version>2.25.3</log4j-version>
-    <mockito-version>5.21.0</mockito-version>
-    <owasp-dependency-check-version>12.2.0</owasp-dependency-check-version>
+    <karaf-version>4.4.12</karaf-version>
+    <log4j-version>2.26.1</log4j-version>
+    <mockito-version>5.24.0</mockito-version>
+    <owasp-dependency-check-version>13.0.0</owasp-dependency-check-version>
     <mqtt-client-version>1.16</mqtt-client-version>
     <org-apache-derby-version>10.16.1.1</org-apache-derby-version>
-    <osgi-version>6.0.0</osgi-version>
-    <qpid-proton-version>0.34.1</qpid-proton-version>
-    <qpid-jms-version>2.10.0</qpid-jms-version>
-    <netty-version>4.2.10.Final</netty-version>
+    <osgi-version>7.0.0</osgi-version>
+    <qpid-proton-version>0.35.0</qpid-proton-version>
+    <qpid-jms-version>2.11.0</qpid-jms-version>
+    <netty-version>4.2.20.Final</netty-version>
     <rome-version>2.1.0</rome-version>
-    <shiro-version>2.1.0</shiro-version>
-    <slf4j-version>2.0.17</slf4j-version>
-    <snappy-version>1.1.2</snappy-version>
-    <spring-version>6.2.16</spring-version>
-    <spring-version-range>[6,7)</spring-version-range>
+    <shiro-version>2.2.1</shiro-version>
+    <opentelemetry-version>1.68.0</opentelemetry-version>
+    <slf4j-version>2.0.20</slf4j-version>
+    <spring-version>7.0.10</spring-version>
+    <spring-version-range>[7,8)</spring-version-range>
     <taglibs-version>1.2.5</taglibs-version>
     <xpp3-version>1.1.4c</xpp3-version>
     <xstream-version>1.4.21</xstream-version>
-    <xbean-version>4.30</xbean-version>
+    <xbean-version>4.31</xbean-version>
     <xerces-version>2.12.2</xerces-version>
-    <jaxb-tools-version>4.0.12</jaxb-tools-version>
+    <jaxb-tools-version>4.0.16</jaxb-tools-version>
     <stompjms-version>3.1.0</stompjms-version>
 
     <pax-logging-version>2.1.3</pax-logging-version>
     <pax-exam-version>4.14.0</pax-exam-version>
-    <pax-url-version>2.7.0</pax-url-version>
+    <pax-url-version>3.0.3</pax-url-version>
     <felix-framework-version>5.6.12</felix-framework-version>
 
     <site-repo-url>scpexe://people.apache.org/www/activemq.apache.org/maven/</site-repo-url>
@@ -120,24 +125,25 @@
     <javaee-javadoc-url>http://download.oracle.com/javaee/6/api/</javaee-javadoc-url>
 
     <!-- Maven Plugin Version for this Project -->
-    <maven-bundle-plugin-version>6.0.0</maven-bundle-plugin-version>
+    <maven-bundle-plugin-version>6.2.0</maven-bundle-plugin-version>
     <maven-eclipse-plugin-version>2.10</maven-eclipse-plugin-version>
     <maven-rar-plugin-version>3.1.0</maven-rar-plugin-version>
     <exec-maven-plugin-version>3.1.0</exec-maven-plugin-version>
-    <flatten-maven-plugin-version>1.7.3</flatten-maven-plugin-version>
-    <javacc-maven-plugin-version>3.2.0</javacc-maven-plugin-version>
+    <flatten-maven-plugin-version>1.9.0</flatten-maven-plugin-version>
+    <javacc-maven-plugin-version>3.3.0</javacc-maven-plugin-version>
     <cobertura-maven-plugin-version>2.7</cobertura-maven-plugin-version>
-    <taglist-maven-plugin-version>3.2.2</taglist-maven-plugin-version>
-    <build-helper-maven-plugin-version>3.6.1</build-helper-maven-plugin-version>
+    <taglist-maven-plugin-version>3.3.0</taglist-maven-plugin-version>
+    <build-helper-maven-plugin-version>3.8.0</build-helper-maven-plugin-version>
     <replacer-maven-plugin-version>1.5.3</replacer-maven-plugin-version>
-    <sonar-maven-plugin-version>5.5.0.6356</sonar-maven-plugin-version>
+    <sonar-maven-plugin-version>5.8.0.7211</sonar-maven-plugin-version>
     <tools-maven-plugin-version>1.4</tools-maven-plugin-version>
     <depends-maven-plugin-version>1.5.0</depends-maven-plugin-version>
+    <docker-maven-plugin-version>0.49.0</docker-maven-plugin-version>
+    <docker-java-version>25</docker-java-version>
     <maven-project-info-reports-plugin-version>3.9.0</maven-project-info-reports-plugin-version>
-    <maven-graph-plugin-version>1.45</maven-graph-plugin-version>
-    <maven-core-version>3.9.12</maven-core-version>
-    <maven-surefire-plugin-version>3.5.3</maven-surefire-plugin-version>
-    <maven-surefire-junit5-tree-reporter-version>1.5.1</maven-surefire-junit5-tree-reporter-version>
+    <maven-core-version>3.10.0</maven-core-version>
+    <maven-surefire-plugin-version>3.5.6</maven-surefire-plugin-version>
+    <maven-surefire-junit5-tree-reporter-version>2.2.0</maven-surefire-junit5-tree-reporter-version>
     <!-- OSGi bundles properties -->
     <activemq.osgi.import.pkg>*</activemq.osgi.import.pkg>
     <activemq.osgi.export.pkg>org.apache.activemq*</activemq.osgi.export.pkg>
@@ -192,6 +198,8 @@
   <modules>
     <module>bom</module>
     <module>activemq-openwire-generator</module>
+    <module>activemq-protobuf</module>
+    <module>activemq-protobuf-test</module>
     <module>activemq-client</module>
     <module>activemq-openwire-legacy</module>
     <module>activemq-broker</module>
@@ -211,6 +219,8 @@
     <module>activemq-rar</module>
     <module>activemq-run</module>
     <module>activemq-shiro</module>
+    <module>activemq-opentelemetry</module>
+    <module>activemq-jaas-oauth2</module>
     <module>activemq-spring</module>
     <module>activemq-runtime-config</module>
     <module>activemq-tooling</module>
@@ -254,11 +264,6 @@
         <version>${project.version}</version>
       </dependency>
 
-      <dependency>
-        <groupId>org.apache.activemq</groupId>
-        <artifactId>activemq-amq-store</artifactId>
-        <version>${project.version}</version>
-      </dependency>
       <dependency>
         <groupId>org.apache.activemq</groupId>
         <artifactId>activemq-kahadb-store</artifactId>
@@ -350,6 +355,16 @@
       </dependency>
       <dependency>
         <groupId>org.apache.activemq</groupId>
+        <artifactId>activemq-opentelemetry</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.activemq</groupId>
+        <artifactId>activemq-jaas-oauth2</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.activemq</groupId>
         <artifactId>activemq-spring</artifactId>
         <version>${project.version}</version>
       </dependency>
@@ -415,7 +430,7 @@
       <dependency>
         <groupId>org.apache.activemq.protobuf</groupId>
         <artifactId>activemq-protobuf</artifactId>
-        <version>${activemq-protobuf-version}</version>
+        <version>${project.version}</version>
       </dependency>
 
       <!-- =============================== -->
@@ -454,19 +469,24 @@
       <dependency>
         <groupId>org.ow2.asm</groupId>
         <artifactId>asm</artifactId>
-        <version>9.9.1</version>
+        <version>${asm-version}</version>
       </dependency>
 
-     <!-- Servlet 5.0 and JSP -->
+     <!-- Servlet and JSP (Jakarta EE 11, required by Spring 7) -->
      <dependency>
        <groupId>jakarta.servlet.jsp</groupId>
        <artifactId>jakarta.servlet.jsp-api</artifactId>
-       <version>3.1.1</version>
+       <version>${jakarta-servlet-jsp-api-version}</version>
      </dependency>
      <dependency>
        <groupId>jakarta.servlet</groupId>
        <artifactId>jakarta.servlet-api</artifactId>
-       <version>5.0.0</version>
+       <version>${jakarta-servlet-api-version}</version>
+     </dependency>
+     <dependency>
+       <groupId>jakarta.el</groupId>
+       <artifactId>jakarta.el-api</artifactId>
+       <version>${jakarta-el-api-version}</version>
      </dependency>
      <dependency>
        <groupId>jakarta.websocket</groupId>
@@ -506,6 +526,16 @@
         <groupId>org.apache.camel</groupId>
         <artifactId>camel-bom</artifactId>
         <version>${camel-version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <!-- Manages every netty artifact, including the native epoll and kqueue transports that
+           qpid-jms pulls in, at netty-version. Modules declare netty jars without a version. -->
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-bom</artifactId>
+        <version>${netty-version}</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
@@ -600,6 +630,11 @@
         <artifactId>jackson-dataformat-xml</artifactId>
         <version>${jackson-version}</version>
       </dependency>
+      <dependency>
+        <groupId>com.nimbusds</groupId>
+        <artifactId>nimbus-jose-jwt</artifactId>
+        <version>${nimbus-jose-jwt-version}</version>
+      </dependency>
 
       <!-- Used to configure the activemq logs -->
       <dependency>
@@ -659,6 +694,15 @@
         <artifactId>shiro-spring</artifactId>
         <version>${shiro-version}</version>
         <optional>true</optional>
+      </dependency>
+
+      <!-- Optional OpenTelemetry Support -->
+      <dependency>
+        <groupId>io.opentelemetry</groupId>
+        <artifactId>opentelemetry-bom</artifactId>
+        <version>${opentelemetry-version}</version>
+        <type>pom</type>
+        <scope>import</scope>
       </dependency>
 
       <!-- Optional Spring Support -->
@@ -838,6 +882,14 @@
       </dependency>
 
       <dependency>
+        <groupId>org.eclipse.jetty.ee11</groupId>
+        <artifactId>jetty-ee11-bom</artifactId>
+        <version>${jetty-version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <dependency>
         <groupId>org.apache.httpcomponents</groupId>
         <artifactId>httpclient</artifactId>
         <version>${httpclient-version}</version>
@@ -882,18 +934,6 @@
         <scope>test</scope>
       </dependency>
       <dependency>
-        <groupId>org.jmock</groupId>
-        <artifactId>jmock-junit4</artifactId>
-        <version>${jmock-version}</version>
-        <scope>test</scope>
-      </dependency>
-      <dependency>
-        <groupId>org.jmock</groupId>
-        <artifactId>jmock-legacy</artifactId>
-        <version>${jmock-version}</version>
-        <scope>test</scope>
-      </dependency>
-      <dependency>
         <groupId>org.hamcrest</groupId>
         <artifactId>hamcrest-all</artifactId>
         <version>${hamcrest-version}</version>
@@ -922,6 +962,12 @@
         <version>${commons-io-version}</version>
       </dependency>
 
+      <dependency>
+        <groupId>org.apache.commons</groupId>
+        <artifactId>commons-text</artifactId>
+        <version>${commons-text-version}</version>
+      </dependency>
+
       <!-- ACTIVEMQ-WEB Specific Dependencies -->
       <dependency>
         <groupId>com.rometools</groupId>
@@ -944,7 +990,19 @@
       <dependency>
         <groupId>jakarta.annotation</groupId>
         <artifactId>jakarta.annotation-api</artifactId>
-        <version>2.1.1</version>
+        <version>${jakarta-annotation-api-version}</version>
+      </dependency>
+
+      <!-- JMH for micro-benchmarks -->
+      <dependency>
+        <groupId>org.openjdk.jmh</groupId>
+        <artifactId>jmh-core</artifactId>
+        <version>${jmh-version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.openjdk.jmh</groupId>
+        <artifactId>jmh-generator-annprocess</artifactId>
+        <version>${jmh-version}</version>
       </dependency>
 
     </dependencies>
@@ -957,7 +1015,7 @@
         <plugin>
           <groupId>org.apache.activemq.protobuf</groupId>
           <artifactId>activemq-protobuf</artifactId>
-          <version>${activemq-protobuf-version}</version>
+          <version>${project.version}</version>
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
@@ -981,6 +1039,7 @@
             <forkCount>1</forkCount>
             <reuseForks>false</reuseForks>
             <forkedProcessTimeoutInSeconds>${surefire.forkedProcessTimeout}</forkedProcessTimeoutInSeconds>
+            <enableProcessChecker>${surefire.enableProcessChecker}</enableProcessChecker>
             <failIfNoTests>false</failIfNoTests>
             <systemPropertyVariables>
                 <java.awt.headless>true</java.awt.headless>
@@ -1028,8 +1087,8 @@
           <version>${javacc-maven-plugin-version}</version>
         </plugin>
         <plugin>
-          <groupId>org.eclipse.jetty</groupId>
-          <artifactId>jetty-maven-plugin</artifactId>
+          <groupId>org.eclipse.jetty.ee11</groupId>
+          <artifactId>jetty-ee11-maven-plugin</artifactId>
           <version>${jetty-version}</version>
         </plugin>
         <plugin>
@@ -1194,6 +1253,7 @@
             <exclude>**/webapp/js/css.js</exclude>
             <exclude>**/webapp/js/standardista-table-sorting.js</exclude>
             <exclude>**/*.data</exclude>
+            <exclude>**/*.crl</exclude>
             <exclude>**/webapp/test/assets/*</exclude>
             <exclude>**/*.lck</exclude>
             <exclude>**/*.patch</exclude>
@@ -1221,6 +1281,7 @@
             <exclude>**/webapp/decorators/footer.jsp</exclude>
             <exclude>**/docs/img/*.svg</exclude>
             <exclude>**/testJdbcConfig/**/*</exclude>
+            <exclude>**/jakarta-messaging-tck-*.zip</exclude>
           </excludes>
         </configuration>
       </plugin>
@@ -1281,30 +1342,6 @@
 
   <profiles>
 
-    <!-- If you enable this profile, the console message will have a timestamp -->
-    <profile>
-      <id>consolets</id>
-      <build>
-        <plugins>
-          <plugin>
-            <groupId>org.fusesource.mvnplugins</groupId>
-            <artifactId>maven-consolets-plugin</artifactId>
-            <version>1.45</version>
-            <configuration>
-              <enabled>true</enabled>
-            </configuration>
-            <executions>
-              <execution>
-                <phase>validate</phase>
-                <goals>
-                  <goal>install</goal>
-                </goals>
-              </execution>
-            </executions>
-          </plugin>
-        </plugins>
-      </build>
-    </profile>
     <profile>
       <id>apache-release</id>
       <activation>
@@ -1326,8 +1363,8 @@
                 <configuration>
                   <rules>
                     <requireJavaVersion>
-                      <version>[24,)</version>
-                      <message>You must use Java 24+ to build (we leverage MRJAR).</message>
+                      <version>[25,)</version>
+                      <message>You must use Java 25+ to build a release; the multi-release jars carry Java 21, 24 and 25 classes.</message>
                     </requireJavaVersion>
                   </rules>
                 </configuration>
@@ -1393,22 +1430,6 @@
         </plugins>
       </build>
     </profile>
-    <!--
-      To generate a graph of the project dependencies, run:
-      mvn -P graph graph:reactor -Dhide-scope=test -Dhide-transitive=true -Dhide-external=true -Dgraph.label= -Dhide-version=true -Dhide-group-id=true -Dhide-type=true
-    -->
-    <profile>
-      <id>graph</id>
-      <build>
-        <plugins>
-          <plugin>
-            <groupId>org.fusesource.mvnplugins</groupId>
-            <artifactId>maven-graph-plugin</artifactId>
-            <version>${maven-graph-plugin-version}</version>
-          </plugin>
-        </plugins>
-      </build>
-    </profile>
 
     <!-- Execute owasp dependency check plugin -->
     <profile>
@@ -1435,17 +1456,6 @@
         </plugins>
       </build>
     </profile>
-
-    <!-- Need to disable doclint for JDK 8 builds so Javadocs work -->
-    <profile>
-      <id>jdk8-disable-doclint</id>
-      <activation>
-        <jdk>[1.8,)</jdk>
-      </activation>
-      <properties>
-        <javadoc.options>-Xdoclint:none</javadoc.options>
-     </properties>
-   </profile>
 
     <profile>
       <id>allow-securitymanager</id>

@@ -16,13 +16,19 @@
  */
 package org.apache.activemq.java;
 
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
+import jakarta.jms.Connection;
+import jakarta.jms.JMSSecurityException;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
+import java.util.concurrent.TimeUnit;
 import org.apache.activemq.AbstractAuthorizationTest;
+import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerPlugin;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.filter.DestinationMapEntry;
@@ -37,7 +43,6 @@ import org.junit.Test;
 
 public class JavaAuthorizationTest extends AbstractAuthorizationTest {
 
-    public static final int SLEEP = 2; // seconds
     String configurationSeed = "authorizationTest";
 
     private JavaRuntimeConfigurationBroker javaConfigBroker;
@@ -47,7 +52,6 @@ public class JavaAuthorizationTest extends AbstractAuthorizationTest {
 
         JaasAuthenticationPlugin authenticationPlugin = new JaasAuthenticationPlugin();
         authenticationPlugin.setConfiguration("activemq-domain");
-
 
         AuthorizationPlugin authorizationPlugin = new AuthorizationPlugin();
         DefaultAuthorizationMap authorizationMap = new DefaultAuthorizationMap();
@@ -76,11 +80,10 @@ public class JavaAuthorizationTest extends AbstractAuthorizationTest {
 
         assertDeniedTemp("guest");
 
-       // applyNewConfig(brokerConfig, configurationSeed + "-users-guests", SLEEP);
+       // applyNewConfig(brokerConfig, configurationSeed + "-users-guests", WAIT_FOR_CHANGE);
 
         authorizationMap = buildUsersGuestsMap();
         javaConfigBroker.updateAuthorizationMap(authorizationMap);
-        TimeUnit.SECONDS.sleep(SLEEP);
 
         assertAllowed("user", "USERS.A");
         assertAllowed("guest", "GUESTS.A");
@@ -97,19 +100,107 @@ public class JavaAuthorizationTest extends AbstractAuthorizationTest {
         assertTrue("broker alive", brokerService.isStarted());
 
         javaConfigBroker.updateAuthorizationMap(authorizationMap);
-        TimeUnit.SECONDS.sleep(SLEEP);
         assertAllowed("user", "USERS.A");
         assertAllowed("guest", "GUESTS.A");
+        assertAllowedWrite("user", "USERS.A");
+        assertAllowedWrite("user", "GUESTS.A");
         assertDenied("user", "GUESTS.A");
         assertAllowedTemp("guest");
 
         authorizationMap = buildUsersMap();
         javaConfigBroker.updateAuthorizationMap(authorizationMap);
-        TimeUnit.SECONDS.sleep(SLEEP);
 
         assertAllowed("user", "USERS.A");
         assertDenied("user", "GUESTS.A");
+        assertDeniedWrite("user", "GUESTS.A");
         assertDeniedTemp("guest");
+    }
+
+    @Test
+    public void testModRmExistingProducer() throws Exception {
+        DefaultAuthorizationMap authorizationMap = buildUsersGuestsMap();
+        BrokerService brokerService = new BrokerService();
+        startBroker(brokerService);
+        assertTrue("broker alive", brokerService.isStarted());
+
+        javaConfigBroker.updateAuthorizationMap(authorizationMap);
+        TimeUnit.SECONDS.sleep(SLEEP);
+
+        try (Connection connection = new ActiveMQConnectionFactory("vm://localhost")
+                .createConnection("user", "user")) {
+            connection.start();
+
+            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            MessageProducer userProd
+                    = session.createProducer(session.createQueue("USERS.A"));
+            MessageProducer guestProd
+                    = session.createProducer(session.createQueue("GUESTS.A"));
+            MessageProducer anonProd
+                    = session.createProducer(null);
+
+            // all allowed
+            userProd.send(session.createTextMessage());
+            anonProd.send(session.createQueue("USERS.A"), session.createTextMessage());
+            guestProd.send(session.createTextMessage());
+            anonProd.send(session.createQueue("GUESTS.A"), session.createTextMessage());
+
+            authorizationMap = buildUsersMap();
+            javaConfigBroker.updateAuthorizationMap(authorizationMap);
+            TimeUnit.SECONDS.sleep(SLEEP);
+
+            // still allowed
+            userProd.send(session.createTextMessage());
+            anonProd.send(session.createQueue("USERS.A"), session.createTextMessage());
+
+            // now denied
+            assertThrows(JMSSecurityException.class, () -> guestProd.send(session.createTextMessage()));
+            assertThrows(JMSSecurityException.class, () -> anonProd.send(
+                    session.createQueue("GUESTS.A"), session.createTextMessage()));
+        }
+    }
+
+    @Test
+    public void testModAddExistingProducer() throws Exception {
+        DefaultAuthorizationMap authorizationMap = buildUsersMap();
+        BrokerService brokerService = new BrokerService();
+        startBroker(brokerService);
+        assertTrue("broker alive", brokerService.isStarted());
+
+        javaConfigBroker.updateAuthorizationMap(authorizationMap);
+        TimeUnit.SECONDS.sleep(SLEEP);
+
+        try (Connection connection = new ActiveMQConnectionFactory("vm://localhost")
+                .createConnection("user", "user")) {
+            connection.start();
+
+            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            MessageProducer userProd
+                    = session.createProducer(session.createQueue("USERS.A"));
+            // can only create an anonymous, normal producer is denied for GUESTS.A
+            MessageProducer anonProd
+                    = session.createProducer(null);
+
+            // allowed
+            userProd.send(session.createTextMessage());
+            anonProd.send(session.createQueue("USERS.A"), session.createTextMessage());
+
+            // denied
+            // producer should be denied
+            assertDenied("user", "GUESTS.A");
+            assertThrows(JMSSecurityException.class, () -> anonProd.send(
+                    session.createQueue("GUESTS.A"), session.createTextMessage()));
+
+            authorizationMap = buildUsersGuestsMap();
+            javaConfigBroker.updateAuthorizationMap(authorizationMap);
+            TimeUnit.SECONDS.sleep(SLEEP);
+
+            // all allowed
+            userProd.send(session.createTextMessage());
+            anonProd.send(session.createQueue("USERS.A"), session.createTextMessage());
+            // must create new producer, previous was not allowed
+            assertAllowedWrite("user", "GUESTS.A");
+            anonProd.send(session.createQueue("GUESTS.A"), session.createTextMessage());
+        }
     }
 
     @Test
@@ -120,7 +211,6 @@ public class JavaAuthorizationTest extends AbstractAuthorizationTest {
         assertTrue("broker alive", brokerService.isStarted());
 
         javaConfigBroker.updateAuthorizationMap(authorizationMap);
-        TimeUnit.SECONDS.sleep(SLEEP);
 
         final String ALL_USERS = "ALL.USERS.>";
         final String ALL_GUESTS = "ALL.GUESTS.>";
@@ -142,7 +232,6 @@ public class JavaAuthorizationTest extends AbstractAuthorizationTest {
 
         assertDenied("user", "USERS.>");
         assertDenied("guest", "GUESTS.>");
-
 
         assertAllowedTemp("guest");
     }
@@ -181,7 +270,6 @@ public class JavaAuthorizationTest extends AbstractAuthorizationTest {
         List<DestinationMapEntry> entries = new ArrayList<>();
         entries.add(buildQueueAuthorizationEntry(">", "admins", "admins", "admins"));
         entries.add(buildQueueAuthorizationEntry("USERS.>", "users", "users", "users"));
-
 
         entries.add(buildTopicAuthorizationEntry(">", "admins", "admins", "admins"));
         entries.add(buildTopicAuthorizationEntry("USERS.>", "users", "users", "users"));

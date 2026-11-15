@@ -41,17 +41,20 @@ import org.apache.directory.server.ldap.LdapServer;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.junit.experimental.categories.Category;
+import org.apache.activemq.test.annotations.ParallelTest;
 
 /**
  * This test assumes setup like in file 'AMQauth.ldif'. Contents of this file is attached below in comments.
  *
- * @author ngcutura
+ *
  *
  *
  */
 @RunWith(FrameworkRunner.class)
 @CreateLdapServer(transports = { @CreateTransport(protocol = "LDAP") })
 @ApplyLdifFiles("org/apache/activemq/security/AMQauth.ldif")
+@Category(ParallelTest.class)
 public class LDAPAuthorizationMapTest extends AbstractLdapTestUnit {
     private static LDAPAuthorizationMap authMap;
 

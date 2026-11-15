@@ -45,6 +45,18 @@ import org.apache.activemq.wireformat.WireFormat;
 public class NIOTransport extends TcpTransport {
 
     // private static final Logger log = LoggerFactory.getLogger(NIOTransport.class);
+    static final String USE_DIRECT_BUFFER_ENV = "ACTIVEMQ_NIO_USE_DIRECT_BUFFER";
+    static final String USE_DIRECT_BUFFER_PROPERTY = "activemqNIOUseDirectBuffer";
+    static final boolean USE_DIRECT_BUFFER_FOR_OVERSIZE_FRAMES;
+
+    static {
+        String useDirect = System.getenv(USE_DIRECT_BUFFER_ENV);
+        if (useDirect == null) {
+            useDirect = System.getProperty(USE_DIRECT_BUFFER_PROPERTY);
+        }
+        USE_DIRECT_BUFFER_FOR_OVERSIZE_FRAMES = Boolean.parseBoolean(useDirect);
+    }
+
     protected SocketChannel channel;
     protected SelectorSelection selection;
     protected ByteBuffer inputBuffer;
@@ -148,8 +160,16 @@ public class NIOTransport extends TcpTransport {
                         }
                     }
 
+                    // This isn't strictly necessary as ByteBuffer.allocateDirect() would also throw the same
+                    // IllegalArgumentException, but this provides a better error. OpenWire
+                    if (nextFrameSize < 0) {
+                        throw new IllegalArgumentException("Frame size value " + nextFrameSize + " may not be negative.");
+                    }
+
                     if (nextFrameSize > inputBuffer.capacity()) {
-                        currentBuffer = ByteBuffer.allocateDirect(nextFrameSize);
+                        currentBuffer = USE_DIRECT_BUFFER_FOR_OVERSIZE_FRAMES
+                                ? ByteBuffer.allocateDirect(nextFrameSize)
+                                : ByteBuffer.allocate(nextFrameSize);
                         currentBuffer.putInt(nextFrameSize);
                     } else {
                         inputBuffer.limit(nextFrameSize);

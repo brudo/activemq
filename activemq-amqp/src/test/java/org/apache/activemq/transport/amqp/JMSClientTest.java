@@ -26,6 +26,7 @@ import static org.junit.Assert.fail;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -52,6 +53,10 @@ import jakarta.jms.TopicConnection;
 import jakarta.jms.TopicSession;
 import jakarta.jms.TopicSubscriber;
 
+import org.apache.activemq.broker.Broker;
+import org.apache.activemq.broker.BrokerFilter;
+import org.apache.activemq.broker.BrokerPlugin;
+import org.apache.activemq.broker.ProducerBrokerExchange;
 import org.apache.activemq.broker.jmx.BrokerView;
 import org.apache.activemq.broker.jmx.BrokerViewMBean;
 import org.apache.activemq.broker.jmx.ConnectorViewMBean;
@@ -810,7 +815,7 @@ public class JMSClientTest extends JMSClientTestSupport {
         ActiveMQAdmin.enableJMSFrameTracing();
 
         final ConnectorViewMBean connector = getProxyToConnectionView(getTargetConnectorName());
-        LOG.info("Current number of Connections is: {}", connector.connectionCount());
+        LOG.info("Current number of Connections is: {}", connector.getConnectionCount());
 
         ArrayList<Connection> connections = new ArrayList<>();
 
@@ -818,7 +823,7 @@ public class JMSClientTest extends JMSClientTestSupport {
             connections.add(createConnection(null));
         }
 
-        LOG.info("Current number of Connections is: {}", connector.connectionCount());
+        LOG.info("Current number of Connections is: {}", connector.getConnectionCount());
 
         for (Connection connection : connections) {
             connection.close();
@@ -828,8 +833,8 @@ public class JMSClientTest extends JMSClientTestSupport {
 
             @Override
             public boolean isSatisified() throws Exception {
-                LOG.info("Current number of Connections is: {}", connector.connectionCount());
-                return connector.connectionCount() == 0;
+                LOG.info("Current number of Connections is: {}", connector.getConnectionCount());
+                return connector.getConnectionCount() == 0;
             }
         }));
     }
@@ -1359,5 +1364,27 @@ public class JMSClientTest extends JMSClientTestSupport {
         }
 
         assertTrue("Did not receive all messages: " + MSG_COUNT, done.await(15, TimeUnit.SECONDS));
+    }
+
+    @Override
+    protected void addAdditionalPlugins(List<BrokerPlugin> plugins) throws Exception {
+        super.addAdditionalPlugins(plugins);
+        plugins.add(new BrokerPlugin() {
+
+            @Override
+            public Broker installPlugin(Broker broker) {
+                return new BrokerFilter(broker) {
+
+                    @Override
+                    public void send(ProducerBrokerExchange producerExchange,
+                            org.apache.activemq.command.Message messageSend) throws Exception {
+                        super.send(producerExchange, messageSend);
+
+                        // The message should always be passed to the broker in a marshaled state
+                        assertTrue(messageSend.isMarshalled());
+                    }
+                };
+            }
+        });
     }
 }
